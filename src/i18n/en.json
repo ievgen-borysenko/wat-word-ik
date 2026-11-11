@@ -32,7 +32,6 @@
   "state.near": "nearly there",
   "state.far": "locked",
   "tile.aria": "{name}, {floor}: {state}",
-  "tile.ariaSteps": "{n} points missing",
   "tile.goal": "your goal",
   "card.close": "Close",
   "card.needs": "What you need to know",
@@ -42,8 +41,7 @@
   "card.ladder": "The ladder",
   "card.ladderHint": "Each next step asks for a bit more knowledge.",
   "card.focus": "What to pay attention to now",
-  "card.focusSubject": "Pull up {subject}: +{n}",
-  "card.focusAverage": "Raise your overall level: +{n} points in any subjects",
+  "card.focusSubject": "Bring {subject} up: +{n}",
   "card.focusOpen": "This one is open for you!",
   "card.focusNext": "Next step on the ladder, {name}, asks for: {list}",
   "card.focusNextOpen": "The next step, {name}, is open for you too.",
@@ -62,5 +60,9 @@
   "footer.sources": "Sources",
   "legend.lock": "🔒 = locked",
   "legend.badge": "+2 = two more points needed on the sliders",
-  "floor.info": "What does {floor} mean?"
+  "floor.info": "What does {floor} mean?",
+  "tile.ariaSteps.one": "{n} point missing",
+  "tile.ariaSteps.other": "{n} points missing",
+  "card.focusAverage.one": "Raise your overall level: +{n} point in any subject",
+  "card.focusAverage.other": "Raise your overall level: +{n} points in any subjects"
 }

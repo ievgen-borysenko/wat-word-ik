@@ -25,7 +25,7 @@ function copyDocs(): Plugin {
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
-  "style-src 'self' 'unsafe-inline'",
+  "style-src 'self'",
   "img-src 'self' data:",
   "connect-src 'none'",
   "font-src 'none'",
@@ -54,6 +54,7 @@ export default defineConfig({
   build: {
     target: 'es2022',
     sourcemap: false,
+    modulePreload: { polyfill: false },
   },
   test: {
     include: ['src/**/*.test.ts'],

@@ -3,7 +3,7 @@ import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
 import { focus, ladder, nextRung } from '../engine/hints';
 import type { Evaluation } from '../engine/scoring';
 import { GRADE_MAX, type Lang, type Profession } from '../engine/types';
-import { t, type MessageKey } from '../i18n';
+import { t, tp, type MessageKey } from '../i18n';
 import { decimal, euros, floorAbout, floorLabel, shortName, subjectEmoji, subjectName } from './format';
 import { evaluations, goal, lang, selected, sliders, toggleGoal } from './store';
 
@@ -42,7 +42,7 @@ function FocusLines({ p, e, l }: { p: Profession; e: Evaluation; l: Lang }) {
       items.push(
         g.kind === 'subject'
           ? t(l, 'card.focusSubject', { subject: subjectName(g.subject, l), n: g.points })
-          : t(l, 'card.focusAverage', { n: g.points }),
+          : tp(l, 'card.focusAverage', g.points),
       );
     }
   }
@@ -158,9 +158,10 @@ function CardBody({ p, e }: { p: Profession; e: Evaluation }) {
                     aria-current={current ? 'true' : undefined}
                     onClick={() => (selected.value = r.id)}
                   >
-                    <span aria-hidden="true">{r.emoji}</span> {shortName(r, l)}
+                    <span aria-hidden="true">{r.emoji}</span> {shortName(r, l)}{' '}
                     <span class="chip-floor">{floorLabel(r.level, l)}</span>
                     {re?.state === 'far' && <span aria-hidden="true"> 🔒</span>}
+                    <span class="visually-hidden">, {t(l, `state.${re?.state ?? 'far'}` as MessageKey)}</span>
                   </button>
                 </li>
               );
@@ -176,9 +177,14 @@ function CardBody({ p, e }: { p: Profession; e: Evaluation }) {
 
       <section class="card-section card-pay">
         <h3>{t(l, 'card.pay')}</h3>
-        <p class="pay" aria-label={t(l, 'card.payAria', { n: p.pay })}>
-          <span class="pay-on">{euros(p.pay)}</span>
-          <span class="pay-off">{euros(5 - p.pay)}</span>
+        <p class="pay">
+          <span class="pay-on" aria-hidden="true">
+            {euros(p.pay)}
+          </span>
+          <span class="pay-off" aria-hidden="true">
+            {euros(5 - p.pay)}
+          </span>
+          <span class="visually-hidden">{t(l, 'card.payAria', { n: p.pay })}</span>
         </p>
       </section>
 
@@ -232,8 +238,13 @@ export function ProfessionCard() {
       aria-labelledby="card-title"
       onClose={onClose}
       onClick={(ev) => {
-        // A click on the dialog element itself (not its content) is a click on the backdrop.
-        if (ev.target === ev.currentTarget) selected.value = null;
+        // Close only for a click on the backdrop: outside the dialog's own box.
+        // A tap on blank space inside the card does not close it.
+        if (ev.target !== ev.currentTarget) return;
+        const r = ev.currentTarget.getBoundingClientRect();
+        const inside =
+          ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
+        if (!inside) selected.value = null;
       }}
     >
       {p && e && <CardBody key="card" p={p} e={e} />}

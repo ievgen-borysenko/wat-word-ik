@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
 import type { Evaluation } from '../engine/scoring';
 import type { Lang, Level, Profession, State } from '../engine/types';
-import { t, type MessageKey } from '../i18n';
+import { t, tp, type MessageKey } from '../i18n';
 import { euros, floorAbout, floorLabel, goalText, shortName } from './format';
 import { band, counts, evaluations, goal, lang, selected } from './store';
 
@@ -35,8 +35,12 @@ function Tile({ p, e }: { p: Profession; e: Evaluation }) {
   }, [e.state]);
 
   let stateText = t(l, `state.${e.state}` as MessageKey);
-  if (e.state === 'near') stateText += `, ${t(l, 'tile.ariaSteps', { n: e.stepsToOpen })}`;
-  let aria = t(l, 'tile.aria', { name: p.name[l], floor: floorLabel(p.level, l), state: stateText });
+  if (e.state === 'near') stateText += `, ${tp(l, 'tile.ariaSteps', e.stepsToOpen)}`;
+  // The accessible name starts with the visible text (WCAG 2.5.3), then the full name.
+  const visible = shortName(p, l);
+  const full = p.name[l];
+  const name = full.startsWith(visible) ? full : `${visible} (${full})`;
+  let aria = t(l, 'tile.aria', { name, floor: floorLabel(p.level, l), state: stateText });
   if (isGoal) aria += `, ${t(l, 'tile.goal')}`;
 
   return (
