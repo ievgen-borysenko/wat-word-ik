@@ -82,6 +82,23 @@ describe('professions', () => {
     }
   });
 
+  it('every ladder is monotonic: each rung needs at least what the rung below needs', () => {
+    const families = new Map<string, typeof PROFESSIONS[number][]>();
+    for (const p of PROFESSIONS) families.set(p.family, [...(families.get(p.family) ?? []), p]);
+    for (const members of families.values()) {
+      const sorted = [...members].sort((a, b) => a.rung - b.rung);
+      for (let i = 1; i < sorted.length; i++) {
+        const lower = sorted[i - 1]!;
+        const upper = sorted[i]!;
+        for (const need of lower.needs) {
+          const up = upper.needs.find((n) => n.subject === need.subject);
+          expect(up, `${upper.id} drops ${need.subject} from ${lower.id}`).toBeDefined();
+          expect(up!.min, `${upper.id} asks less ${need.subject} than ${lower.id}`).toBeGreaterThanOrEqual(need.min);
+        }
+      }
+    }
+  });
+
   it('the three required ladders exist, with physics rising on every electrical rung', () => {
     const ladder = (family: string) =>
       PROFESSIONS.filter((p) => p.family === family)
