@@ -10,7 +10,7 @@ import {
   type SubjectId,
 } from './types';
 
-/** "One step away": at most this many subject points missing in total... */
+/** "Nearly there" (near): at most this many subject points missing in total... */
 export const NEAR_SUBJECT_POINTS = 2;
 /** ...and the average at most this far below the level gate. */
 export const NEAR_AVG_GAP = 0.5;

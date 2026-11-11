@@ -1,9 +1,9 @@
-import { useEffect, useRef } from 'preact/hooks';
-import { PROFESSIONS } from '../data/professions';
+import { useEffect, useRef, useState } from 'preact/hooks';
+import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
 import type { Evaluation } from '../engine/scoring';
-import type { Level, Profession, State } from '../engine/types';
+import type { Lang, Level, Profession, State } from '../engine/types';
 import { t, type MessageKey } from '../i18n';
-import { euros, floorAbout, floorLabel, shortName } from './format';
+import { euros, floorAbout, floorLabel, goalText, shortName } from './format';
 import { band, counts, evaluations, goal, lang, selected } from './store';
 
 const FLOORS_TOP_DOWN: readonly Level[] = [4, 3, 2, 1, 0];
@@ -45,6 +45,7 @@ function Tile({ p, e }: { p: Profession; e: Evaluation }) {
       type="button"
       class={`tile is-${e.state} ${isGoal ? 'is-goal' : ''}`}
       aria-label={aria}
+      title={p.name[l]}
       aria-haspopup="dialog"
       onClick={() => (selected.value = p.id)}
     >
@@ -74,6 +75,32 @@ function Tile({ p, e }: { p: Profession; e: Evaluation }) {
   );
 }
 
+function FloorInfo({ level, l }: { level: Level; l: Lang }) {
+  const [open, setOpen] = useState(false);
+  const id = `floor-about-${level}`;
+  return (
+    <span class="floor-info">
+      <button
+        type="button"
+        class="floor-info-btn"
+        aria-expanded={open}
+        aria-controls={id}
+        aria-label={t(l, 'floor.info', { floor: floorLabel(level, l) })}
+        onClick={() => setOpen(!open)}
+        onBlur={() => setOpen(false)}
+        onKeyDown={(ev) => {
+          if (ev.key === 'Escape') setOpen(false);
+        }}
+      >
+        ?
+      </button>
+      <span id={id} class="floor-about" role="note" hidden={!open}>
+        {floorAbout(level, l)}
+      </span>
+    </span>
+  );
+}
+
 function Floor({ level }: { level: Level }) {
   const l = lang.value;
   const evals = evaluations.value;
@@ -86,11 +113,11 @@ function Floor({ level }: { level: Level }) {
       aria-labelledby={headingId}
       style={{ '--lit': String(open / tiles.length) }}
     >
-      <header class="floor-head">
+      <header class="floor-head" title={floorAbout(level, l)}>
         <h3 id={headingId} class="floor-label">
           {floorLabel(level, l)}
         </h3>
-        <p class="floor-about">{floorAbout(level, l)}</p>
+        <FloorInfo level={level} l={l} />
         <p class="floor-count">{t(l, 'floor.count', { open, total: tiles.length })}</p>
       </header>
       <div class="tiles">
@@ -106,12 +133,19 @@ function Floor({ level }: { level: Level }) {
 export function Summary() {
   const l = lang.value;
   const c = counts.value;
+  const g = goal.value ? PROFESSION_BY_ID.get(goal.value) : undefined;
+  const ge = g ? evaluations.value.get(g.id) : undefined;
   return (
-    <div class="summary">
+    <div class={`summary ${g ? 'has-goal' : ''}`}>
       <p class="summary-counts" aria-live="polite">
         {t(l, 'summary.counts', { open: c.open, total: c.total, near: c.near })}
       </p>
       <p class={`headline band-${band.value}`}>{t(l, `headline.${band.value}` as MessageKey)}</p>
+      {g && ge && (
+        <button type="button" class={`summary-goal ${ge.state === 'open' ? 'is-open' : ''}`} onClick={() => (selected.value = g.id)}>
+          {goalText(g, ge, l)}
+        </button>
+      )}
     </div>
   );
 }

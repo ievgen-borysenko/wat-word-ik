@@ -17,7 +17,7 @@ describe('i18n', () => {
   });
 
   it('fills placeholders', () => {
-    expect(t('en', 'summary.counts', { open: 12, total: 36, near: 7 })).toBe('Open: 12 of 36 · one step away: 7');
+    expect(t('en', 'summary.counts', { open: 12, total: 36, near: 7 })).toBe('Open: 12 of 36 · nearly there: 7');
   });
 
   it('detects the language from the browser list', () => {

@@ -1,5 +1,6 @@
 import { SUBJECTS } from '../data/subjects';
-import type { Gap } from '../engine/hints';
+import { gapsOf, type Gap } from '../engine/hints';
+import type { Evaluation } from '../engine/scoring';
 import type { Lang, Level, Profession, SubjectId } from '../engine/types';
 import { t, type MessageKey } from '../i18n';
 
@@ -46,4 +47,12 @@ export function euros(pay: number): string {
 export function decimal(v: number, lang: Lang): string {
   const s = (Math.round(v * 10) / 10).toFixed(1);
   return lang === 'en' ? s : s.replace('.', ',');
+}
+
+/** "Goal: X. Missing: maths +2" or "Goal: X - open!" */
+export function goalText(p: Profession, e: Evaluation, lang: Lang): string {
+  const name = shortName(p, lang);
+  return e.state === 'open'
+    ? t(lang, 'goal.open', { name })
+    : t(lang, 'goal.missing', { name, list: gapList(gapsOf(e), lang) });
 }

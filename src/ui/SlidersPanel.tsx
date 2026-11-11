@@ -40,11 +40,27 @@ function SliderRow({ subject }: { subject: Subject }) {
           {subject.emoji}
         </span>
         <span class="slider-name">{subject.name[l]}</span>
+        {need !== undefined && (
+          <span
+            class={`goal-need ${value >= need ? 'is-met' : ''}`}
+            title={t(l, 'sliders.goalMarker', { need })}
+            aria-hidden="true"
+          >
+            ⚑{need}
+          </span>
+        )}
         <output class="slider-value" for={inputId}>
           {value}
         </output>
       </label>
       <div class="range-wrap" style={{ '--pct': trackPos(value) }}>
+        {need !== undefined && (
+          <span
+            class={`goal-tick ${value >= need ? 'is-met' : ''}`}
+            style={{ left: trackPos(need) }}
+            aria-hidden="true"
+          />
+        )}
         <input
           id={inputId}
           type="range"
@@ -55,18 +71,8 @@ function SliderRow({ subject }: { subject: Subject }) {
           aria-describedby={hint || need !== undefined ? hintId : undefined}
           onInput={(e) => setSlider(subject.id, Number((e.currentTarget as HTMLInputElement).value))}
         />
-        {need !== undefined && (
-          <span
-            class={`goal-flag ${value >= need ? 'is-met' : ''}`}
-            style={{ left: trackPos(need) }}
-            title={t(l, 'sliders.goalMarker', { need })}
-            aria-hidden="true"
-          >
-            ⚑
-          </span>
-        )}
       </div>
-      <p class="slider-hint" id={hintId}>
+      <p class="slider-hint" id={hintId} title={hint || undefined}>
         {hint}
         {need !== undefined && <span class="visually-hidden"> {t(l, 'sliders.goalMarker', { need })}</span>}
       </p>
@@ -77,7 +83,7 @@ function SliderRow({ subject }: { subject: Subject }) {
 export function SlidersPanel() {
   const l = lang.value;
   return (
-    <section class={`sliders-panel ${goal.value ? 'has-goal' : ''}`} aria-labelledby="sliders-title">
+    <section class="sliders-panel" aria-labelledby="sliders-title">
       <div class="sliders-head">
         <h2 id="sliders-title">{t(l, 'sliders.title')}</h2>
         <p class="sliders-scale">{t(l, 'sliders.scale')}</p>

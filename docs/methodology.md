@@ -44,11 +44,11 @@ For a profession `p` and the current sliders:
 Then:
 
 - **open**: no deficits and no average gap;
-- **one step away** (near): not open, the subject deficits add up to at most
+- **nearly there** (near): not open, the subject deficits add up to at most
   2 points and the average gap is at most 0.5;
 - **locked** (far): everything else.
 
-The badge on a "one step away" tile is the smallest number of +1 slider steps
+The "+N" badge on a "nearly there" tile is the smallest number of +1 slider steps
 that would open it: `max(sum of subject deficits, average gap in points)`,
 because raising a subject also raises the average.
 
