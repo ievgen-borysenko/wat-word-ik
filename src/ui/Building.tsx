@@ -4,7 +4,8 @@ import type { Evaluation } from '../engine/scoring';
 import type { Lang, Level, Profession, State } from '../engine/types';
 import { t, tp } from '../i18n';
 import { euros, floorAbout, floorLabel, goalText, shortName } from './format';
-import { band, counts, evaluations, goal, lang, reducedMotion, selected } from './store';
+import { FromLinkNotice } from './SlidersPanel';
+import { band, counts, evaluations, fromLink, goal, lang, reducedMotion, selected } from './store';
 
 const FLOORS_TOP_DOWN: readonly Level[] = [4, 3, 2, 1, 0];
 
@@ -177,7 +178,7 @@ export function Summary() {
   }, [text]);
 
   return (
-    <div class={`summary ${g ? 'has-goal' : ''}`}>
+    <div class={`summary ${g ? 'has-goal' : ''} ${fromLink.value ? 'has-link' : ''}`}>
       <p class="summary-counts" aria-hidden="true">
         {text}
       </p>
@@ -185,6 +186,7 @@ export function Summary() {
         {settled}
       </p>
       <p class={`headline band-${band.value}`}>{t(l, `headline.${band.value}`)}</p>
+      <FromLinkNotice place="summary" />
       {g && ge && (
         <button type="button" class={`summary-goal ${ge.state === 'open' ? 'is-open' : ''}`} onClick={() => (selected.value = g.id)}>
           {goalText(g, ge, l)}
