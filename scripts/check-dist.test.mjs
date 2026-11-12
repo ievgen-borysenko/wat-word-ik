@@ -7,12 +7,14 @@ import { REPO_URL, auditDist, checkCsp, formatReport } from './check-dist.mjs';
 
 /*
  * Strings that the repository's own tree check refuses (e-mail addresses, home
- * folders, key headers) are put together at run time, so this file holds none.
+ * folders, private network addresses, key headers) are put together at run
+ * time, so this file holds none.
  */
 const AT = '@';
 const email = (/** @type {string} */ local, /** @type {string} */ domain) => `${local}${AT}${domain}`;
 const path = (/** @type {string[]} */ ...parts) => `/${parts.join('/')}`;
 const KEY_HEADER = (/** @type {string} */ kind) => `-----BEGIN ${kind}PRI${'VATE'} KEY-----`;
+const ip = (/** @type {number[]} */ ...octets) => octets.join('.');
 
 const SCRIPT = resolve(import.meta.dirname, 'check-dist.mjs');
 const CSP =
@@ -144,12 +146,14 @@ describe('check-dist', () => {
       ['local-path', `"${path('private', 'var', 'folders', 'ab', 'T', 'x')}"`],
       ['local-path', `"${path('var', 'folders', 'ab', 'T', 'x')}"`],
       ['local-path', `"${path('Volumes', 'Backup', 'x')}"`],
+      ['local-path', `"${path('root', 'project', 'x')}"`],
+      ['local-path', `"${path('mnt', 'c', 'work', 'x')}"`],
       ['local-path', `"C:${'\\\\'}Users${'\\\\'}someone"`],
       ['local-host', '"127.0.0.1"'],
       ['local-host', '"LOCALHOST"'],
-      ['private-host', '"10.0.0.5"'],
-      ['private-host', '"172.20.1.1"'],
-      ['private-host', '"192.168.1.10"'],
+      ['private-host', `"${ip(10, 0, 0, 5)}"`],
+      ['private-host', `"${ip(172, 20, 1, 1)}"`],
+      ['private-host', `"${ip(192, 168, 1, 10)}"`],
       ['private-key', `"${KEY_HEADER('RSA ')}"`],
       ['private-key', `"${KEY_HEADER('OPENSSH ')}"`],
       ['private-key', `"${KEY_HEADER('')}"`],
@@ -194,6 +198,11 @@ describe('check-dist', () => {
           'index.html private-host',
         ].sort(),
       );
+    });
+
+    it('finds a private host name before a full stop, not a label of a longer name', () => {
+      expect(rules(withCss('.c{content:"Open nas.local."}'))).toEqual(['assets/index-def456.css private-host']);
+      expect(rules(withCss('.c{content:"See a.local.example.com or x.lan-party"}'))).toEqual([]);
     });
 
     it('allows the XML namespaces and the repository URL', () => {

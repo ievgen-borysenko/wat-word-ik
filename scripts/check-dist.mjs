@@ -52,29 +52,28 @@ const CSP_SAFE_SOURCES = new Set(["'self'", "'none'"]);
 const CSP_DATA_ALLOWED = new Set(['img-src']);
 
 /**
- * Absolute paths from a developer's machine: macOS and Linux home folders, macOS
- * temporary and volume folders, Windows user folders. `~/` and `/opt/` are not on
- * the list: they also appear in ordinary text and say nothing about a person.
+ * Absolute paths from a developer's machine: macOS and Linux home folders (root's
+ * included), macOS temporary and volume folders, Linux and WSL mount points,
+ * Windows user folders. `~/` and `/opt/` are not on the list: they also appear in
+ * ordinary text and say nothing about a person.
  */
 export const LOCAL_PATH_RE =
-  /\/Users\/|\/home\/|\/private\/var\/|\/var\/folders\/|\/Volumes\/|\b[A-Za-z]:(?:\\{1,2}|\/)Users(?:\\{1,2}|\/)/g;
+  /\/Users\/|\/home\/|\/root\/|\/private\/var\/|\/var\/folders\/|\/Volumes\/|\/mnt\/|\b[A-Za-z]:(?:\\{1,2}|\/)Users(?:\\{1,2}|\/)/g;
 
 /** Header of a PEM or OpenPGP private key. */
 export const PRIVATE_KEY_RE = /-----BEGIN[A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/g;
 
+/** Loopback and unspecified addresses: the same on every machine, but the page talks to no host. */
+export const LOCAL_HOST_RE = /\blocalhost\b|\b127\.0\.0\.1\b|\b0\.0\.0\.0\b|\[::1\]/gi;
+
+/** Private network addresses (RFC 1918): they reveal a home or office network. */
+export const PRIVATE_ADDRESS_RE = /\b(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b/g;
+
 /** Forbidden in every shipped text file. */
 const FORBIDDEN_CONTENT = [
   { rule: 'local-path', what: 'absolute local path', re: LOCAL_PATH_RE },
-  {
-    rule: 'local-host',
-    what: 'local host address',
-    re: /\blocalhost\b|\b127\.0\.0\.1\b|\b0\.0\.0\.0\b|\[::1\]/gi,
-  },
-  {
-    rule: 'private-host',
-    what: 'private network address (RFC 1918)',
-    re: /\b(?:10\.\d{1,3}|172\.(?:1[6-9]|2\d|3[01])|192\.168)\.\d{1,3}\.\d{1,3}\b/g,
-  },
+  { rule: 'local-host', what: 'local host address', re: LOCAL_HOST_RE },
+  { rule: 'private-host', what: 'private network address (RFC 1918)', re: PRIVATE_ADDRESS_RE },
   { rule: 'private-key', what: 'private key header', re: PRIVATE_KEY_RE },
   { rule: 'source-map', what: 'source map reference', re: /sourceMappingURL|[#@]\s*sourceURL=/g },
 ];
@@ -161,7 +160,8 @@ export function* findProtocolRelative(text) {
  * @returns {Generator<{ index: number, value: string }>}
  */
 export function* findPrivateHostNames(text) {
-  for (const m of text.matchAll(/\.(?:local|lan|internal)\b(?![-.])/gi)) {
+  // Not followed by a hyphen or by another label (x.local.example.com); a full stop ends a sentence.
+  for (const m of text.matchAll(/\.(?:local|lan|internal)\b(?!-|\.[A-Za-z0-9])/gi)) {
     let start = m.index;
     while (start > 0 && HOST_CHAR.test(text.charAt(start - 1))) start--;
     while (start < m.index && !/[A-Za-z0-9]/.test(text.charAt(start))) start++;
