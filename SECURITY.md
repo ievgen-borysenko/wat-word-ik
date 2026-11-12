@@ -8,11 +8,13 @@ security advisory on this repository: open the **Security** tab and choose
 
 Examples of what we want to hear about:
 
-- the page sends any request, or stores anything (cookies, local storage,
-  IndexedDB) in the browser;
+- the page sends any request (to its own host too, for example with data in a
+  query string), or stores anything (cookies, local storage, IndexedDB) in the
+  browser;
 - something in the published site or in the repository history that should not
   be there: a secret, a personal address, a private file;
-- a way to make the page run code or load content from another site.
+- a way to make the page run code or load content from another site;
+- a way for a dependency to change what CI audits or deploys.
 
 There is no e-mail address for reports; the advisory form is the only channel.
 We will answer in the advisory. (Maintainers: the form exists only while

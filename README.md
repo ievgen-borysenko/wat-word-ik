@@ -47,13 +47,17 @@ ship the page and nothing else:
 - commits carry only GitHub noreply addresses, no trailers but the
   maintainer's co-author line and Dependabot's sign-off, and no generated-by
   footers;
-- the built site holds only the page and its bundles, stays within a size
-  budget, contains no local paths, private addresses, e-mail addresses or
-  keys, uses no browser feature that sends or stores data, and keeps a
-  Content-Security-Policy that forbids network access;
-- end-to-end tests in Chromium on that same build: the browser asks only for
-  the page and its own files, nothing is stored, no console errors, no serious
-  accessibility findings, and the layout fits desktop and phone screens.
+- the built site is audited in a separate job that installs no dependencies,
+  so no package code can touch the audit: it holds only the page and its
+  bundles, stays within a size budget, contains no local paths, private
+  addresses, e-mail addresses or keys, uses no browser feature that sends or
+  stores data and no way to send data to its own host, and keeps a
+  Content-Security-Policy that lets the page load its own script and
+  stylesheet and nothing else;
+- end-to-end tests in Chromium on that same audited build: the browser asks
+  only for the page and its own files, never with a query string, nothing is
+  stored, no console errors, no serious accessibility findings, and the
+  layout fits desktop and phone screens.
 
 Only then, and only from `main`, is that exact build deployed to GitHub Pages.
 Details: [docs/ci.md](docs/ci.md). To report a problem: [SECURITY.md](SECURITY.md).
