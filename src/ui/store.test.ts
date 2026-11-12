@@ -10,6 +10,8 @@ interface LoadOptions {
   readonly languages?: readonly string[];
   readonly reducedMotion?: boolean;
   readonly replaceThrows?: boolean;
+  /** Navigation Timing type of this page load; null = no entry. */
+  readonly navigation?: string | null;
 }
 
 async function load(hash = '', options: LoadOptions = {}) {
@@ -26,6 +28,12 @@ async function load(hash = '', options: LoadOptions = {}) {
   vi.stubGlobal('window', win);
   vi.stubGlobal('navigator', { languages: options.languages ?? ['de-DE'] });
   vi.stubGlobal('matchMedia', () => ({ matches: options.reducedMotion ?? false }));
+  const navigation = options.navigation === undefined ? 'navigate' : options.navigation;
+  const real = globalThis.performance;
+  vi.stubGlobal('performance', {
+    now: () => real.now(),
+    getEntriesByType: (kind: string) => (kind === 'navigation' && navigation !== null ? [{ type: navigation }] : []),
+  });
   const store = await import('./store');
   store.startSync();
   const navigate = (next: string) => {
@@ -158,6 +166,16 @@ describe('"grades from a link" notice', () => {
   it('shows when the page opens with grades in the hash', async () => {
     expect((await load('#s=8888888888')).store.fromLink.value).toBe(true);
     expect((await load('#s=8888888888&g=arts&l=nl')).store.fromLink.value).toBe(true);
+  });
+
+  it('does not show on a reload, a restored tab or a back/forward step', async () => {
+    // The page wrote s= into its own address: these are the user's own grades.
+    expect((await load('#s=8888888888', { navigation: 'reload' })).store.fromLink.value).toBe(false);
+    expect((await load('#s=8888888888', { navigation: 'back_forward' })).store.fromLink.value).toBe(false);
+  });
+
+  it('does not show when the browser gives no navigation type', async () => {
+    expect((await load('#s=8888888888', { navigation: null })).store.fromLink.value).toBe(false);
   });
 
   it('does not show without valid grades in the hash', async () => {

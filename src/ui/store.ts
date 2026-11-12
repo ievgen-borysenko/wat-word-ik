@@ -23,8 +23,19 @@ export const lang = signal<Lang>(
  * Only then is it written to the hash: a guessed browser language stays out of shared links.
  */
 export const langChosen = signal<boolean>(initial.lang !== null);
+/**
+ * How this page load started. The page writes `s=` into its own address, so a reload,
+ * a restored tab or a back/forward step also opens with grades in the hash: only a fresh
+ * navigation means the grades came with a link. No Navigation Timing entry: assume not.
+ */
+function freshNavigation(): boolean {
+  if (typeof performance === 'undefined' || typeof performance.getEntriesByType !== 'function') return false;
+  const entry = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+  return entry?.type === 'navigate';
+}
+
 /** The grades on screen came from a link (`s=` in the hash), not from this user. */
-export const fromLink = signal<boolean>(hashHasSliders(initialHash));
+export const fromLink = signal<boolean>(hashHasSliders(initialHash) && freshNavigation());
 /** Profession whose card is open. Not part of the hash. */
 export const selected = signal<string | null>(null);
 /** The "How it works" dialog is open. Not part of the hash. */
