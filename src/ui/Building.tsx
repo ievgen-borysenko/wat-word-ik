@@ -4,6 +4,7 @@ import type { Evaluation } from '../engine/scoring';
 import type { Lang, Level, Profession, State } from '../engine/types';
 import { t, tp } from '../i18n';
 import { euros, floorAbout, floorLabel, goalText, shortName } from './format';
+import { openedBy } from './modal';
 import { FromLinkNotice } from './SlidersPanel';
 import { band, counts, evaluations, fromLink, goal, lang, reducedMotion, selected } from './store';
 
@@ -55,7 +56,10 @@ function Tile({ p, e }: { p: Profession; e: Evaluation }) {
       aria-label={aria}
       title={p.name[l]}
       aria-haspopup="dialog"
-      onClick={() => (selected.value = p.id)}
+      onClick={(ev) => {
+        openedBy(ev);
+        selected.value = p.id;
+      }}
     >
       <span class="tile-emoji" aria-hidden="true">
         {p.emoji}
@@ -191,7 +195,14 @@ export function Summary() {
       <p class={`headline band-${band.value}`}>{t(l, `headline.${band.value}`)}</p>
       <FromLinkNotice place="summary" />
       {g && ge && (
-        <button type="button" class={`summary-goal ${ge.state === 'open' ? 'is-open' : ''}`} onClick={() => (selected.value = g.id)}>
+        <button
+          type="button"
+          class={`summary-goal ${ge.state === 'open' ? 'is-open' : ''}`}
+          onClick={(ev) => {
+            openedBy(ev);
+            selected.value = g.id;
+          }}
+        >
           {goalText(g, ge, l)}
         </button>
       )}

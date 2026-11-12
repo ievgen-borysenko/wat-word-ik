@@ -12,6 +12,35 @@ interface ModalOptions {
   readonly fallbackFocus?: () => HTMLElement | null;
 }
 
+/** The control whose click is opening a dialog right now; see openedBy(). */
+let opener: HTMLElement | null = null;
+let forgetting = false;
+
+function forget(): void {
+  opener = null;
+}
+
+/**
+ * Call from the click handler that opens a dialog: focus goes back to that control when
+ * the dialog closes. The focused element cannot tell, because Safari does not focus a
+ * button that is clicked or tapped.
+ *
+ * The dialog that opens next takes the control, however late it renders. A control whose
+ * click opened nothing is forgotten on the next pointerdown or keydown (listened to on the
+ * window in the capture phase, so before the press reaches any control): a click, a tap
+ * and Enter or Space all start with one, so a later dialog never gets it. An open with no
+ * input at all before it would still get it; no such open exists, because every control
+ * that opens a dialog calls this.
+ */
+export function openedBy(ev: Event): void {
+  opener = ev.currentTarget instanceof HTMLElement ? ev.currentTarget : null;
+  if (!forgetting) {
+    forgetting = true;
+    window.addEventListener('pointerdown', forget, true);
+    window.addEventListener('keydown', forget, true);
+  }
+}
+
 function onBackdrop(dlg: HTMLDialogElement, ev: MouseEvent): boolean {
   if (ev.target !== dlg) return false;
   const r = dlg.getBoundingClientRect();
@@ -35,7 +64,9 @@ export function useModalDialog(isOpen: boolean, options: ModalOptions) {
     const dlg = ref.current;
     if (!dlg) return;
     if (isOpen && !dlg.open) {
-      returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      returnTo.current = opener ?? active;
+      opener = null;
       dlg.showModal();
       openedAt.current = performance.now();
       document.documentElement.classList.add('has-modal');
