@@ -3,7 +3,7 @@ import { SUBJECTS } from '../data/subjects';
 import { GRADE_MAX, GRADE_MIN, type Subject } from '../engine/types';
 import { t } from '../i18n';
 import { shortName } from './format';
-import { applyPreset, goal, lang, plusOneBySubject, setSlider, sliders } from './store';
+import { applyPreset, dismissFromLink, fromLink, goal, lang, plusOneBySubject, setSlider, sliders } from './store';
 
 const PRESETS = [
   { value: 3, key: 'presets.low' },
@@ -80,6 +80,33 @@ function SliderRow({ subject }: { subject: Subject }) {
   );
 }
 
+/**
+ * "These grades came from a link". Rendered twice: in the summary on wide screens (where it
+ * takes the headline's line, so the slider column never scrolls) and in the slider panel on
+ * narrow screens (where the summary has no room). CSS shows one of the two.
+ */
+export function FromLinkNotice({ place }: { place: 'summary' | 'panel' }) {
+  if (!fromLink.value) return null;
+  const l = lang.value;
+  return (
+    <div class={`from-link in-${place}`}>
+      <p>{t(l, 'fromLink.text')}</p>
+      <button
+        type="button"
+        class="from-link-close"
+        aria-label={t(l, 'fromLink.dismiss')}
+        onClick={() => {
+          dismissFromLink();
+          // The button disappears; keep focus in the panel, on what the notice points to.
+          document.querySelector<HTMLElement>('.preset-btn')?.focus();
+        }}
+      >
+        ×
+      </button>
+    </div>
+  );
+}
+
 export function SlidersPanel() {
   const l = lang.value;
   return (
@@ -88,6 +115,7 @@ export function SlidersPanel() {
         <h2 id="sliders-title">{t(l, 'sliders.title')}</h2>
         <p class="sliders-scale">{t(l, 'sliders.scale')}</p>
       </div>
+      <FromLinkNotice place="panel" />
       <div class="presets" role="group" aria-label={t(l, 'presets.label')}>
         {PRESETS.map((p) => (
           <button key={p.value} type="button" class="preset-btn" onClick={() => applyPreset(p.value)}>

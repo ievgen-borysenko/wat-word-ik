@@ -2,9 +2,7 @@ import { PROFESSION_BY_ID } from '../data/professions';
 import { LANGS } from '../engine/types';
 import { t } from '../i18n';
 import { goalText } from './format';
-import { evaluations, goal, lang, selected, setLang, toggleGoal } from './store';
-
-const LANG_ORDER = ['nl', 'en', 'ua'] as const satisfies readonly (typeof LANGS)[number][];
+import { aboutOpen, evaluations, goal, lang, selected, setLang, toggleGoal } from './store';
 
 export function Header() {
   const l = lang.value;
@@ -16,8 +14,14 @@ export function Header() {
       </div>
       <GoalBanner />
       <div class="header-side">
+        <button type="button" class="help-btn" aria-haspopup="dialog" onClick={() => (aboutOpen.value = true)}>
+          <span class="help-icon" aria-hidden="true">
+            ?
+          </span>
+          <span class="help-text">{t(l, 'about.title')}</span>
+        </button>
         <div class="lang-switch" role="group" aria-label={t(l, 'lang.label')}>
-          {LANG_ORDER.map((code) => (
+          {LANGS.map((code) => (
             <button
               key={code}
               type="button"
@@ -29,7 +33,12 @@ export function Header() {
             </button>
           ))}
         </div>
-        <span class="demo-badge">{t(l, 'app.demoBadge')}</span>
+        <span class="demo-badge" title={t(l, 'app.demoBadge')}>
+          <span class="demo-long">{t(l, 'app.demoBadge')}</span>
+          <span class="demo-short" aria-hidden="true">
+            {t(l, 'app.demoShort')}
+          </span>
+        </span>
       </div>
     </header>
   );

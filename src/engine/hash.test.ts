@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeHash, encodeHash, type HashState } from './hash';
+import { decodeHash, encodeHash, hashHasSliders, type HashState } from './hash';
 import { uniformSliders } from './scoring';
 import { SUBJECT_IDS, type Sliders } from './types';
 
@@ -10,6 +10,27 @@ describe('hash codec', () => {
   it('encodes the documented format, 10 as "a"', () => {
     const s: Sliders = { ...uniformSliders(6), wiskunde: 10, kunst: 1 };
     expect(encodeHash({ sliders: s, goal: 'arts', lang: 'ua' })).toBe('#s=a666666661&g=arts&l=ua');
+  });
+
+  it('leaves the language out when there is none to write', () => {
+    expect(encodeHash({ sliders: DEFAULT, goal: null, lang: null })).toBe('#s=6666666666');
+    expect(encodeHash({ sliders: DEFAULT, goal: 'arts', lang: null })).toBe('#s=6666666666&g=arts');
+  });
+
+  it('still reads a language from an older link', () => {
+    expect(decodeHash('#s=6666666666&l=ua', IDS).lang).toBe('ua');
+    expect(decodeHash('#l=nl', IDS).lang).toBe('nl');
+    expect(decodeHash('#s=6666666666', IDS).lang).toBeNull();
+  });
+
+  it('tells whether the link carries grades', () => {
+    expect(hashHasSliders('#s=6666666666')).toBe(true);
+    expect(hashHasSliders('s=a666666661&l=en')).toBe(true);
+    expect(hashHasSliders('')).toBe(false);
+    expect(hashHasSliders('#l=nl&g=arts')).toBe(false);
+    expect(hashHasSliders('#s=666')).toBe(false);
+    expect(hashHasSliders('#s=666666666b')).toBe(false);
+    expect(hashHasSliders(undefined)).toBe(false);
   });
 
   it('round-trips every grade in every position', () => {

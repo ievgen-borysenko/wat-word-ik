@@ -1,0 +1,109 @@
+# Contributing
+
+The page is static: TypeScript and Preact, built with Vite. Every change goes
+through the same checks:
+
+```sh
+npm ci             # install exactly what package-lock.json lists
+npm run typecheck  # TypeScript, strict; a misspelled UI string key fails here
+npm test           # unit tests: engine, data, translations, store, built CSP
+npm run build      # static site in dist/
+npm run preview    # serve dist/ locally to look at it
+```
+
+The data tests are written to explain what is wrong: the failure message names
+the profession, subject or language and the rule it breaks.
+
+## Add a profession
+
+Professions live in `src/data/professions.ts`, grouped by floor. The order
+inside a floor is the order of the tiles on screen.
+
+| Field    | What it is |
+|----------|------------|
+| `id`     | lower case, `a-z`, `0-9` and `-`; unique. It appears in shared links (`g=`), so do not rename an existing one |
+| `level`  | floor: 0 no diploma, 1 mbo 2-3, 2 mbo 4, 3 hbo, 4 wo |
+| `emoji`  | one emoji for the tile |
+| `name`   | `L(nl, en, ua)`: the full name in the three languages |
+| `short`  | optional `L(...)`: a shorter name for tiles and hints |
+| `about`  | `L(...)`: one or two sentences a 10-year-old understands |
+| `needs`  | `n(subject, min)` pairs: level 0 needs none (or minimums of 3 at most); other floors 2 to 5 subjects with a minimum from 4 to 9 |
+| `pay`    | 1 to 5, demo scale shown as euro signs |
+| `family` | ladder name; a profession that is not on a ladder uses its own id |
+| `rung`   | position on the ladder, counting from 1 |
+
+Rules the tests check (`src/data/data.test.ts`):
+
+- **Ladders.** Rungs of a family are numbered 1, 2, 3 ... without gaps and
+  never step down a floor. Each rung needs at least what the rung below
+  needs: every subject of the lower rung is listed again, with the same or a
+  higher minimum. The engine relies on this, so a ladder always reads "the
+  next step asks for a bit more".
+- **Floors.** Each floor has 5 to 8 tiles. The layout shows 8 tiles per row:
+  a ninth tile would start a second row and the whole building would no
+  longer fit on a phone screen.
+- **Key subjects.** Every subject must be the highest requirement of at least
+  two professions, so every slider matters for something.
+- **Count.** The test pins the number of professions (36). When you add or
+  remove one, change that number in the test and in `README.md` in the same
+  change.
+
+The states (open, nearly there, locked) and the minimum average per floor are
+described in [methodology.md](methodology.md). They are engine rules: change
+them only together with `src/engine/scoring.ts` and its tests.
+
+## Add a subject
+
+1. Add the id to `SUBJECT_IDS` in `src/engine/types.ts`, at the end.
+2. Add the subject, with the same id and in the same position, to
+   `src/data/subjects.ts` (`emoji`, `name`, optional `short`).
+3. Use it in the `needs` of at least two professions, as the highest
+   requirement (see "Key subjects").
+
+The link format stores one character per subject in `SUBJECT_IDS` order
+(`s=6666666666`). A new subject makes old links one character short, and
+those fall back to the default grades. Update the tests that spell out a full
+`s=` value (`src/engine/hash.test.ts`, `src/ui/store.test.ts`).
+
+## Add a language
+
+1. Add the code to `LANGS` in `src/engine/types.ts`. The language switch in
+   the header follows this list.
+2. Copy `src/i18n/en.json` to the new file and translate every value. Keep
+   the `{placeholders}` exactly as they are. Strings with a count
+   (`tile.ariaSteps`, `card.focusAverage`) need one entry per plural category
+   of the language, as `Intl.PluralRules` lists them (`.one`, `.few`, `.many`,
+   `.other`).
+3. Register the file in `MESSAGES` and the HTML language tag in `HTML_LANG`
+   (`src/i18n/index.ts`), and map the browser language in `detectLang`.
+4. Add the new language to `L(...)` in `src/data/subjects.ts` and to every
+   `L(...)` call in `src/data/professions.ts`.
+
+`src/i18n/i18n.test.ts` fails until every key exists with the same
+placeholders, and until the plural strings match the categories that
+`Intl.PluralRules` reports for the language. `src/data/data.test.ts` fails
+until every name and description exists in every language.
+
+Limits today:
+
+- Plural strings work for languages whose categories are `one` and `other`,
+  optionally with `few` and/or `many`: for example Dutch, English, German,
+  Turkish (one, other), French, Spanish, Portuguese (one, many, other),
+  Polish, Ukrainian (one, few, many, other). A language with `zero` or `two`
+  (Arabic, Welsh, Hebrew) or without `one` (Chinese, Japanese, Korean) needs
+  the translation types in `src/i18n/index.ts` and the key check in
+  `src/i18n/i18n.test.ts` extended first.
+- Right-to-left languages are not supported yet: the layout assumes
+  left-to-right text.
+
+## Text style
+
+Short sentences that a child of 10 understands. British English. In
+Ukrainian, no Russianisms. Use " - " (a hyphen with spaces) as the dash.
+
+## Privacy
+
+Do not add storage, analytics, external fonts or network requests: the page
+promises it stores and sends nothing (see the Privacy section in
+[methodology.md](methodology.md)). `src/csp.test.ts` builds the site and
+checks that its Content-Security-Policy allows no network access.

@@ -1,27 +1,7 @@
-import { readdirSync, readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vitest/config';
 
-// Copies docs/*.md next to the built page, so the footer links work on any host.
-function copyDocs(): Plugin {
-  return {
-    name: 'copy-docs',
-    apply: 'build',
-    generateBundle() {
-      const dir = resolve(import.meta.dirname, 'docs');
-      for (const file of readdirSync(dir)) {
-        if (!file.endsWith('.md')) continue;
-        this.emitFile({
-          type: 'asset',
-          fileName: `docs/${file}`,
-          source: readFileSync(resolve(dir, file), 'utf8'),
-        });
-      }
-    },
-  };
-}
-
 // Built page only (the dev server needs its own websocket): no network access at all.
+// The docs stay in the repository; the page explains itself in its "How it works" dialog.
 const CSP = [
   "default-src 'self'",
   "script-src 'self'",
@@ -47,7 +27,7 @@ function contentSecurityPolicy(): Plugin {
 export default defineConfig({
   // Relative asset paths, so the built site works from any sub-path.
   base: './',
-  plugins: [copyDocs(), contentSecurityPolicy()],
+  plugins: [contentSecurityPolicy()],
   oxc: {
     jsx: { runtime: 'automatic', importSource: 'preact' },
   },

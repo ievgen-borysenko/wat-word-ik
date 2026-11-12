@@ -27,7 +27,12 @@ export function gapsOf(e: Evaluation): Gap[] {
 
 /** Up to `limit` gaps, largest first: "what to pay attention to now". */
 export function focus(p: Profession, sliders: Sliders, limit = 3): Gap[] {
-  return why(p, sliders)
+  return focusOf(evaluate(p, sliders), limit);
+}
+
+/** Same as `focus`, from an evaluation the caller already has. */
+export function focusOf(e: Evaluation, limit = 3): Gap[] {
+  return gapsOf(e)
     .sort((a, b) => b.points - a.points)
     .slice(0, limit);
 }
