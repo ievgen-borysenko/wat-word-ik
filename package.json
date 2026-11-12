@@ -15,6 +15,7 @@
     "check:lock": "node scripts/check-lockfile.mjs package-lock.json",
     "check:commits": "node scripts/check-commits.mjs",
     "check:links": "node scripts/check-links.mjs",
+    "check:tree": "node scripts/check-tree.mjs",
     "e2e": "playwright test"
   },
   "dependencies": {
