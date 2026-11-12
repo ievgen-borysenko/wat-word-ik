@@ -1,3 +1,4 @@
+import type { Page } from '@playwright/test';
 import {
   TOTAL_TILES,
   applyPreset,
@@ -143,27 +144,53 @@ for (const [where, selector] of [
 // Safari does not focus a button that is clicked or tapped: when the dialog opens, the
 // focused element is still <body>. Chromium does the same when mousedown is cancelled, so
 // a real click here runs the whole pointer and mouse sequence and only leaves focus where it was.
+async function clicksDoNotFocus(page: Page): Promise<void> {
+  await page.evaluate(() => {
+    const w = window as unknown as { bodyFocusedAtClick?: boolean };
+    document.addEventListener('mousedown', (ev) => ev.preventDefault(), true);
+    document.addEventListener('click', () => (w.bodyFocusedAtClick ??= document.activeElement === document.body), true);
+  });
+}
+
+/** The stand-in holds: nothing had focus when the first click opened the dialog. */
+async function expectFirstClickUnfocused(page: Page): Promise<void> {
+  expect(await page.evaluate(() => (window as unknown as { bodyFocusedAtClick?: boolean }).bodyFocusedAtClick)).toBe(true);
+}
+
+const GOAL_OPENER = '.goal-banner-text:visible, .summary-goal:visible';
+
 for (const [what, hash, selector] of [
   ['a tile', '', '.tile >> nth=0'],
-  ['the goal', '#g=kapper&l=en', '.goal-banner-text:visible, .summary-goal:visible'],
+  ['the goal', '#g=kapper&l=en', GOAL_OPENER],
   ['"How it works" in the header', '', '.help-btn'],
   ['"How it works" in the footer', '', '.link-btn'],
 ] as const) {
   test(`focus goes back to ${what} also when the click did not focus it`, async ({ page }) => {
     await openApp(page, hash);
-    await page.evaluate(() => {
-      const w = window as unknown as { bodyFocusedAtClick?: boolean };
-      document.addEventListener('mousedown', (ev) => ev.preventDefault(), true);
-      document.addEventListener('click', () => (w.bodyFocusedAtClick ??= document.activeElement === document.body), true);
-    });
+    await clicksDoNotFocus(page);
     const opener = page.locator(selector);
     await opener.click();
     const dialog = page.getByRole('dialog');
     await expect(dialog).toBeVisible();
-    // The stand-in holds: nothing had focus when the dialog opened.
-    expect(await page.evaluate(() => (window as unknown as { bodyFocusedAtClick?: boolean }).bodyFocusedAtClick)).toBe(true);
+    await expectFirstClickUnfocused(page);
     await page.keyboard.press('Escape');
     await expect(dialog).toBeHidden();
     await expect(opener).toBeFocused();
   });
 }
+
+test('focus goes to the tile when the goal that opened the card is removed, also when the click did not focus it', async ({
+  page,
+}) => {
+  await openApp(page, '#g=kapper&l=en');
+  await clicksDoNotFocus(page);
+  await page.locator(GOAL_OPENER).click();
+  const dialog = page.getByRole('dialog');
+  await expect(dialog).toBeVisible();
+  await expectFirstClickUnfocused(page);
+  await dialog.locator('.goal-btn').click();
+  await expect(page.locator('.goal-banner-text, .summary-goal')).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(dialog).toBeHidden();
+  await expect(page.locator('.tile[data-id="kapper"]')).toBeFocused();
+});
