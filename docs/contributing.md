@@ -4,11 +4,11 @@ The page is static: TypeScript and Preact, built with Vite. Every change goes
 through the same checks:
 
 ```sh
-npm ci             # install exactly what package-lock.json lists
-npm run typecheck  # TypeScript, strict; a misspelled UI string key fails here
-npm test           # unit tests: engine, data, translations, store, built CSP
-npm run build      # static site in dist/
-npm run preview    # serve dist/ locally to look at it
+npm ci --ignore-scripts  # install exactly what package-lock.json lists, run no install scripts
+npm run typecheck        # TypeScript, strict; a misspelled UI string key fails here
+npm test                 # unit tests: engine, data, translations, store, built CSP
+npm run build            # static site in dist/
+npm run preview          # serve dist/ locally to look at it
 ```
 
 The data tests are written to explain what is wrong: the failure message names
