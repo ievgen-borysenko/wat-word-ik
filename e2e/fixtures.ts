@@ -6,82 +6,122 @@ import { test as base, expect, type Locator, type Page } from '@playwright/test'
 /** The built site under test; `vite preview` serves this folder. */
 const DIST = resolve(import.meta.dirname, '..', 'dist');
 
-/**
- * Same-origin paths the page may load: the page itself and the files in
- * dist/assets/ (read from the folder, not trusted from the server: `vite
- * preview` answers any unknown path with index.html and status 200).
- */
-function allowedPaths(): Map<string, RegExp> {
-  const paths = new Map<string, RegExp>([
-    ['/', /^text\/html\b/],
-    ['/index.html', /^text\/html\b/],
-  ]);
-  for (const name of readdirSync(resolve(DIST, 'assets'))) {
-    if (name.endsWith('.js')) paths.set(`/assets/${name}`, /^(?:text|application)\/javascript\b/);
-    else if (name.endsWith('.css')) paths.set(`/assets/${name}`, /^text\/css\b/);
-  }
-  return paths;
+/** What the page may request: its origin and, per path, the expected kind and content type. */
+export interface SitePolicy {
+  origin: string;
+  paths: Map<string, { resource: 'document' | 'script' | 'stylesheet'; type: RegExp }>;
 }
 
 /**
- * Every test runs under a guard that records, for the whole test:
- *   - every request of the browser context: only GET, only to the page's own
- *     origin, and only for the page or one of its built assets (data: URLs are
- *     allowed, they never leave the browser);
- *   - every response to such a request: status 200 and the content type that
- *     matches the file, so a missing file answered with index.html is caught;
+ * The page may load itself and the files in dist/assets/, nothing else (read from
+ * the folder, not trusted from the server: `vite preview` answers any unknown
+ * path with index.html and status 200).
+ */
+export function sitePolicy(origin: string, dist = DIST): SitePolicy {
+  const paths: SitePolicy['paths'] = new Map([
+    ['/', { resource: 'document', type: /^text\/html\b/ }],
+    ['/index.html', { resource: 'document', type: /^text\/html\b/ }],
+  ]);
+  for (const name of readdirSync(resolve(dist, 'assets'))) {
+    if (name.endsWith('.js')) paths.set(`/assets/${name}`, { resource: 'script', type: /^(?:text|application)\/javascript\b/ });
+    else if (name.endsWith('.css')) paths.set(`/assets/${name}`, { resource: 'stylesheet', type: /^text\/css\b/ });
+  }
+  return { origin, paths };
+}
+
+/**
+ * Why a request is not one the page may make, or null when it is: a GET to the
+ * page's origin, without a query string or fragment (data in a URL ends up in
+ * the host's logs), for the page or one of its built assets, of the matching
+ * kind (the page loaded as a document, a script as a script, a stylesheet as a
+ * stylesheet; the page's own file fetched as an image is refused). data: URLs
+ * never leave the browser and pass.
+ */
+export function requestProblem(
+  req: { url: string; method: string; resourceType: string },
+  policy: SitePolicy,
+): string | null {
+  if (req.url.startsWith('data:')) return null;
+  const what = `${req.method} ${req.resourceType} ${req.url}`;
+  const u = new URL(req.url);
+  if (req.method !== 'GET') return `${what}: only GET is expected`;
+  if (u.origin !== policy.origin) return `${what}: leaves the page origin`;
+  if (req.url.includes('?')) return `${what}: carries a query string`;
+  if (u.hash !== '') return `${what}: carries a fragment`;
+  const expected = policy.paths.get(u.pathname);
+  if (!expected) return `${what}: not the page or one of its assets`;
+  if (req.resourceType !== expected.resource) return `${what}: expected as ${expected.resource}`;
+  return null;
+}
+
+export interface GuardFindings {
+  requests: string[];
+  errors: string[];
+  csp: string[];
+}
+
+/**
+ * Records, from now on, everything on `page` (and its context) that the page
+ * must not do:
+ *   - every request that requestProblem() refuses;
+ *   - every response to an allowed request: status 200 (or 304) and the content
+ *     type that matches the file, so a missing file answered with index.html is
+ *     caught;
  *   - every WebSocket: none at all;
- *   - console errors and uncaught page errors: none;
- *   - Content-Security-Policy violation events: none.
- * The checks run after the test body, so a test only has to use the page.
+ *   - console errors and uncaught page errors;
+ *   - Content-Security-Policy violation events (a blocked load never becomes a
+ *     request, so this is where a load the CSP stopped shows up).
+ * Returns the findings so far; the caller decides what to expect of them.
+ */
+export async function attachGuard(page: Page, policy: SitePolicy): Promise<() => GuardFindings> {
+  const found: GuardFindings = { requests: [], errors: [], csp: [] };
+  page.context().on('request', (req) => {
+    const problem = requestProblem({ url: req.url(), method: req.method(), resourceType: req.resourceType() }, policy);
+    if (problem) found.requests.push(problem);
+  });
+  page.context().on('response', (res) => {
+    const u = new URL(res.url());
+    const expected = policy.paths.get(u.pathname);
+    if (u.origin !== policy.origin || !expected) return;
+    const contentType = res.headers()['content-type'] ?? '';
+    if (res.status() !== 200 && res.status() !== 304) found.requests.push(`${u.pathname}: status ${res.status()}`);
+    else if (res.status() === 200 && !expected.type.test(contentType)) {
+      found.requests.push(`${u.pathname}: content type ${contentType}`);
+    }
+  });
+  page.on('websocket', (ws) => found.requests.push(`WebSocket ${ws.url()}`));
+  page.on('console', (msg) => {
+    if (msg.type() === 'error') found.errors.push(`console: ${msg.text()}`);
+  });
+  page.on('pageerror', (err) => found.errors.push(`page error: ${err.message}`));
+
+  await page.exposeFunction('__reportCspViolation', (text: string) => {
+    found.csp.push(text);
+  });
+  await page.addInitScript(() => {
+    const report = (window as unknown as { __reportCspViolation: (text: string) => void }).__reportCspViolation;
+    document.addEventListener(
+      'securitypolicyviolation',
+      (e) => report(`${e.effectiveDirective} blocked ${e.blockedURI || '(inline)'} in ${e.sourceFile}:${e.lineNumber}`),
+      true,
+    );
+  });
+  return () => found;
+}
+
+/**
+ * Every test runs under the guard (see attachGuard); its findings must be empty
+ * when the test body is done, so a test only has to use the page. e2e/guard.spec.ts
+ * checks that the guard reports a page that misbehaves.
  */
 export const test = base.extend<{ guard: void }>({
   guard: [
     async ({ page, baseURL }, use) => {
       if (!baseURL) throw new Error('baseURL is not set in playwright.config.ts');
-      const origin = new URL(baseURL).origin;
-      const paths = allowedPaths();
-      const bad: string[] = [];
-      const errors: string[] = [];
-      const csp: string[] = [];
-
-      page.context().on('request', (req) => {
-        const url = req.url();
-        if (url.startsWith('data:')) return;
-        const u = new URL(url);
-        if (req.method() !== 'GET') bad.push(`${req.method()} ${url}: only GET is expected`);
-        if (u.origin !== origin) bad.push(`${req.method()} ${url}: leaves the page origin`);
-        else if (!paths.has(u.pathname)) bad.push(`${req.method()} ${url}: not the page or one of its assets`);
-      });
-      page.context().on('response', (res) => {
-        const u = new URL(res.url());
-        const type = paths.get(u.pathname);
-        if (u.origin !== origin || !type) return;
-        const contentType = res.headers()['content-type'] ?? '';
-        if (res.status() !== 200 && res.status() !== 304) bad.push(`${u.pathname}: status ${res.status()}`);
-        else if (res.status() === 200 && !type.test(contentType)) bad.push(`${u.pathname}: content type ${contentType}`);
-      });
-      page.on('websocket', (ws) => bad.push(`WebSocket ${ws.url()}`));
-      page.on('console', (msg) => {
-        if (msg.type() === 'error') errors.push(`console: ${msg.text()}`);
-      });
-      page.on('pageerror', (err) => errors.push(`page error: ${err.message}`));
-
-      await page.exposeFunction('__reportCspViolation', (text: string) => {
-        csp.push(text);
-      });
-      await page.addInitScript(() => {
-        const report = (window as unknown as { __reportCspViolation: (text: string) => void }).__reportCspViolation;
-        document.addEventListener(
-          'securitypolicyviolation',
-          (e) => report(`${e.effectiveDirective} blocked ${e.blockedURI || '(inline)'} in ${e.sourceFile}:${e.lineNumber}`),
-          true,
-        );
-      });
-
+      const findings = await attachGuard(page, sitePolicy(new URL(baseURL).origin));
       await use();
-
-      expect(bad, 'requests that are not GETs of the page and its assets').toEqual([]);
+      const { requests, errors, csp } = findings();
+      expect(requests, 'requests that are not plain GETs of the page and its assets').toEqual([]);
       expect(errors, 'console and page errors').toEqual([]);
       expect(csp, 'Content-Security-Policy violations').toEqual([]);
     },
