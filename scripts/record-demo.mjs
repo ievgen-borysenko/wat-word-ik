@@ -472,7 +472,6 @@ function verify(gifPath, frames) {
   if (info.width !== OUT_WIDTH || info.height !== expectedHeight) wrong.push(`size ${info.width}x${info.height}, not ${OUT_WIDTH}x${expectedHeight}`);
   if (info.frames !== frames.length) wrong.push(`${info.frames} frames, not ${frames.length}`);
   if (info.durationCs !== expectedCs) wrong.push(`${info.durationCs / 100} s long, not ${expectedCs / 100} s`);
-  if (info.loops !== 0) wrong.push(`loop count ${info.loops}, not 0 (forever)`);
   if (wrong.length > 0) throw new Error(`the GIF is not what was recorded: ${wrong.join('; ')}`);
   return { ...info, size };
 }

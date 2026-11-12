@@ -79,10 +79,14 @@ missing, when the page reports an error, when the scenario no longer shows
 what it is meant to (more professions open after Maths, fewer after Dutch, a
 gap for Dutch on the card; after a data change, adjust the grades and the
 profession at the top of the script), or when the result does not pass the
-parse of `npm run check:tree`. That check proves the file holds images and
-nothing else, within 2 MiB; it does not see what they show, so look at the new
-file before you commit it, and update the description of the animation in the
-README if the scenario changed.
+parse of `npm run check:tree`. That parse keeps out the metadata that tools
+write and anything appended, and caps the file at 2 MiB and 880x880 pixels;
+it does not see what the pixels show, nor data hidden on purpose in them, in
+the colour table or in the format's free fields. Look at the new file before
+you commit it, and update the description of the animation in the README if
+the scenario changed. In a pull request every version of the file that a
+commit writes is parsed as well, so if one fails, rewrite the branch rather
+than committing a fix on top.
 
 ## Add a profession
 

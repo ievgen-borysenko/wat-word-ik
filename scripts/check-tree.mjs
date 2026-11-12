@@ -16,10 +16,14 @@
 //   - files that are not UTF-8 text: a NUL byte (binary data, UTF-16 text) or
 //     invalid UTF-8. The content checks below read UTF-8 only, so such a file
 //     would otherwise pass unread. One path is the exception: docs/demo.gif,
-//     the animation in the README, must instead parse as a GIF of at most
-//     2 MiB that holds images and nothing else (parseGif below: no comments,
-//     no text, no metadata, nothing after the image data or the trailer). It
-//     gets no text checks; what its pixels show is for the reviewer to see;
+//     the animation in the README, must instead be a GIF animation in the one
+//     form that parseGif below allows. That stops the metadata blocks that
+//     tools write (comments, XMP, colour profiles, other application data)
+//     and anything appended, and caps the file at 2 MiB and 880x880 pixels.
+//     It does not stop data hidden on purpose in the pixels, in unused
+//     colour-table entries or in the fields the format leaves free: that is
+//     for the reviewer, who sees the animation, and for the size cap. The file
+//     gets no text checks;
 //   - in every tracked text file: e-mail addresses (none at all), absolute paths
 //     from a developer's machine, private key headers and private network
 //     addresses (RFC 1918). Tests that need such strings put them together at
@@ -92,6 +96,21 @@ export const DEMO_GIF = 'docs/demo.gif';
  */
 export const DEMO_GIF_MAX_BYTES = 2 * 1024 * 1024;
 
+/**
+ * The largest width and height of DEMO_GIF, in pixels. The README column on
+ * github.com is 880 pixels wide and the recording is made for that width; the
+ * same height leaves room for a taller page. It also bounds what a viewer has
+ * to decode per frame.
+ */
+export const DEMO_GIF_MAX_SIDE = 880;
+
+/**
+ * The shortest frame delay of DEMO_GIF, in hundredths of a second. Browsers
+ * show a delay of 0 or 1 as a tenth of a second, so such a frame never runs as
+ * written, and other viewers skip a frame with no delay at all.
+ */
+export const DEMO_GIF_MIN_DELAY_CS = 2;
+
 /** Patterns for the folders that grow with the program. */
 export const PATTERNS = [
   { what: 'page entry, styles and tests at the top of src/', re: /^src\/(?:main\.tsx|styles\.css|[a-z][a-z0-9-]*\.test\.ts)$/ },
@@ -117,6 +136,9 @@ const CODE_FILE_RE = /\.(?:[cm]?js|tsx?)$/;
  * @typedef {{ base: string, head: string }} Range
  * @typedef {{ commits: number, paths: number, gifVersions: number, what: string }} HistoryResult
  */
+
+/** What DEMO_GIF must be, for the messages. */
+const GIF_FORM = 'a GIF animation in the form that parseGif in scripts/check-tree.mjs allows';
 
 /**
  * Runs git and returns its output as bytes.
@@ -204,35 +226,46 @@ function utf8(bytes) {
 }
 
 /**
- * @typedef {{ width: number, height: number, frames: number, durationCs: number, loops: number | null }} GifInfo
- *   durationCs: the sum of the frame delays, in hundredths of a second; loops: the
- *   loop count of the NETSCAPE2.0 extension (0 = forever), null without one
+ * @typedef {{ width: number, height: number, frames: number, durationCs: number }} GifInfo
+ *   durationCs: the sum of the frame delays, in hundredths of a second
  */
 
 /**
- * Parses a GIF strictly and returns what it shows, or throws an Error that names
- * the first problem and its byte offset. The file may hold, in this order:
+ * Parses DEMO_GIF and returns what it shows, or throws an Error that names the
+ * first problem and its byte offset. The file must be a looping GIF animation
+ * in exactly this form, which is what scripts/record-demo.mjs writes:
  *   - the header `GIF89a`;
- *   - the logical screen descriptor and its global colour table;
- *   - at most one NETSCAPE2.0 application extension, before the first image,
- *     holding exactly a loop count;
- *   - one or more images, each an optional graphic control extension (frame
- *     delay, transparency, disposal) directly followed by an image descriptor
- *     inside the logical screen, its local colour table and its LZW data. The
- *     data must decode to exactly width x height pixels of the colour table and
- *     end with the end code, followed by zero bits only;
- *   - the trailer, as the last byte of the file.
- * Refused: a comment, plain text or any other application extension (XMP,
- * colour profiles, other tools' data), an unknown block, GIF87a, bytes after
- * the end code of an image or after the trailer, a truncated file, and a file
- * larger than `maxBytes`. What is left is pixels, their colours and timing.
+ *   - the logical screen descriptor, at most DEMO_GIF_MAX_SIDE pixels wide and
+ *     high, without a pixel aspect ratio, and its global colour table;
+ *   - one NETSCAPE2.0 application extension, before the first image, holding
+ *     only the loop count 0 (forever);
+ *   - one or more frames, each a graphic control extension (a delay of at
+ *     least DEMO_GIF_MIN_DELAY_CS, transparency, disposal 0 to 3, no wait for
+ *     user input) directly followed by an image descriptor inside the screen,
+ *     without a local colour table, and its LZW data. The data must decode to
+ *     exactly width x height pixels of the global colour table and end with the
+ *     end code, followed by zero bits only, at most one byte past the end
+ *     code's own;
+ *   - the trailer, as the last byte of the file;
+ * and the file is at most `maxBytes` long.
+ *
+ * What this stops: the blocks that tools add to a GIF on their own (comments,
+ * plain text, XMP and other metadata, colour profiles, any other application
+ * data), anything appended after an image's data or after the trailer, a
+ * truncated file, colour tables per frame, and files or screens larger than
+ * the caps. What it does not stop: data hidden on purpose where the format
+ * leaves room, in the pixels, in global colour-table entries that no pixel
+ * uses, in free fields (frame delays, the transparent and background colour
+ * index, the disposal method) or in how the encoder codes the pixels (where
+ * it puts clear codes). That is for the reviewer, who sees the animation, and
+ * for the size cap.
  * @param {Uint8Array} bytes
  * @param {number} [maxBytes]
  * @returns {GifInfo}
  */
 export function parseGif(bytes, maxBytes = DEMO_GIF_MAX_BYTES) {
   let pos = 0;
-  /** @param {string} message @returns {never} */
+  /** @type {(message: string) => never} */
   const fail = (message) => {
     throw new Error(`${message} (at byte ${pos})`);
   };
@@ -247,11 +280,6 @@ export function parseGif(bytes, maxBytes = DEMO_GIF_MAX_BYTES) {
   };
   /** @param {string} what */
   const u16 = (what) => u8(what) | (u8(what) << 8);
-  /** @param {number} entries @param {string} what */
-  const skipColourTable = (entries, what) => {
-    need(3 * entries, what);
-    pos += 3 * entries;
-  };
 
   if (bytes.length > maxBytes) fail(`the file has ${bytes.length} bytes, more than the cap of ${maxBytes}`);
   need(6, 'the header');
@@ -262,15 +290,20 @@ export function parseGif(bytes, maxBytes = DEMO_GIF_MAX_BYTES) {
   const height = u16('the logical screen descriptor');
   const screenFlags = u8('the logical screen descriptor');
   u8('the logical screen descriptor'); // background colour index
-  u8('the logical screen descriptor'); // pixel aspect ratio
+  const aspect = u8('the logical screen descriptor');
   if (width === 0 || height === 0) fail('the logical screen has no area');
-  const globalColours = screenFlags & 0x80 ? 2 << (screenFlags & 7) : 0;
-  skipColourTable(globalColours, 'the global colour table');
+  if (width > DEMO_GIF_MAX_SIDE || height > DEMO_GIF_MAX_SIDE) {
+    fail(`the logical screen is ${width}x${height} pixels, more than ${DEMO_GIF_MAX_SIDE} on a side`);
+  }
+  if (aspect !== 0) fail('the logical screen sets a pixel aspect ratio');
+  if (!(screenFlags & 0x80)) fail('the file has no global colour table');
+  const colours = 2 << (screenFlags & 7);
+  need(3 * colours, 'the global colour table');
+  pos += 3 * colours;
 
   let frames = 0;
   let durationCs = 0;
-  /** @type {number | null} */
-  let loops = null;
+  let looping = false;
   /** @type {number | null} delay of a graphic control extension that waits for its image */
   let pendingDelay = null;
   for (;;) {
@@ -279,9 +312,11 @@ export function parseGif(bytes, maxBytes = DEMO_GIF_MAX_BYTES) {
       if (pendingDelay !== null) fail('a graphic control extension has no image after it');
       if (frames === 0) fail('the file holds no image');
       if (pos !== bytes.length) fail(`${bytes.length - pos} bytes follow the trailer`);
-      return { width, height, frames, durationCs, loops };
+      return { width, height, frames, durationCs };
     }
     if (block === 0x2c) {
+      if (!looping) fail('the NETSCAPE2.0 extension that makes the animation loop must come before the first image');
+      if (pendingDelay === null) fail(`image ${frames + 1} has no graphic control extension (frame delay) before it`);
       const left = u16('an image descriptor');
       const top = u16('an image descriptor');
       const w = u16('an image descriptor');
@@ -289,10 +324,9 @@ export function parseGif(bytes, maxBytes = DEMO_GIF_MAX_BYTES) {
       const flags = u8('an image descriptor');
       if (w === 0 || h === 0) fail('an image has no area');
       if (left + w > width || top + h > height) fail('an image reaches outside the logical screen');
-      if (flags & 0x18) fail('an image descriptor has reserved bits set');
-      const colours = flags & 0x80 ? 2 << (flags & 7) : globalColours;
-      skipColourTable(flags & 0x80 ? colours : 0, 'a local colour table');
-      if (colours === 0) fail('an image has no colour table');
+      if (flags & 0x80) fail('an image has a local colour table; only the global one is allowed');
+      // Without a local table its sort flag and size mean nothing; the rest is reserved. Interlacing may stay.
+      if (flags & 0x3f) fail('an image descriptor sets reserved or local colour table bits');
       const minCodeSize = u8('the image data');
       if (minCodeSize < 2 || minCodeSize > 8) fail(`an image has the LZW code size ${minCodeSize}, not 2 to 8`);
       const start = pos;
@@ -309,7 +343,7 @@ export function parseGif(bytes, maxBytes = DEMO_GIF_MAX_BYTES) {
         fail(`the data of image ${frames + 1} ${problem}`);
       }
       frames++;
-      durationCs += pendingDelay ?? 0;
+      durationCs += pendingDelay;
       pendingDelay = null;
       continue;
     }
@@ -326,6 +360,10 @@ export function parseGif(bytes, maxBytes = DEMO_GIF_MAX_BYTES) {
       u8('a graphic control extension'); // transparent colour index
       if (flags & 0xe0) fail('a graphic control extension has reserved bits set');
       if (((flags >> 2) & 7) > 3) fail('a graphic control extension has an undefined disposal method');
+      if (flags & 0x02) fail('a graphic control extension waits for user input');
+      if (delay < DEMO_GIF_MIN_DELAY_CS) {
+        fail(`a frame has a delay of ${delay} hundredths of a second, less than ${DEMO_GIF_MIN_DELAY_CS}`);
+      }
       if (u8('a graphic control extension') !== 0) fail('a graphic control extension has more than one sub-block');
       pendingDelay = delay;
       continue;
@@ -337,13 +375,15 @@ export function parseGif(bytes, maxBytes = DEMO_GIF_MAX_BYTES) {
       fail(`the application extension ${JSON.stringify(id)} is not allowed; only NETSCAPE2.0 (the loop count) is`);
     }
     pos += idSize;
-    if (loops !== null) fail('a second NETSCAPE2.0 extension is not allowed');
-    if (frames > 0) fail('the NETSCAPE2.0 extension comes after the first image');
+    // An image needs the extension before it, so one that comes later is always a second one.
+    if (looping) fail('a second NETSCAPE2.0 extension is not allowed');
     if (u8('the NETSCAPE2.0 extension') !== 3 || u8('the NETSCAPE2.0 extension') !== 1) {
       fail('the NETSCAPE2.0 extension holds something other than a loop count');
     }
-    loops = u16('the NETSCAPE2.0 extension');
+    const loops = u16('the NETSCAPE2.0 extension');
+    if (loops !== 0) fail(`the NETSCAPE2.0 extension sets ${loops} loops; the animation must loop forever (0)`);
     if (u8('the NETSCAPE2.0 extension') !== 0) fail('the NETSCAPE2.0 extension has more than one sub-block');
+    looping = true;
   }
 }
 
@@ -361,8 +401,9 @@ function concatBytes(chunks) {
 /**
  * Decodes GIF LZW data far enough to count its pixels, without building them:
  * null when the codes give exactly `pixels` pixels, each a colour of the table
- * (`colours` entries), and the end code follows with nothing but zero bits after
- * it; otherwise what is wrong.
+ * (`colours` entries), and the end code follows with nothing after it but zero
+ * bits: the rest of its byte and at most one more byte, which some encoders
+ * write; otherwise what is wrong.
  * @param {Uint8Array} data
  * @param {number} minCodeSize
  * @param {number} pixels
@@ -416,6 +457,8 @@ function lzwProblem(data, minCodeSize, pixels, colours) {
     prev = code;
   }
   if (count !== pixels) return `holds ${count} pixels, the image ${pixels}`;
+  const after = data.length - Math.ceil(bit / 8);
+  if (after > 1) return `has ${after} bytes after the end code`;
   for (; bit < bits; bit++) {
     if (((data[bit >> 3] ?? 0) >> (bit & 7)) & 1) return 'has data after the end code';
   }
@@ -511,7 +554,7 @@ export function checkTree(rootDir, env = process.env, range) {
       try {
         gif = parseGif(bytes);
       } catch (err) {
-        add('gif', `must be a GIF that holds images and nothing else: ${err instanceof Error ? err.message : String(err)}`);
+        add('gif', `must be ${GIF_FORM}: ${err instanceof Error ? err.message : String(err)}`);
       }
       continue;
     }
@@ -576,7 +619,7 @@ export function checkTree(rootDir, env = process.env, range) {
       violations.push({
         path: DEMO_GIF,
         rule: 'history-gif',
-        message: `the version that commit ${sha.slice(0, 12)} "${subject}" writes is not a GIF that holds images and nothing else: ${problem}. A later commit that replaces it does not take it out of the history: rewrite the branch so that no commit writes such a version.`,
+        message: `the version that commit ${sha.slice(0, 12)} "${subject}" writes is not ${GIF_FORM}: ${problem}. A later commit that replaces it does not take it out of the history: rewrite the branch so that no commit writes such a version.`,
       });
     }
     const what = isAllZeros(range.base) ? `all commits of ${range.head}` : `${range.base}..${range.head}`;
@@ -616,10 +659,10 @@ function main(argv) {
   const { violations, checked, scanned, gif, history } = result;
   if (violations.length === 0) {
     const inHistory = history
-      ? `; ${history.paths} paths added in the ${history.commits} commit(s) of ${history.what}, all on the list, and ${history.gifVersions} version(s) of ${DEMO_GIF} written in them, each holding images only`
+      ? `; ${history.paths} paths added in the ${history.commits} commit(s) of ${history.what}, all on the list, and ${history.gifVersions} version(s) of ${DEMO_GIF} written in them, all in the allowed form`
       : '';
     const animation = gif
-      ? `; ${DEMO_GIF} holds images only (${gif.width}x${gif.height}, ${gif.frames} frames, ${(gif.durationCs / 100).toFixed(2)} s)`
+      ? `; ${DEMO_GIF} is a GIF animation in the allowed form (${gif.width}x${gif.height}, ${gif.frames} frames, ${(gif.durationCs / 100).toFixed(2)} s)`
       : '';
     console.log(
       `check:tree: ${checked} tracked files, all on the list; no symlinks, submodules or executables; ${scanned} UTF-8 text files without e-mail addresses, local paths, private keys or private network addresses${animation}${inHistory}`,
