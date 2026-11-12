@@ -25,17 +25,17 @@ env:
   GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
 
 jobs:
-  verify:
-    name: Verify and build
+  # Runs dependency code (TypeScript, Vitest, Vite). Nothing it leaves behind is
+  # trusted: its only product is the built site, which the audit job checks as
+  # untrusted input. See docs/ci.md, "Who trusts what".
+  build:
+    name: Build and unit tests
     runs-on: ubuntu-24.04
     timeout-minutes: 15
-    outputs:
-      pages-artifact-id: ${{ steps.pages-artifact.outputs.artifact_id }}
     steps:
-      - name: Check out the full history (secret scan and commit check need it)
+      - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
-          fetch-depth: 0
           persist-credentials: false
 
       - name: Set up Node from .nvmrc
@@ -44,7 +44,55 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Repository holds only listed files, also in history (no dependencies needed)
+      - name: Install dependencies (lockfile only, no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Hand the built site to the audit job (untrusted until audited)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-candidate
+          path: dist/
+          include-hidden-files: true # the audit must see every file the build made
+          if-no-files-found: error
+          retention-days: 1
+
+  # Installs and runs no project dependency: Node's standard library, git, npm's
+  # own lockfile audit and a pinned gitleaks. Only this job uploads the Pages
+  # artifact, after it has audited exactly those files.
+  audit:
+    name: Audit (no dependencies installed)
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      pages-artifact-id: ${{ steps.pages-artifact.outputs.artifact_id }}
+    steps:
+      - name: Check out the full history (secret scan and history checks need it)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node from .nvmrc (no package cache)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: No dependencies in this job
+        run: |
+          if [ -e node_modules ]; then echo "::error::node_modules exists; the audit job must not install dependencies"; exit 1; fi
+
+      - name: Repository holds only listed files, also in history
         env:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
@@ -84,19 +132,10 @@ jobs:
           gitleaks git --no-banner --redact --ignore-gitleaks-allow --log-opts="--all --full-history" .
           gitleaks dir --no-banner --redact --ignore-gitleaks-allow .
 
-      - name: Install dependencies (lockfile only, no install scripts)
-        run: npm ci --ignore-scripts
-
-      - name: Typecheck
-        run: npm run typecheck
-
-      - name: Unit tests
-        run: npm test
-
       - name: Lockfile - registry, integrity, runtime licences
         run: npm run check:lock
 
-      - name: npm audit - runtime dependencies (fails on high or critical)
+      - name: npm audit - runtime dependencies (reads the lockfile; fails on high or critical)
         run: npm audit --omit=dev --audit-level=high
 
       - name: npm audit - all dependencies (report only)
@@ -130,24 +169,32 @@ jobs:
       - name: Links in README and docs
         run: npm run check:links
 
-      - name: Build
-        run: npm run build
+      # From here on the job handles the one thing it takes from the build job: the
+      # built site, as untrusted input. The checks run with node directly (not
+      # npm run), from the checkout made above.
+      - name: Download the built site (untrusted input)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-candidate
+          path: ${{ runner.temp }}/site
 
       - name: Audit the built site
-        run: npm run check:dist
+        run: |
+          if [ -e node_modules ]; then echo "::error::node_modules appeared"; exit 1; fi
+          node scripts/check-dist.mjs "$RUNNER_TEMP/site"
 
       - name: Secret scan - built site
-        run: gitleaks dir --no-banner --redact --ignore-gitleaks-allow dist
+        run: gitleaks dir --no-banner --redact --ignore-gitleaks-allow "$RUNNER_TEMP/site"
 
       - name: Upload the audited site as the Pages artifact
         id: pages-artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
-          path: dist
+          path: ${{ runner.temp }}/site
 
   e2e:
     name: End-to-end (built site)
-    needs: verify
+    needs: audit
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
@@ -168,10 +215,16 @@ jobs:
       - name: Install the Chromium build of the pinned Playwright version
         run: npx playwright install --with-deps chromium
 
-      - name: Download the audited site
+      - name: Check that the audit job reported its upload
+        env:
+          PAGES_ID: ${{ needs.audit.outputs.pages-artifact-id }}
+        run: |
+          if [ -z "$PAGES_ID" ]; then echo "::error::the audit job reported no artifact id"; exit 1; fi
+
+      - name: Download the audited site (by id, not by name)
         uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
         with:
-          name: github-pages
+          artifact-ids: ${{ needs.audit.outputs.pages-artifact-id }}
           path: ${{ runner.temp }}/pages
 
       - name: Unpack it into dist/ (no rebuild)
@@ -196,7 +249,7 @@ jobs:
 
   deploy:
     name: Deploy to GitHub Pages
-    needs: [verify, e2e]
+    needs: [audit, e2e]
     # Only a push to main of a public repository deploys; pull requests never do.
     if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private == false
     runs-on: ubuntu-24.04
@@ -212,25 +265,25 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
-      # deploy-pages picks the artifact by name. A later job of this run could, if
-      # compromised, delete it and upload another with the same name; that one would
-      # get a new id. Deploy only the artifact verify uploaded.
-      - name: Check that the Pages artifact is the one verify uploaded
+      # deploy-pages picks the artifact by name. Another job of this run could, if
+      # compromised, upload a second one or replace it under the same name; either
+      # way the ids no longer match. Deploy only the artifact the audit job uploaded.
+      - name: Check that the Pages artifact is the one the audit job uploaded
         env:
           GH_TOKEN: ${{ github.token }}
-          EXPECTED_ID: ${{ needs.verify.outputs.pages-artifact-id }}
+          EXPECTED_ID: ${{ needs.audit.outputs.pages-artifact-id }}
         run: |
           ids=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?name=github-pages&per_page=100" \
             --jq '[.artifacts[] | select(.name == "github-pages") | .id | tostring] | join(" ")')
-          echo "verify uploaded artifact ${EXPECTED_ID:-(none)}; this run has: ${ids:-(none)}"
+          echo "the audit job uploaded artifact ${EXPECTED_ID:-(none)}; this run has: ${ids:-(none)}"
           if [ -z "$EXPECTED_ID" ] || [ "$ids" != "$EXPECTED_ID" ]; then
-            echo "::error::the github-pages artifact is not the one verify uploaded; not deploying"
+            echo "::error::the github-pages artifact is not the one the audit job uploaded; not deploying"
             exit 1
           fi
 
       - name: Check the Pages settings
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
-      - name: Deploy the artifact that verify audited and e2e tested
+      - name: Deploy the artifact that the audit job checked and e2e tested
         id: deployment
         uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1
