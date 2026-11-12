@@ -47,7 +47,20 @@ function repo(extra = {}) {
   mkdirSync(dir);
   const gitconfig = join(root, 'gitconfig');
   writeFileSync(gitconfig, '');
-  const env = { PATH: process.env.PATH ?? '/usr/bin:/bin', HOME: root, LANG: 'C', GIT_CONFIG_GLOBAL: gitconfig, GIT_CONFIG_NOSYSTEM: '1' };
+  const who = `dev${AT}example.com`;
+  // The identity is part of the base environment: `git merge` needs one too, and a
+  // CI runner has no account to derive it from.
+  const env = {
+    PATH: process.env.PATH ?? '/usr/bin:/bin',
+    HOME: root,
+    LANG: 'C',
+    GIT_CONFIG_GLOBAL: gitconfig,
+    GIT_CONFIG_NOSYSTEM: '1',
+    GIT_AUTHOR_NAME: 'A',
+    GIT_AUTHOR_EMAIL: who,
+    GIT_COMMITTER_NAME: 'C',
+    GIT_COMMITTER_EMAIL: who,
+  };
   /** @param {string[]} args */
   const git = (args) => execFileSync('git', args, { cwd: dir, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }).trim();
   git(['init', '--quiet', '--initial-branch=main']);
@@ -56,12 +69,11 @@ function repo(extra = {}) {
     writeFileSync(join(dir, path), content);
   }
   git(['add', '--all']);
-  const who = `dev${AT}example.com`;
   /** @param {string} message */
   const commit = (message) => {
     execFileSync('git', ['-c', 'commit.gpgsign=false', 'commit', '--quiet', '--no-verify', '--allow-empty', '-m', message], {
       cwd: dir,
-      env: { ...env, GIT_AUTHOR_NAME: 'A', GIT_AUTHOR_EMAIL: who, GIT_COMMITTER_NAME: 'C', GIT_COMMITTER_EMAIL: who },
+      env,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     return git(['rev-parse', 'HEAD']);

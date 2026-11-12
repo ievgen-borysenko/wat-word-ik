@@ -34,6 +34,10 @@ local-path and host checks read the files as they are now. A personal address
 added in one commit and removed in the next stays in that pull request's
 history unless it looks like a secret.
 
+A known limit of `check:commits`: an author or committer is judged by the
+form of the address. An account without the `[bot]` suffix passes as a person,
+whatever it is used for; who may author commits is decided in review.
+
 `check:dist` audits the built site, the exact files that will be published:
 
 - **Only expected files:** `index.html` and the JavaScript and CSS bundles in
