@@ -140,7 +140,17 @@ whatever it is used for; who may author commits is decided in review.
   any other package or version is refused too. The comment passes every
   content check above and counts towards the size budget. What the audit
   cannot see, since it installs no package: whether the copyright lines and
-  texts are the packages' own.
+  texts are the packages' own. A licence file that holds an e-mail or a web
+  address, as in the common form `Copyright (c) Name <address> (https://...)`,
+  builds without complaint and then fails `check:dist` under its rules for
+  e-mail and web addresses. That stop is deliberate: the published files carry
+  no address of any kind, and the notice gets no exception. When a dependency
+  update brings such a file, its pull request stays red and is not merged as
+  it is. Either keep the current version (close the pull request and add an
+  `ignore` entry for that version to `.github/dependabot.yml`), or decide in a
+  pull request of its own how the build writes that package's notice, so that
+  the published copy still carries its copyright line and licence text but no
+  address. The check stays as it is.
 
 ## Job 3: end-to-end tests
 
@@ -227,12 +237,22 @@ Who can start one, and why that widens nothing: starting a run needs write
 access to the repository, the same access that pushing a branch needs. A run
 started by hand uses the copy of the workflow on the ref it runs on, and so
 does a pull request from a branch of this repository; someone who can push a
-branch can already run any workflow they write there. This file's condition
-stops every ref other than `main` that carries this version of it; a changed
-copy on another branch is stopped by the rule of the `github-pages` environment
-that only `main` may deploy (see "Settings for the switch to public"). No job
-of this workflow holds `actions: write`, so no job, and no dependency running
-in one, can start a run.
+branch can already run any workflow they write there, and such a workflow can
+deploy to Pages. So the boundary is write access, which only maintainers
+hold, together with review of every change to the workflow before it reaches
+`main`; a run started by hand does not move it. This file's condition stops
+every ref other than `main` that carries this version of the file. The rule of
+the `github-pages` environment that only `main` may deploy (see "Settings for
+the switch to public") is recommended on top, and it does less: it holds back
+a job that names `github-pages` as its environment, as this workflow's deploy
+job does. A changed copy on another branch can name another environment:
+deploy-pages accepts one, though it advises against it
+([deploy-pages, "Security Considerations"](https://github.com/actions/deploy-pages#security-considerations)),
+and the first run that names an environment creates it, without protection
+rules
+([Managing environments for deployment](https://docs.github.com/en/actions/how-tos/deploy/configure-and-manage-deployments/manage-environments)).
+No job of this workflow holds `actions: write`, so no job, and no dependency
+running in one, can start a run.
 
 Re-runs. A re-run keeps the original run's event: the same commit and ref
 ([Re-run workflows and jobs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs))
@@ -246,12 +266,15 @@ is re-run, also after the switch. Start a new run by hand on `main` instead.
 Re-running only the failed jobs keeps the result of the jobs that passed: when
 the deploy or the end-to-end job is re-run, the run still holds one
 `github-pages` artifact with the id the audit job reported, and the deploy
-goes ahead. "Re-run all jobs" after a successful audit makes the audit job
-upload a second `github-pages` artifact to the same run, or fail on the name
-the run already holds. Either way nothing is deployed: a failed upload stops
-the run, and with two artifacts the check refuses. Start a new run by hand on
-`main` instead, or delete the older artifact on the run's page and re-run the
-failed deploy job.
+goes ahead. That deploy publishes the site of the run's own commit, so re-run
+a deploy only while no newer run on `main` has deployed since; otherwise it
+puts the older site back. Settings, Pages links to the run that deployed
+last. "Re-run all jobs" after a successful audit makes the audit job upload a
+second `github-pages` artifact to the same run, or fail on the name the run
+already holds. Either way nothing is deployed: a failed upload stops the run,
+and with two artifacts the check refuses. Start a new run by hand on `main`
+instead, or, under the same condition, delete the older artifact on the run's
+page and re-run the failed deploy job.
 
 What the check does not close: it runs one step before the deploy action, and
 deploy-pages again picks the artifact by name. In the seconds between the two
@@ -302,8 +325,10 @@ On the day of the switch, in this order:
 3. **Pages.** Set the source to **GitHub Actions**. Then, under Settings,
    Environments, open `github-pages` (create it with that name if it is not
    there yet) and limit **Deployment branches and tags** to the branch `main`.
-   GitHub recommends this rule; it stops a run on any other branch, with its
-   own copy of the workflow, from deploying.
+   GitHub and deploy-pages recommend this rule. It holds back every job that
+   names `github-pages` as its environment, this workflow's deploy job
+   included, on any ref but `main`; a job that names another environment is
+   not held back by it (see "Who can start one" under Job 4).
 4. **Branch protection for `main`.** Require a **pull request** before merging
    (no direct pushes), and require the status checks **Build and unit tests**,
    **Audit (no dependencies installed)** and **End-to-end (built site)**.

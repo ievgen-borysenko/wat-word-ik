@@ -75,6 +75,33 @@ function runScript(stepLines) {
   return body.map((l) => l.slice(cut)).join('\n');
 }
 
+/**
+ * Every line under `jobs:` that `keyRe` matches, with its job, its step (by
+ * name; null for a key of the job itself) and the text after the first colon.
+ * @param {RegExp} keyRe
+ */
+function keyLines(keyRe) {
+  /** @type {{ job: string, step: string | null, value: string }[]} */
+  const found = [];
+  let jobName = '';
+  /** @type {string | null} */
+  let stepName = null;
+  for (const line of LINES.slice(LINES.indexOf('jobs:'))) {
+    const j = /^ {2}([A-Za-z0-9_-]+):$/.exec(line);
+    if (j) {
+      jobName = j[1] ?? '';
+      stepName = null;
+      continue;
+    }
+    const s = /^ {6}- name: (.+)$/.exec(line);
+    if (s) stepName = s[1] ?? null;
+    if (keyRe.test(line)) {
+      found.push({ job: jobName, step: indentOf(line) <= 4 ? null : stepName, value: line.slice(line.indexOf(':') + 1).trim() });
+    }
+  }
+  return found;
+}
+
 /*
  * A small evaluator for the expressions used here, with GitHub's documented
  * rules ("Expressions" in the Actions reference): `==` compares strings without
@@ -222,8 +249,9 @@ const PRIVATE = { private: true, visibility: 'private' };
 /**
  * Runs a step's script as GitHub runs `shell: bash`, with only the given
  * environment (none of the test runner's own GITHUB_* variables), an `npm`
- * that prints its arguments instead of running, and a `gitleaks` that prints
- * each of its arguments in brackets.
+ * that prints its arguments instead of running, a `gitleaks` that prints each
+ * of its arguments in brackets, and a `gh` that prints its arguments to stderr,
+ * then $GH_OUTPUT to stdout, and exits with $GH_EXIT (default 0).
  * @param {string} script
  * @param {Record<string, string>} env
  */
@@ -242,6 +270,9 @@ function stubDir() {
     stub = mkdtempSync(join(tmpdir(), 'check-workflow-'));
     writeFileSync(join(stub, 'npm'), '#!/bin/sh\necho "npm $*"\n', { mode: 0o755 });
     writeFileSync(join(stub, 'gitleaks'), '#!/bin/sh\nprintf gitleaks\nprintf \' [%s]\' "$@"\necho\n', { mode: 0o755 });
+    writeFileSync(join(stub, 'gh'), '#!/bin/sh\n{ printf gh; printf \' [%s]\' "$@"; echo; } >&2\nprintf \'%s\' "$GH_OUTPUT"\nexit "${GH_EXIT:-0}"\n', {
+      mode: 0o755,
+    });
   }
   return stub;
 }
@@ -349,6 +380,97 @@ describe('deploy job', () => {
   it('is never cancelled while it runs', () => {
     const concurrency = block(deploy, (l) => l === '    concurrency:', 'deploy concurrency');
     expect(value(concurrency, 'cancel-in-progress')).toBe('false');
+  });
+});
+
+describe('a failing check stops the deploy', () => {
+  const deploy = job('deploy');
+  const ARTIFACT_CHECK = 'Check that the Pages artifact is the one the audit job uploaded';
+
+  // continue-on-error turns a failed step or job into a passing one, so a failed
+  // check or test would no longer stop what comes after it. The build job counts
+  // too: it runs the unit tests, these among them.
+  it('nothing may fail without stopping the run, except the report-only audit of all dependencies', () => {
+    expect(keyLines(/continue-on-error/)).toEqual([{ job: 'audit', step: 'npm audit - all dependencies (report only)', value: 'true' }]);
+  });
+
+  // A status function (always(), success(), failure(), cancelled()) in a
+  // condition replaces the implicit success(): the step or job would run after
+  // a failure. Any other condition can skip a check. So the workflow has exactly
+  // two: the deploy job's own, and failure() on the step that keeps the
+  // Playwright report, which runs only once the job has already failed.
+  it('no condition lets a step or job run after a failure, or skips a check', () => {
+    const condition = value(deploy, 'if');
+    expect(condition).not.toMatch(/\b(?:always|success|failure|cancelled)\s*\(/);
+    expect(keyLines(/^\s*(?:- )?if\s*:/)).toEqual([
+      { job: 'e2e', step: 'Keep the Playwright report of a failed run', value: 'failure()' },
+      { job: 'deploy', step: null, value: condition },
+    ]);
+  });
+
+  it('runs its checks first and nothing between them and the deploy', () => {
+    const names = deploy.filter((l) => l.startsWith('      - name: ')).map((l) => l.slice('      - name: '.length));
+    expect(deploy.filter((l) => l.startsWith('      - ')).length).toBe(names.length);
+    expect(names).toEqual([
+      'Check that this run is for refs/heads/main exactly',
+      ARTIFACT_CHECK,
+      'Check the Pages settings',
+      'Deploy the artifact that the audit job checked and e2e tested',
+    ]);
+  });
+
+  // The github-pages environment is the one whose rules (only main may deploy)
+  // are set in the repository settings; any other name would get an environment
+  // without rules.
+  it('deploys to the github-pages environment', () => {
+    expect(LINES.filter((l) => /^\s*environment\s*:/.test(l))).toEqual(['    environment:']);
+    expect(value(block(deploy, (l) => l === '    environment:', 'deploy environment'), 'name')).toBe('github-pages');
+  });
+
+  describe('the artifact check', () => {
+    const script = runScript(step(deploy, ARTIFACT_CHECK));
+    /** @param {string} expected @param {string} listed @param {string} [ghExit] */
+    const check = (expected, listed, ghExit = '0') =>
+      runStep(script, {
+        GITHUB_REPOSITORY: 'owner/repo',
+        GITHUB_RUN_ID: '42',
+        GH_TOKEN: 'token',
+        EXPECTED_ID: expected,
+        GH_OUTPUT: listed,
+        GH_EXIT: ghExit,
+      });
+
+    it('asks for the github-pages artifacts of this run', () => {
+      expect(check('101', '101').out).toContain(
+        'gh [api] [repos/owner/repo/actions/runs/42/artifacts?name=github-pages&per_page=100] [--jq] [[.artifacts[] | select(.name == "github-pages") | .id | tostring] | join(" ")]',
+      );
+    });
+
+    it('passes when the run holds exactly the artifact the audit job uploaded', () => {
+      const res = check('101', '101');
+      expect(res.status).toBe(0);
+      expect(res.out).toContain('the audit job uploaded artifact 101; this run has: 101');
+      expect(res.out).not.toContain('::error::');
+    });
+
+    it.each([
+      ['no artifact in the run', '101', ''],
+      ['two artifacts, one of them the audited one', '101', '101 202'],
+      ['two artifacts, the audited one second', '101', '202 101'],
+      ['a different artifact', '101', '202'],
+      ['no id from the audit job, no artifact', '', ''],
+      ['no id from the audit job, one artifact', '', '101'],
+    ])('refuses: %s', (_case, expected, listed) => {
+      const res = check(expected, listed);
+      expect(res.status).toBe(1);
+      expect(res.out).toContain('::error::the github-pages artifact is not the one the audit job uploaded; not deploying');
+    });
+
+    it('stops when the artifact list cannot be read', () => {
+      const res = check('101', '101', '1');
+      expect(res.status).toBe(1);
+      expect(res.out).not.toContain('this run has');
+    });
   });
 });
 
