@@ -5,6 +5,10 @@ A small web page for children from about age 10 (groep 7/8 and up) that shows
 subjects (1-10, the Dutch grade scale) and watch a building of 36 professions
 light up or go dark. Click a profession to see what you need to know for it.
 
+![The page in use: Maths goes from 4 to 8 and the open professions go from 16 to 28 of 36; Dutch goes from 7 to 4 and nine of them go dark again; the card of the primary school teacher then shows Dutch 4 against the 7 it needs.](docs/demo.gif)
+
+Try it: <https://ievgen-borysenko.github.io/wat-word-ik/>
+
 It shows what is *open* with your grades, never what you *will become*.
 
 **Status: M0 prototype with demo data.** All requirements, levels and pay
@@ -39,8 +43,10 @@ Every pull request and every push to `main` runs the same checks, so that we
 ship the page and nothing else:
 
 - the repository, and every commit of a pull request, holds only files on an
-  explicit list, and no tracked file contains an e-mail address, a path from a
-  developer's computer, a private key or a private network address;
+  explicit list; every tracked file is text without an e-mail address, a path
+  from a developer's computer, a private key or a private network address,
+  except the animation above, which must be a GIF that holds images and
+  nothing else (no comments, no metadata, nothing appended);
 - secret scan of the whole git history and of the built site;
 - dependencies only from the npm registry, with integrity hashes and
   permissive licences; no known high or critical vulnerabilities at run time;
@@ -76,8 +82,9 @@ src/engine   pure TypeScript: scoring, hints, URL hash codec (+ tests)
 src/data     subjects and professions (demo data, 3 languages) + validation test
 src/i18n     UI strings: nl.json, en.json, ua.json
 src/ui       Preact components
-docs         methodology, sources, how to contribute, what CI checks
-scripts      CI checks: lockfile, commits, links, built site (+ tests)
+docs         methodology, sources, how to contribute, what CI checks, demo.gif
+scripts      CI checks: files, lockfile, commits, links, built site (+ tests);
+             record-demo.mjs, which records docs/demo.gif (not run in CI)
 e2e          end-to-end tests of the built site (Playwright)
 .github      CI workflow and Dependabot settings
 ```
