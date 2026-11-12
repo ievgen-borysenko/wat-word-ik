@@ -3,11 +3,12 @@ import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { allowedAddress, checkCommits, listCommits, parseTrailers } from './check-commits.mjs';
+import { allowedAddress, CO_AUTHOR, checkCommits, listCommits, parseTrailers } from './check-commits.mjs';
 
 /*
- * Every address is put together at run time: the repository's tree check
- * refuses e-mail addresses in tracked files, this one included.
+ * Every address and every footer line is put together at run time: the
+ * repository's tree check refuses e-mail addresses in tracked files, this one
+ * included, and the footer fixtures should not read as footers themselves.
  */
 const AT = '@';
 const noreply = (/** @type {string} */ id, /** @type {string} */ login) => `${id}+${login}${AT}users.noreply.github.com`;
@@ -15,9 +16,13 @@ const SCRIPT = resolve(import.meta.dirname, 'check-commits.mjs');
 const DEV = noreply('12345', 'some-dev');
 const HELPER = noreply('67890', 'helper');
 const DEPENDABOT = noreply('49699333', 'dependabot[bot]');
+const OTHER_BOT = noreply('1111', 'some-app[bot]');
 const GITHUB = `noreply${AT}github.com`;
 const SUPPORT = `support${AT}github.com`;
 const PERSONAL = `someone${AT}example.com`;
+const CO = `xevbor <${noreply('310343018', 'xevbor')}>`;
+const ROBOT = String.fromCodePoint(0x1f916);
+const words = (/** @type {string[]} */ ...w) => w.join(' ');
 const ZERO = '0'.repeat(40);
 
 /** A Dependabot commit message as it writes them: release links, a YAML block, a sign-off. */
@@ -120,20 +125,27 @@ describe('check-commits', () => {
     [`${DEV}.evil.example`, false],
     [noreply('12345', '-bad'), false],
     [noreply('12', 'a b'), false],
+    [OTHER_BOT, false],
+    [noreply('49699334', 'dependabot[bot]'), false],
     [SUPPORT, false],
     [PERSONAL, false],
   ])('address %s allowed: %s', (address, ok) => {
     expect(allowedAddress(address)).toBe(ok);
   });
 
-  it('passes a range with noreply authors and committers and allowed trailers', () => {
+  it('accepts exactly one co-author value, built from its parts', () => {
+    expect(CO_AUTHOR).toBe(CO);
+  });
+
+  it('passes noreply authors and committers, the co-author trailer (also twice) and a web merge', () => {
     const r = tempRepo();
     const base = r.commit('base');
-    r.commit(`one\n\nCo-Authored-By: Helper <${HELPER}>`);
-    r.commit(`two\n\nco-authored-by: Helper <${HELPER}>\nSigned-off-by: Dev <${DEV}>`);
+    r.commit(`one\n\nCo-Authored-By: ${CO}`);
+    r.commit(`squashed\n\nco-authored-by: ${CO}\nCo-Authored-By: ${CO}`);
+    r.commit('no trailer at all');
     r.commit('merge from the web', DEV, GITHUB);
     const commits = listCommits(base, 'HEAD', { cwd: r.repo, env: r.env });
-    expect(commits.map((c) => c.subject)).toEqual(['one', 'two', 'merge from the web']);
+    expect(commits.map((c) => c.subject)).toEqual(['one', 'squashed', 'no trailer at all', 'merge from the web']);
     expect(checkCommits(commits, { cwd: r.repo, env: r.env })).toEqual([]);
   });
 
@@ -141,6 +153,7 @@ describe('check-commits', () => {
     const r = tempRepo();
     const base = r.commit('base');
     r.commit(DEPENDABOT_MESSAGE, DEPENDABOT, GITHUB);
+    r.commit(DEPENDABOT_MESSAGE, DEPENDABOT, DEPENDABOT);
     expect(parseTrailers(DEPENDABOT_MESSAGE, { env: r.env })).toEqual([
       { key: 'Signed-off-by', value: `dependabot[bot] <${SUPPORT}>` },
     ]);
@@ -167,41 +180,107 @@ describe('check-commits', () => {
     expect(rules(r, base, 'HEAD')).toEqual([`${bad.slice(0, 7)} committer`]);
   });
 
-  it('rejects an address anywhere in the message: trailer, body or subject', () => {
+  it('rejects any bot but Dependabot as author, committer or in the message', () => {
     const r = tempRepo();
     const base = r.commit('base');
-    const trailer = r.commit(`trailer\n\nCo-Authored-By: Someone <${PERSONAL}>`);
+    const author = r.commit('by a bot', OTHER_BOT, DEV);
+    const committer = r.commit('committed by a bot', DEV, OTHER_BOT);
+    const message = r.commit(`mentions a bot\n\nReported by ${OTHER_BOT}.`);
+    expect(rules(r, base, 'HEAD')).toEqual([
+      `${author.slice(0, 7)} author`,
+      `${committer.slice(0, 7)} committer`,
+      `${message.slice(0, 7)} message`,
+    ]);
+    const res = spawnSync(process.execPath, [SCRIPT, base, 'HEAD'], { cwd: r.repo, env: r.env, encoding: 'utf8' });
+    expect(res.stderr).toContain('is a bot address, and only Dependabot is accepted');
+  });
+
+  it('rejects an address anywhere in the message: body or subject', () => {
+    const r = tempRepo();
+    const base = r.commit('base');
     const body = r.commit(`body\n\nThe old address ${PERSONAL} is gone.`);
     const subject = r.commit(`Write to ${PERSONAL}`);
-    expect(rules(r, base, 'HEAD')).toEqual([
-      `${trailer.slice(0, 7)} message`,
-      `${body.slice(0, 7)} message`,
-      `${subject.slice(0, 7)} message`,
-    ]);
+    expect(rules(r, base, 'HEAD')).toEqual([`${body.slice(0, 7)} message`, `${subject.slice(0, 7)} message`]);
+  });
+
+  it.each([
+    ['another account', `Helper <${HELPER}>`, ['trailer']],
+    ['the right name with another address', `xevbor <${HELPER}>`, ['trailer']],
+    ['another name with the right address', `Someone <${noreply('310343018', 'xevbor')}>`, ['trailer']],
+    ['no address', 'xevbor', ['trailer']],
+    ['an empty value', '', ['trailer']],
+    ['a personal address', `Someone <${PERSONAL}>`, ['trailer', 'message']],
+    ["GitHub's support address", `dependabot[bot] <${SUPPORT}>`, ['trailer', 'message']],
+  ])('rejects a Co-Authored-By trailer with %s', (_what, value, expected) => {
+    const r = tempRepo();
+    const base = r.commit('base');
+    const bad = r.commit(`change\n\nCo-Authored-By: ${value}`.trimEnd());
+    expect(rules(r, base, 'HEAD')).toEqual(expected.map((rule) => `${bad.slice(0, 7)} ${rule}`));
+  });
+
+  it('rejects a co-author line that git does not read as a trailer', () => {
+    const r = tempRepo();
+    const base = r.commit('base');
+    const bad = r.commit(`change\n\nSome prose.\nCo-Authored-By: Helper <${HELPER}>\nMore prose.\n\nCo-Authored-By: ${CO}`);
+    expect(parseTrailers(`x\n\nSome prose.\nCo-Authored-By: Helper <${HELPER}>\nMore prose.`, { env: r.env })).toEqual([]);
+    expect(rules(r, base, 'HEAD')).toEqual([`${bad.slice(0, 7)} trailer`]);
+  });
+
+  it.each([
+    ['a developer', `Dev <${DEV}>`, ['trailer']],
+    ['the co-author account', CO, ['trailer']],
+    ['no address', 'dependabot[bot]', ['trailer']],
+    ["GitHub's support address under another name", `Someone <${SUPPORT}>`, ['trailer', 'message']],
+  ])('accepts Signed-off-by only from Dependabot: refuses %s', (_what, value, expected) => {
+    const r = tempRepo();
+    const base = r.commit('base');
+    const bad = r.commit(`change\n\nSigned-off-by: ${value}`);
+    expect(rules(r, base, 'HEAD')).toEqual(expected.map((rule) => `${bad.slice(0, 7)} ${rule}`));
   });
 
   it('allows the support address only in the Dependabot sign-off', () => {
     const r = tempRepo();
     const base = r.commit('base');
-    const other = r.commit(`signed\n\nSigned-off-by: Someone <${SUPPORT}>`);
-    const coAuthor = r.commit(`co\n\nCo-Authored-By: dependabot[bot] <${SUPPORT}>`);
     const prose = r.commit(`prose\n\nAsk ${SUPPORT}.\n\nSigned-off-by: dependabot[bot] <${SUPPORT}>`);
-    expect(rules(r, base, 'HEAD')).toEqual([
-      `${other.slice(0, 7)} message`,
-      `${coAuthor.slice(0, 7)} message`,
-      `${prose.slice(0, 7)} message`,
-    ]);
+    expect(rules(r, base, 'HEAD')).toEqual([`${prose.slice(0, 7)} message`]);
   });
 
-  it.each(['Reviewed-by: Dev', 'Change-Id: I0123456789abcdef', 'Generated-by: some tool', 'Note: see the issue'])(
+  it.each(['Reviewed-by: Dev', `Acked-by: Dev <${DEV}>`, 'Change-Id: I0123456789abcdef', 'Note: see the issue'])(
     'rejects a foreign trailer key: %s',
     (trailer) => {
       const r = tempRepo();
       const base = r.commit('base');
-      const bad = r.commit(`change\n\n${trailer}\nCo-Authored-By: Helper <${HELPER}>`);
+      const bad = r.commit(`change\n\n${trailer}\nCo-Authored-By: ${CO}`);
       expect(rules(r, base, 'HEAD')).toEqual([`${bad.slice(0, 7)} trailer`]);
     },
   );
+
+  it.each([
+    ['robot and link', `${ROBOT} ${words('Generated', 'with')} [Some Tool](https://example.com/tool)`, ['footer']],
+    ['"by" at the start', `${words('Generated', 'by')} a script`, ['footer']],
+    ['lower case in emphasis', `_${words('generated', 'with')} some tool_`, ['footer']],
+    ['written like a trailer', `${['Generated', 'by'].join('-')}: some tool`, ['footer']],
+    ['a robot alone', `Done ${ROBOT}`, ['footer']],
+  ])('rejects a generated-by footer line: %s', (_what, line, expected) => {
+    const r = tempRepo();
+    const base = r.commit('base');
+    const bad = r.commit(`change\n\nBody.\n\n${line}\n\nCo-Authored-By: ${CO}`);
+    expect(rules(r, base, 'HEAD')).toEqual(expected.map((rule) => `${bad.slice(0, 7)} ${rule}`));
+  });
+
+  it('rejects a generated-by trailer twice: as a foreign key and as a footer', () => {
+    const r = tempRepo();
+    const base = r.commit('base');
+    const bad = r.commit(`change\n\n${['Generated', 'by'].join('-')}: some tool\nCo-Authored-By: ${CO}`);
+    expect(rules(r, base, 'HEAD')).toEqual([`${bad.slice(0, 7)} trailer`, `${bad.slice(0, 7)} footer`]);
+  });
+
+  it('does not take ordinary prose for a footer', () => {
+    const r = tempRepo();
+    const base = r.commit('base');
+    r.commit(`Regenerated the lockfile with npm\n\nThe hash is ${words('generated', 'by')} the store.`);
+    expect(rules(r, base, 'HEAD')).toEqual([]);
+  });
 
   it('checks only the range, not the commits before base', () => {
     const r = tempRepo();
@@ -263,10 +342,15 @@ describe('check-commits', () => {
       const base = r.commit('base');
       r.commit('leak', PERSONAL, DEV);
       r.commit('tool\n\nReviewed-by: Dev');
+      r.commit(`helped\n\nCo-Authored-By: Helper <${HELPER}>`);
+      r.commit(`footer\n\n${words('Generated', 'by')} a script`);
       const res = run(r, [base, 'HEAD']);
       expect(res.status).toBe(1);
-      expect(res.stderr).toContain(`"leak": author e-mail <${PERSONAL}>`);
+      expect(res.stderr).toContain(`"leak": author e-mail <${PERSONAL}> is not a GitHub noreply address`);
       expect(res.stderr).toContain('"tool": trailer "Reviewed-by" is not allowed');
+      expect(res.stderr).toContain(`"helped": trailer "Co-Authored-By: Helper <${HELPER}>" is not accepted: co-author trailers are not accepted`);
+      expect(res.stderr).toContain('"footer": line 3 looks like a generated-by footer');
+      expect(res.stderr).toContain('docs/contributing.md, section "Commits"');
     });
 
     it('exits 2 without arguments or with an unknown revision', () => {
