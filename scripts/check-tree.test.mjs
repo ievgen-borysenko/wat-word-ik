@@ -1,5 +1,5 @@
 import { execFileSync, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -425,10 +425,20 @@ describe('check-tree', () => {
       expect(rules(r)).toEqual(['docs/methodology.md encoding']);
     });
 
-    it('lists the animation by exact path only', () => {
+    it('lists the animation and its recording script by exact path only', () => {
       expect(onList('docs/demo.gif')).toBe(true);
       expect(onList('docs/demo2.gif')).toBe(false);
       expect(onList('docs/sub/demo.gif')).toBe(false);
+      expect(onList('scripts/record-demo.mjs')).toBe(true);
+      expect(onList('scripts/record-other.mjs')).toBe(false);
+    });
+
+    it('passes the committed animation', () => {
+      const gif = readFileSync(resolve(import.meta.dirname, '..', 'docs', 'demo.gif'));
+      const info = parseGif(gif);
+      expect(info.width).toBeLessThanOrEqual(880);
+      expect(info.frames).toBeGreaterThan(1);
+      expect(info.loops).toBe(0);
     });
   });
 
