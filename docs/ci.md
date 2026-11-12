@@ -59,7 +59,7 @@ What this does not cover:
 |------|--------------------------|
 | Show what decides the deploy | A deploy decision nobody can see: before anything is installed, the step prints the event, the ref and the repository's visibility, the three values the deploy job's condition reads (Job 4). |
 | `npm ci --ignore-scripts` | Dependencies that differ from the reviewed lockfile, and install scripts running code on the build machine. |
-| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script, and `scripts/check-workflow.test.mjs` reads this workflow: when the deploy job runs, that nothing cancels a run on `main`, which history range each event checks, and that the secret scan reads merge commits. |
+| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script, and `scripts/check-workflow.test.mjs` reads this workflow: when the deploy job runs, that nothing cancels a run on `main`, which history range each event checks, that the secret scan reads merge commits, and that no failing check or step lets the deploy go ahead. |
 | `npm run build` | |
 | Upload as `site-candidate` | Hands the built site, hidden files included, to the audit job. |
 
