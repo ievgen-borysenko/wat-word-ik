@@ -4,6 +4,8 @@ import { uniformSliders } from './scoring';
 /**
  * URL hash state, e.g. `#s=6666666666&g=arts&l=ua`.
  * Sliders are one character each in SUBJECT_IDS order; 10 is written as `a`.
+ * `lang` is null unless the user picked a language on the page, so a shared
+ * link does not force the sender's language on the receiver.
  */
 export interface HashState {
   readonly sliders: Sliders;
@@ -43,16 +45,26 @@ export function encodeHash(state: HashState): string {
   return `#${parts.join('&')}`;
 }
 
+function parseParams(hash: unknown): URLSearchParams | null {
+  if (typeof hash !== 'string') return null;
+  try {
+    return new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
+  } catch {
+    return null;
+  }
+}
+
+/** True when the hash carries a valid `s=` field: the grades came with the link. */
+export function hashHasSliders(hash: unknown): boolean {
+  const params = parseParams(hash);
+  return params !== null && decodeSliders(params.get('s')) !== null;
+}
+
 /** Never throws: any field that does not parse falls back to its default. */
 export function decodeHash(hash: unknown, knownIds: ReadonlySet<string>): HashState {
   const fallback: HashState = { sliders: uniformSliders(DEFAULT_GRADE), goal: null, lang: null };
-  if (typeof hash !== 'string') return fallback;
-  let params: URLSearchParams;
-  try {
-    params = new URLSearchParams(hash.startsWith('#') ? hash.slice(1) : hash);
-  } catch {
-    return fallback;
-  }
+  const params = parseParams(hash);
+  if (params === null) return fallback;
   const sliders = decodeSliders(params.get('s')) ?? fallback.sliders;
   const g = params.get('g');
   const goal = g !== null && knownIds.has(g) ? g : null;

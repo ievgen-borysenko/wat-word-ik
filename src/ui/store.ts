@@ -1,7 +1,7 @@
 import { batch, computed, effect, signal } from '@preact/signals';
 import { PROFESSIONS, PROFESSION_IDS } from '../data/professions';
-import { decodeHash, encodeHash } from '../engine/hash';
-import { evaluate, plusOne, withSlider, type Evaluation } from '../engine/scoring';
+import { decodeHash, encodeHash, encodeSliders, hashHasSliders } from '../engine/hash';
+import { evaluate, plusOne, uniformSliders, withSlider, type Evaluation } from '../engine/scoring';
 import { SUBJECT_IDS, type Lang, type Profession, type Sliders, type SubjectId } from '../engine/types';
 import { HTML_LANG, detectLang, t } from '../i18n';
 
@@ -10,15 +10,25 @@ import { HTML_LANG, detectLang, t } from '../i18n';
  * Nothing is written to cookies, localStorage or any server.
  */
 
-const initial = decodeHash(typeof location === 'undefined' ? '' : location.hash, PROFESSION_IDS);
+const initialHash = typeof location === 'undefined' ? '' : location.hash;
+const initial = decodeHash(initialHash, PROFESSION_IDS);
 
 export const sliders = signal<Sliders>(initial.sliders);
 export const goal = signal<string | null>(initial.goal);
 export const lang = signal<Lang>(
   initial.lang ?? detectLang(typeof navigator === 'undefined' ? undefined : navigator.languages),
 );
+/**
+ * True once the language came from the link or from the language switch.
+ * Only then is it written to the hash: a guessed browser language stays out of shared links.
+ */
+export const langChosen = signal<boolean>(initial.lang !== null);
+/** The grades on screen came from a link (`s=` in the hash), not from this user. */
+export const fromLink = signal<boolean>(hashHasSliders(initialHash));
 /** Profession whose card is open. Not part of the hash. */
 export const selected = signal<string | null>(null);
+/** The "How it works" dialog is open. Not part of the hash. */
+export const aboutOpen = signal<boolean>(false);
 
 export const evaluations = computed<ReadonlyMap<string, Evaluation>>(
   () => new Map(PROFESSIONS.map((p) => [p.id, evaluate(p, sliders.value)])),
@@ -55,7 +65,7 @@ export const plusOneBySubject = computed<Readonly<Record<SubjectId, Profession[]
 
 // ── actions ────────────────────────────────────────────────────────────────
 
-let animation: number | undefined;
+let animation: ReturnType<typeof setInterval> | undefined;
 
 function stopAnimation(): void {
   if (animation !== undefined) {
@@ -64,33 +74,34 @@ function stopAnimation(): void {
   }
 }
 
-export function setSlider(subject: SubjectId, value: number): void {
-  stopAnimation();
-  sliders.value = withSlider(sliders.value, subject, value);
+export function reducedMotion(): boolean {
+  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 }
 
-function reducedMotion(): boolean {
-  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
+export function setSlider(subject: SubjectId, value: number): void {
+  stopAnimation();
+  fromLink.value = false;
+  sliders.value = withSlider(sliders.value, subject, value);
 }
 
 /** Move every slider to `target`, one step at a time so the building visibly reacts. */
 export function applyPreset(target: number): void {
   stopAnimation();
-  const jump = () => {
-    sliders.value = Object.fromEntries(SUBJECT_IDS.map((s) => [s, target])) as Sliders;
-  };
+  fromLink.value = false;
+  const end = uniformSliders(target);
   if (reducedMotion()) {
-    jump();
+    sliders.value = end;
     return;
   }
-  animation = window.setInterval(() => {
+  animation = setInterval(() => {
     const cur = sliders.value;
     let done = true;
     const next = {} as Record<SubjectId, number>;
     for (const s of SUBJECT_IDS) {
       const v = cur[s];
-      next[s] = v === target ? v : v + Math.sign(target - v);
-      if (next[s] !== target) done = false;
+      const want = end[s];
+      next[s] = v === want ? v : v + Math.sign(want - v);
+      if (next[s] !== want) done = false;
     }
     sliders.value = next;
     if (done) stopAnimation();
@@ -102,10 +113,20 @@ export function toggleGoal(id: string): void {
 }
 
 export function setLang(l: Lang): void {
-  lang.value = l;
+  batch(() => {
+    lang.value = l;
+    langChosen.value = true;
+  });
+}
+
+export function dismissFromLink(): void {
+  fromLink.value = false;
 }
 
 // ── side effects: document language and the URL hash ──────────────────────
+
+/** Delay before the hash follows the sliders: Safari limits how often replaceState may run. */
+export const HASH_DELAY_MS = 150;
 
 let started = false;
 
@@ -118,23 +139,38 @@ export function startSync(): void {
     document.title = `${t(lang.value, 'app.title')} · ${t(lang.value, 'app.subtitle')}`;
   });
 
-  // Debounced: Safari limits how often replaceState may be called while dragging.
-  let timer: number | undefined;
+  let timer: ReturnType<typeof setTimeout> | undefined;
   effect(() => {
-    const hash = encodeHash({ sliders: sliders.value, goal: goal.value, lang: lang.value });
+    const hash = encodeHash({
+      sliders: sliders.value,
+      goal: goal.value,
+      lang: langChosen.value ? lang.value : null,
+    });
     clearTimeout(timer);
-    timer = window.setTimeout(() => {
-      if (location.hash !== hash) history.replaceState(history.state, '', hash);
-    }, 150);
+    timer = setTimeout(() => {
+      if (location.hash === hash) return;
+      try {
+        history.replaceState(history.state, '', hash);
+      } catch {
+        // Safari throws when replaceState runs too often. The page keeps working;
+        // the address bar catches up on the next change.
+      }
+    }, HASH_DELAY_MS);
   });
 
   window.addEventListener('hashchange', () => {
     const d = decodeHash(location.hash, PROFESSION_IDS);
+    const changed = encodeSliders(d.sliders) !== encodeSliders(sliders.value);
     stopAnimation();
     batch(() => {
+      // Grades from a pasted link or a back/forward step: say where they came from.
+      if (changed && hashHasSliders(location.hash)) fromLink.value = true;
       sliders.value = d.sliders;
       goal.value = d.goal;
-      if (d.lang) lang.value = d.lang;
+      if (d.lang) {
+        lang.value = d.lang;
+        langChosen.value = true;
+      }
     });
   });
 }
