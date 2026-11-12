@@ -76,6 +76,6 @@
   "about.floor.4": "universiteit, a research university: the most theory, after vwo (or via hbo).",
   "about.states": "Open: your grades are enough. Nearly there (+N): N more points on the sliders would open it. Locked (🔒): still too far for now.",
   "about.goal": "Tap a profession and choose ‘This is my goal’: the sliders then mark with ⚑ what your goal needs, and the top of the page shows what is still missing.",
-  "about.demo": "All numbers are demo data for now: written by hand and approximate, not real admission rules and not advice.",
+  "about.demo": "All numbers are demo data for now: made up for this prototype and approximate, not real admission rules and not advice.",
   "about.privacy": "Privacy: the page itself stores nothing and sends nothing. The hosting provider serves the files and sees an ordinary page request, but never your grades or your goal: they live in the address after the #, and that part is not sent."
 }

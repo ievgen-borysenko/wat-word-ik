@@ -2,9 +2,10 @@ import type { Need, Profession, SubjectId } from '../engine/types';
 import { L } from './subjects';
 
 /*
- * DEMO data (M0), written by hand. Requirements, levels and pay are rough
- * approximations meant to make the picture readable, not real admission rules.
- * Real sources are planned for M1 (see docs/sources.md).
+ * DEMO data (M0), made up for this prototype; no source has been used yet.
+ * Requirements, levels and pay are rough approximations meant to make the
+ * picture readable, not real admission rules. Real sources are planned for M1
+ * (see docs/sources.md).
  *
  * Order inside a floor is the fixed tile order on screen.
  */

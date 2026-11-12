@@ -1,7 +1,8 @@
 # Sources
 
-> **Status: M0 demo.** The data in this version is hand-written demo data.
-> None of the sources below has been used yet; they are **planned for M1**.
+> **Status: M0 demo.** The data in this version is demo data, made up for
+> this prototype and approximate. None of the sources below has been used
+> yet; they are **planned for M1**.
 
 | Source | What it could provide | Status |
 |--------|----------------------|--------|

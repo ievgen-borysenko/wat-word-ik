@@ -12,7 +12,8 @@ Try it: <https://ievgen-borysenko.github.io/wat-word-ik/>
 It shows what is *open* with your grades, never what you *will become*.
 
 **Status: M0 prototype with demo data.** All requirements, levels and pay
-values are approximate and written by hand. See
+values are approximate and made up for this prototype; no source has been
+used yet. See
 [docs/methodology.md](docs/methodology.md) and [docs/sources.md](docs/sources.md).
 
 Languages: Dutch, English, Ukrainian.
