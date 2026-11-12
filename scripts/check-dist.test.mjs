@@ -161,6 +161,12 @@ describe('check-dist', () => {
       ['local-path', `\`${win('C', '\\\\', 'Users', 'x')}\``],
       ['local-path', `"Built in ${win('D', '/', 'dev', 'Alice')}"`],
       ['local-path', `f(${'`'}${win('E', '/', 'build')}${'`'})`],
+      // The backslash form is found whatever precedes it short of a letter or digit
+      // (one backslash, so that the UNC alternative cannot be what finds it).
+      ['local-path', `"--root=${win('D', '\\', 'dev', 'x')}"`],
+      ['local-path', `"[${win('C', '\\', 'Users', 'x')}]"`],
+      ['local-path', `"bin;${win('D', '\\', 'tools', 'bin')}"`],
+      ['local-path', `"**${win('C', '\\', 'Users', 'x')}**"`],
       ['local-host', '"127.0.0.1"'],
       ['local-host', '"LOCALHOST"'],
       ['private-host', `"${ip(10, 0, 0, 5)}"`],

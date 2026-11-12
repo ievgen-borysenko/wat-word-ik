@@ -170,6 +170,10 @@ describe('check-tree', () => {
     ['a drive path in inline code', `Run it from \`${['C:', 'Users', 'x'].join('\\')}\`.\n`],
     ['a drive path as a link target', `See [the build](${['D:', 'dev', 'x'].join('/')}).\n`],
     ['a drive path at the start of a line', `${['C:', 'Users', 'x'].join('\\')} holds it\n`],
+    ['a backslash drive path after =', `Set ROOT=${['D:', 'dev', 'x'].join('\\')} first.\n`],
+    ['a backslash drive path in brackets', `The folder [${['C:', 'Users', 'x'].join('\\')}] holds it.\n`],
+    ['a backslash drive path as a later PATH entry', `PATH=bin;${['D:', 'tools', 'bin'].join('\\')}\n`],
+    ['a backslash drive path in Markdown emphasis', `Open **${['C:', 'Users', 'x'].join('\\')}** first.\n`],
   ])('refuses a local path: %s', (_what, content) => {
     expect(rules(repo({ 'docs/ci.md': content }))).toEqual(['docs/ci.md local-path']);
   });
