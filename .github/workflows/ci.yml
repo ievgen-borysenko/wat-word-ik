@@ -1,0 +1,208 @@
+# What each step protects against: docs/ci.md.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Cancel superseded runs of a pull request; never cancel a run on main (it may deploy).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  # sha256 of gitleaks_8.30.1_linux_x64.tar.gz, copied from the release's
+  # gitleaks_8.30.1_checksums.txt. The step below also checks that file.
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+jobs:
+  verify:
+    name: Verify and build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out the full history (secret scan and commit check need it)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node from .nvmrc
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install gitleaks (pinned release, sha256 checked)
+        run: |
+          dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$dir"
+          cd "$dir"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL --retry 3 -o "$tarball" "$base/$tarball"
+          curl -fsSL --retry 3 -o checksums.txt "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep -qxF "${GITLEAKS_SHA256}  ${tarball}" checksums.txt \
+            || { echo "::error::the pinned sha256 is not the one in the release checksums file"; exit 1; }
+          echo "${GITLEAKS_SHA256}  ${tarball}" | sha256sum --check --strict -
+          tar -xzf "$tarball" gitleaks
+          echo "$dir" >> "$GITHUB_PATH"
+          ./gitleaks version
+
+      - name: Secret scan - full git history and working tree
+        run: |
+          # A config or ignore file would change what gitleaks reports; adding one
+          # must be a deliberate change to this step as well.
+          for f in .gitleaks.toml .gitleaksignore; do
+            if [ -e "$f" ]; then echo "::error file=$f::$f changes the secret scan; review it and update this step"; exit 1; fi
+          done
+          gitleaks git --no-banner --redact --ignore-gitleaks-allow --log-opts="--all --full-history" .
+          gitleaks dir --no-banner --redact --ignore-gitleaks-allow .
+
+      - name: Install dependencies (lockfile only, no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Lockfile - registry, integrity, runtime licences
+        run: npm run check:lock
+
+      - name: npm audit - runtime dependencies (fails on high or critical)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: npm audit - all dependencies (report only)
+        continue-on-error: true
+        run: |
+          rc=0
+          npm audit --json > "$RUNNER_TEMP/audit.json" || rc=$?
+          echo "npm audit exit code: $rc (non-zero means findings; this step only reports)"
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const v = r.metadata && r.metadata.vulnerabilities;
+            if (!v) { console.error("npm audit gave no summary:", JSON.stringify(r).slice(0, 500)); process.exit(1); }
+            console.log(`npm audit, all dependencies: ${v.total} total (critical ${v.critical}, high ${v.high}, moderate ${v.moderate}, low ${v.low}, info ${v.info})`);
+          ' "$RUNNER_TEMP/audit.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit e-mails in the proposed or pushed range
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_BEFORE: ${{ github.event.before }}
+          PUSH_AFTER: ${{ github.event.after }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            base="$PR_BASE"
+            head="$PR_HEAD"
+          else
+            base="$PUSH_BEFORE"
+            head="$PUSH_AFTER"
+            if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
+              echo "::notice::previous tip ${base} is not in the history (new branch or force push): checking every commit of ${head}"
+              base=0000000000000000000000000000000000000000
+            fi
+          fi
+          npm run check:commits -- "$base" "$head"
+
+      - name: Links in README and docs
+        run: npm run check:links
+
+      - name: Build
+        run: npm run build
+
+      - name: Audit the built site
+        run: npm run check:dist
+
+      - name: Secret scan - built site
+        run: gitleaks dir --no-banner --redact --ignore-gitleaks-allow dist
+
+      - name: Upload the audited site as the Pages artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: dist
+
+  e2e:
+    name: End-to-end (built site)
+    needs: verify
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out (tests and config only; the site comes from the artifact)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node from .nvmrc
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies (lockfile only, no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Install the Chromium build of the pinned Playwright version
+        run: npx playwright install --with-deps chromium
+
+      - name: Download the audited site
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: github-pages
+          path: ${{ runner.temp }}/pages
+
+      - name: Unpack it into dist/ (no rebuild)
+        run: |
+          mkdir dist
+          tar -xf "$RUNNER_TEMP/pages/artifact.tar" -C dist
+          find dist -type f | sort
+
+      - name: Playwright
+        run: npm run e2e
+
+      - name: Keep the Playwright report of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [verify, e2e]
+    # Only a push to main of a public repository deploys; pull requests never do.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      - name: Check the Pages settings
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Deploy the artifact that verify audited and e2e tested
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

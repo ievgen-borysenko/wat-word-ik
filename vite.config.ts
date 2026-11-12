@@ -37,7 +37,7 @@ export default defineConfig({
     modulePreload: { polyfill: false },
   },
   test: {
-    include: ['src/**/*.test.ts'],
+    include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],
     environment: 'node',
   },
 });
