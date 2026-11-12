@@ -1,4 +1,4 @@
-import type { Lang, Localized } from '../engine/types';
+import type { Lang } from '../engine/types';
 import en from './en.json';
 import nl from './nl.json';
 import ua from './ua.json';
@@ -31,11 +31,6 @@ export function tp(lang: Lang, key: PluralKey, n: number, params: Params = {}): 
   const msgs = MESSAGES[lang] as Readonly<Record<string, string>>;
   const template = msgs[`${key}.${category}`] ?? msgs[`${key}.other`] ?? key;
   return fill(template, { n, ...params });
-}
-
-/** Pick the text for a language from a data record. */
-export function pick(l: Localized, lang: Lang): string {
-  return l[lang];
 }
 
 /** First browser language we support: uk/ru -> ua, nl -> nl, en -> en; otherwise English. */

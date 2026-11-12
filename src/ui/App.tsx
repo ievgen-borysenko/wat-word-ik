@@ -1,9 +1,10 @@
 import { t } from '../i18n';
+import { AboutDialog } from './AboutDialog';
 import { Building, Summary } from './Building';
 import { Header } from './Header';
 import { ProfessionCard } from './ProfessionCard';
 import { SlidersPanel } from './SlidersPanel';
-import { lang } from './store';
+import { aboutOpen, lang } from './store';
 
 export function App() {
   const l = lang.value;
@@ -20,9 +21,10 @@ export function App() {
               <span>{t(l, 'legend.badge')}</span>
             </p>
             <p>
-              {t(l, 'footer.privacy')} <a href="docs/methodology.md">{t(l, 'footer.methodology')}</a>
-              {' · '}
-              <a href="docs/sources.md">{t(l, 'footer.sources')}</a>
+              {t(l, 'footer.privacy')}{' '}
+              <button type="button" class="link-btn" aria-haspopup="dialog" onClick={() => (aboutOpen.value = true)}>
+                {t(l, 'about.title')}
+              </button>
             </p>
           </footer>
         </div>
@@ -31,6 +33,7 @@ export function App() {
         </aside>
       </main>
       <ProfessionCard />
+      <AboutDialog />
     </div>
   );
 }

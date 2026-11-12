@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { LANGS } from '../engine/types';
-import { MESSAGES, PLURAL_KEYS, detectLang, t, tp } from './index';
+import { HTML_LANG, MESSAGES, PLURAL_KEYS, detectLang, t, tp } from './index';
 
 describe('i18n', () => {
   it('every language has the same keys, all non-empty, with the same placeholders', () => {
@@ -20,8 +20,21 @@ describe('i18n', () => {
     }
   });
 
+  it('every plural string has exactly the CLDR categories of its language', () => {
+    for (const lang of LANGS) {
+      const categories = new Intl.PluralRules(HTML_LANG[lang]).resolvedOptions().pluralCategories;
+      expect(categories.length, lang).toBeGreaterThan(1);
+      for (const k of PLURAL_KEYS) {
+        const present = Object.keys(MESSAGES[lang])
+          .filter((key) => key.startsWith(`${k}.`))
+          .map((key) => key.slice(k.length + 1))
+          .sort();
+        expect(present, `${lang} ${k}`).toEqual([...categories].sort());
+      }
+    }
+  });
+
   it('picks plural forms', () => {
-    for (const lang of LANGS) for (const k of PLURAL_KEYS) expect(MESSAGES[lang]).toHaveProperty([`${k}.one`]);
     expect(tp('en', 'tile.ariaSteps', 1)).toBe('1 point missing');
     expect(tp('en', 'tile.ariaSteps', 3)).toBe('3 points missing');
     expect(tp('nl', 'tile.ariaSteps', 1)).toBe('er mist 1 punt');

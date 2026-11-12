@@ -15,7 +15,8 @@
   --track: #dde1e7;
   --far-bg: #e8e9ec;
   --far-ink: #555b68;
-  --goal: #d99a00;
+  /* Goal ring and flag: at least 4:1 against every floor and tile background. */
+  --goal: #946500;
   --badge-bg: #fff2bf;
   --badge-ink: #4d3b00;
   --badge-line: #d9ae1e;
@@ -142,15 +143,61 @@ a {
   border: 1px solid var(--line);
   border-radius: 999px;
   background: var(--surface);
-  overflow: hidden;
 }
 
+/* Each button is its own pill, so nothing clips the focus ring. */
 .lang-btn {
   border: 0;
+  border-radius: 999px;
   background: transparent;
   padding: 5px 11px;
   font-weight: 600;
   font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.lang-btn:focus-visible {
+  position: relative;
+  z-index: 1;
+}
+
+.help-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--surface);
+  padding: 3px 11px 3px 4px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.help-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--accent);
+  color: #ffffff;
+  font-size: 0.75rem;
+  font-weight: 800;
+}
+
+.demo-short {
+  display: none;
+}
+
+.link-btn {
+  border: 0;
+  padding: 0;
+  background: transparent;
+  color: var(--accent);
+  font-size: inherit;
+  text-decoration: underline;
   cursor: pointer;
 }
 
@@ -249,13 +296,29 @@ a {
   }
 }
 
-/* Narrow: header, summary and the whole building on top; sliders fixed at the bottom. */
+/*
+ * Narrow: header, summary and the whole building on top; sliders fixed at the bottom.
+ * The panel is 36% of the screen, so all five floors stay visible while a slider moves
+ * (checked at 360x640, 375x667, 390x664, 375x812 and 768x1024).
+ */
 @media (max-width: 899.98px) {
+  :root {
+    --panel-h: 36vh;
+  }
+  @supports (height: 1dvh) {
+    :root {
+      --panel-h: 36dvh;
+    }
+  }
+  html {
+    /* A tile reached with the keyboard is never scrolled under the panel. */
+    scroll-padding-bottom: calc(var(--panel-h) + 8px);
+  }
   .app {
-    padding: 6px 8px 0;
+    padding: 3px 8px 0;
   }
   .header {
-    padding-bottom: 4px;
+    padding-bottom: 2px;
     gap: 6px;
   }
   .header h1 {
@@ -268,22 +331,40 @@ a {
   }
   .header-side {
     flex-wrap: nowrap;
-    gap: 6px;
+    gap: 5px;
+  }
+  .lang-switch {
+    border: 0;
+    background: transparent;
   }
   .lang-btn {
-    padding: 3px 8px;
+    min-height: 24px;
+    padding: 2px 7px;
     font-size: 0.74rem;
   }
+  .help-btn {
+    min-height: 24px;
+    padding: 1px;
+  }
+  .help-text,
+  .demo-long {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+  .demo-short {
+    display: inline;
+  }
   .demo-badge {
-    font-size: 0.6rem;
-    padding: 2px 6px;
-    max-width: 140px;
-    line-height: 1.15;
-    text-align: center;
+    font-size: 0.66rem;
+    padding: 2px 7px;
+    white-space: nowrap;
   }
   .col-building {
-    padding-bottom: calc(44vh + 8px);
-    padding-bottom: calc(44dvh + 8px);
+    padding-bottom: calc(var(--panel-h) + 8px);
   }
   .col-sliders {
     --thumb: 26px;
@@ -291,8 +372,7 @@ a {
     left: 0;
     right: 0;
     bottom: 0;
-    height: 44vh;
-    height: 44dvh;
+    height: var(--panel-h);
     overflow-y: auto;
     overscroll-behavior: contain;
     z-index: 10;
@@ -461,6 +541,38 @@ a {
   background: var(--ok);
 }
 
+/* Grades that came with a link: one line until the first slider change. */
+.from-link {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 8px 0 2px;
+  padding: 2px 2px 2px 10px;
+  border-radius: 10px;
+  border: 1px solid var(--badge-line);
+  background: var(--badge-bg);
+  color: var(--badge-ink);
+  font-size: 0.78rem;
+  font-weight: 600;
+  line-height: 1.25;
+}
+
+.from-link p {
+  flex: 1;
+}
+
+.from-link-close {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
 /* Reserved single line: nothing below moves while dragging. */
 .slider-hint {
   height: 1.3em;
@@ -518,16 +630,17 @@ a {
 
 @media (max-width: 899.98px) {
   .summary {
-    padding: 4px 8px;
+    padding: 1px 8px 2px;
     margin-bottom: 4px;
   }
   .summary-counts {
-    font-size: 0.82rem;
+    font-size: 0.8rem;
+    line-height: 1.2;
   }
   .headline,
   .summary-goal {
-    font-size: 0.76rem;
-    line-height: 1.3;
+    font-size: 0.74rem;
+    line-height: 1.2;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
@@ -634,19 +747,32 @@ a {
   position: relative;
 }
 
+/* The button is a 24x24 target; the visible circle inside it is smaller. */
 .floor-info-btn {
-  margin-left: 5px;
-  width: 20px;
-  height: 20px;
+  display: inline-grid;
+  place-items: center;
+  margin: -2px 0 -2px 2px;
+  width: 24px;
+  height: 24px;
   padding: 0;
+  border: 0;
   border-radius: 50%;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  background: transparent;
   font-size: 0.72rem;
   font-weight: 700;
   line-height: 1;
-  vertical-align: 2px;
+  vertical-align: middle;
   cursor: pointer;
+}
+
+.floor-info-dot {
+  display: grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid var(--line);
+  background: var(--surface);
 }
 
 /* The floor explanation pops over the building; it never changes the row height. */
@@ -819,7 +945,7 @@ a {
 /* Narrow: each floor is a slim one-line header plus one row of emoji-only squares. */
 @media (max-width: 899.98px) {
   .roof {
-    height: 8px;
+    height: 6px;
   }
   .ground {
     height: 6px;
@@ -828,13 +954,17 @@ a {
   .floor {
     flex: none;
     grid-template-columns: minmax(0, 1fr);
-    gap: 1px;
-    padding: 2px 4px 4px;
+    gap: 2px;
+    padding: 1px 4px 2px;
   }
+  /*
+   * 17px high. The 24px "?" target overhangs 5px up (this floor's top padding plus the
+   * bottom padding and border of the floor above) and 2px down (the gap): it covers no tile.
+   */
   .floor-head {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 0;
     border-left-width: 3px;
     padding-left: 5px;
     height: 17px;
@@ -842,18 +972,28 @@ a {
   .floor-label {
     font-size: 0.8rem;
   }
+  .floor-info {
+    display: flex;
+    align-self: stretch;
+    align-items: center;
+  }
   .floor-info-btn {
+    margin: -5px 0 -2px;
+    padding-top: 3px;
+    font-size: 0.66rem;
+  }
+  .floor-info-dot {
     width: 16px;
     height: 16px;
-    margin-left: 0;
-    font-size: 0.66rem;
-    vertical-align: 0;
   }
   .floor-count {
     margin: 0 0 0 auto;
     font-size: 0.68rem;
   }
+  /* Tiles never grow past 56px, so tablets keep the whole building above the panel. */
   .tiles {
+    grid-template-columns: repeat(8, minmax(0, 56px));
+    justify-content: start;
     gap: 3px;
   }
   .tile {
@@ -1151,9 +1291,9 @@ a {
   color: var(--far-ink);
 }
 
+/* The current rung: an inner ring and bold text. The outline stays free for the focus ring. */
 .ladder-chip.is-current {
-  outline: 3px solid var(--ink);
-  outline-offset: 1px;
+  box-shadow: inset 0 0 0 2px var(--ink);
   font-weight: 700;
 }
 
@@ -1200,7 +1340,64 @@ a {
 
 .goal-btn.is-active {
   background: var(--goal);
-  color: #1b1400;
+  color: #ffffff;
+}
+
+/* ── how it works ──────────────────────────────────────────────────────── */
+
+.about-dialog {
+  padding: 0;
+  border: 0;
+  border-radius: 16px;
+  width: min(560px, calc(100vw - 24px));
+  max-height: calc(100dvh - 24px);
+  background: var(--surface);
+  color: var(--ink);
+  box-shadow: 0 12px 40px rgb(20 24 33 / 0.3);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.about-dialog::backdrop {
+  background: rgb(20 24 33 / 0.45);
+}
+
+.about {
+  display: grid;
+  gap: 10px;
+  padding: 16px 20px 22px;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.about-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.about-head h2 {
+  font-size: 1.25rem;
+}
+
+.about-close {
+  flex: none;
+  border: 1px solid var(--line);
+  background: #f3f5f8;
+  border-radius: 999px;
+  width: 40px;
+  height: 40px;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.about-floors {
+  margin: -4px 0 0;
+  padding-left: 1.2em;
+  display: grid;
+  gap: 3px;
 }
 
 /* ── motion ────────────────────────────────────────────────────────────── */

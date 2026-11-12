@@ -1,10 +1,11 @@
 import { useEffect, useRef } from 'preact/hooks';
 import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
-import { focus, ladder, nextRung } from '../engine/hints';
+import { focusOf, ladder, nextRung } from '../engine/hints';
 import type { Evaluation } from '../engine/scoring';
 import { GRADE_MAX, type Lang, type Profession } from '../engine/types';
-import { t, tp, type MessageKey } from '../i18n';
+import { t, tp } from '../i18n';
 import { decimal, euros, floorAbout, floorLabel, shortName, subjectEmoji, subjectName } from './format';
+import { useModalDialog } from './modal';
 import { evaluations, goal, lang, selected, sliders, toggleGoal } from './store';
 
 const pct = (v: number) => `${(Math.max(0, Math.min(GRADE_MAX, v)) / GRADE_MAX) * 100}%`;
@@ -38,7 +39,7 @@ function FocusLines({ p, e, l }: { p: Profession; e: Evaluation; l: Lang }) {
       items.push(t(l, 'card.focusTop'));
     }
   } else {
-    for (const g of focus(p, sliders.value)) {
+    for (const g of focusOf(e)) {
       items.push(
         g.kind === 'subject'
           ? t(l, 'card.focusSubject', { subject: subjectName(g.subject, l), n: g.points })
@@ -94,7 +95,7 @@ function CardBody({ p, e }: { p: Profession; e: Evaluation }) {
       <p class="card-state">
         <span class={`state-pill is-${e.state}`}>
           {e.state === 'far' ? '🔒 ' : e.state === 'near' ? `+${e.stepsToOpen} ` : '✓ '}
-          {t(l, `state.${e.state}` as MessageKey)}
+          {t(l, `state.${e.state}`)}
         </span>
       </p>
       <p class="card-about">{p.about[l]}</p>
@@ -161,7 +162,7 @@ function CardBody({ p, e }: { p: Profession; e: Evaluation }) {
                     <span aria-hidden="true">{r.emoji}</span> {shortName(r, l)}{' '}
                     <span class="chip-floor">{floorLabel(r.level, l)}</span>
                     {re?.state === 'far' && <span aria-hidden="true"> 🔒</span>}
-                    <span class="visually-hidden">, {t(l, `state.${re?.state ?? 'far'}` as MessageKey)}</span>
+                    <span class="visually-hidden">, {t(l, `state.${re?.state ?? 'far'}`)}</span>
                   </button>
                 </li>
               );
@@ -203,49 +204,32 @@ function CardBody({ p, e }: { p: Profession; e: Evaluation }) {
 }
 
 export function ProfessionCard() {
-  const ref = useRef<HTMLDialogElement>(null);
-  const returnTo = useRef<HTMLElement | null>(null);
   const id = selected.value;
   const p = id ? PROFESSION_BY_ID.get(id) : undefined;
   const e = p ? evaluations.value.get(p.id) : undefined;
   const isOpen = Boolean(p && e);
+  // The last profession shown: its tile takes focus when the opener is gone
+  // (for example the goal banner, after "Remove goal" inside the card).
+  const lastId = useRef<string | null>(null);
+  if (p) lastId.current = p.id;
 
-  useEffect(() => {
-    const dlg = ref.current;
-    if (!dlg) return;
-    if (isOpen && !dlg.open) {
-      returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-      dlg.showModal();
-      document.documentElement.classList.add('has-modal');
-      dlg.querySelector<HTMLElement>('.card-close')?.focus();
-    } else if (!isOpen && dlg.open) {
-      dlg.close();
-    }
-  }, [isOpen]);
-
-  const onClose = () => {
-    document.documentElement.classList.remove('has-modal');
-    if (selected.value !== null) selected.value = null;
-    const back = returnTo.current;
-    returnTo.current = null;
-    if (back && back.isConnected) back.focus();
-  };
+  const modal = useModalDialog(isOpen, {
+    focusSelector: '.card-close',
+    onDismiss: () => {
+      if (selected.value !== null) selected.value = null;
+    },
+    fallbackFocus: () =>
+      lastId.current ? document.querySelector<HTMLElement>(`.tile[data-id="${lastId.current}"]`) : null,
+  });
 
   return (
     <dialog
-      ref={ref}
+      ref={modal.ref}
       class="card-dialog"
       aria-labelledby="card-title"
-      onClose={onClose}
-      onClick={(ev) => {
-        // Close only for a click on the backdrop: outside the dialog's own box.
-        // A tap on blank space inside the card does not close it.
-        if (ev.target !== ev.currentTarget) return;
-        const r = ev.currentTarget.getBoundingClientRect();
-        const inside =
-          ev.clientX >= r.left && ev.clientX <= r.right && ev.clientY >= r.top && ev.clientY <= r.bottom;
-        if (!inside) selected.value = null;
-      }}
+      onClose={modal.onClose}
+      onPointerDown={modal.onPointerDown}
+      onClick={modal.onClick}
     >
       {p && e && <CardBody key="card" p={p} e={e} />}
     </dialog>

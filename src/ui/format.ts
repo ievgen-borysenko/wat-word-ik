@@ -2,7 +2,7 @@ import { SUBJECTS } from '../data/subjects';
 import { gapsOf, type Gap } from '../engine/hints';
 import type { Evaluation } from '../engine/scoring';
 import type { Lang, Level, Profession, SubjectId } from '../engine/types';
-import { t, type MessageKey } from '../i18n';
+import { t } from '../i18n';
 
 const SUBJECT_BY_ID = new Map(SUBJECTS.map((s) => [s.id, s]));
 
@@ -21,11 +21,11 @@ export function shortName(p: Profession, lang: Lang): string {
 }
 
 export function floorLabel(level: Level, lang: Lang): string {
-  return t(lang, `floor.${level}.label` as MessageKey);
+  return t(lang, `floor.${level}.label`);
 }
 
 export function floorAbout(level: Level, lang: Lang): string {
-  return t(lang, `floor.${level}.about` as MessageKey);
+  return t(lang, `floor.${level}.about`);
 }
 
 /** "Maths +2, overall level +1" for the goal banner. */

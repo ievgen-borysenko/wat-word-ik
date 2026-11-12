@@ -2,15 +2,14 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
 import type { Evaluation } from '../engine/scoring';
 import type { Lang, Level, Profession, State } from '../engine/types';
-import { t, tp, type MessageKey } from '../i18n';
+import { t, tp } from '../i18n';
 import { euros, floorAbout, floorLabel, goalText, shortName } from './format';
-import { band, counts, evaluations, goal, lang, selected } from './store';
+import { band, counts, evaluations, goal, lang, reducedMotion, selected } from './store';
 
 const FLOORS_TOP_DOWN: readonly Level[] = [4, 3, 2, 1, 0];
 
-function reducedMotion(): boolean {
-  return typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
-}
+/** Screen readers hear the counts once the sliders rest, not on every step of a drag. */
+const ANNOUNCE_DELAY_MS = 800;
 
 function Tile({ p, e }: { p: Profession; e: Evaluation }) {
   const l = lang.value;
@@ -34,7 +33,7 @@ function Tile({ p, e }: { p: Profession; e: Evaluation }) {
     prev.current = e.state;
   }, [e.state]);
 
-  let stateText = t(l, `state.${e.state}` as MessageKey);
+  let stateText = t(l, `state.${e.state}`);
   if (e.state === 'near') stateText += `, ${tp(l, 'tile.ariaSteps', e.stepsToOpen)}`;
   // The accessible name starts with the visible text (WCAG 2.5.3), then the full name.
   const visible = shortName(p, l);
@@ -48,6 +47,7 @@ function Tile({ p, e }: { p: Profession; e: Evaluation }) {
       ref={ref}
       type="button"
       class={`tile is-${e.state} ${isGoal ? 'is-goal' : ''}`}
+      data-id={p.id}
       aria-label={aria}
       title={p.name[l]}
       aria-haspopup="dialog"
@@ -81,22 +81,50 @@ function Tile({ p, e }: { p: Profession; e: Evaluation }) {
 
 function FloorInfo({ level, l }: { level: Level; l: Lang }) {
   const [open, setOpen] = useState(false);
+  const wrap = useRef<HTMLSpanElement>(null);
+  const button = useRef<HTMLButtonElement>(null);
   const id = `floor-about-${level}`;
+
+  // Safari does not focus a button on click, so blur alone never closes the note there:
+  // close on any pointerdown outside it and on Escape.
+  useEffect(() => {
+    if (!open) return;
+    const onPointerDown = (ev: PointerEvent) => {
+      if (!(ev.target instanceof Node) || !wrap.current?.contains(ev.target)) setOpen(false);
+    };
+    const onKeyDown = (ev: KeyboardEvent) => {
+      if (ev.key !== 'Escape') return;
+      setOpen(false);
+      if (wrap.current?.contains(document.activeElement)) button.current?.focus();
+    };
+    document.addEventListener('pointerdown', onPointerDown, true);
+    document.addEventListener('keydown', onKeyDown);
+    return () => {
+      document.removeEventListener('pointerdown', onPointerDown, true);
+      document.removeEventListener('keydown', onKeyDown);
+    };
+  }, [open]);
+
   return (
-    <span class="floor-info">
+    <span class="floor-info" ref={wrap}>
       <button
+        ref={button}
         type="button"
         class="floor-info-btn"
         aria-expanded={open}
         aria-controls={id}
         aria-label={t(l, 'floor.info', { floor: floorLabel(level, l) })}
         onClick={() => setOpen(!open)}
-        onBlur={() => setOpen(false)}
+        onBlur={(ev) => {
+          if (!(ev.relatedTarget instanceof Node) || !wrap.current?.contains(ev.relatedTarget)) setOpen(false);
+        }}
         onKeyDown={(ev) => {
           if (ev.key === 'Escape') setOpen(false);
         }}
       >
-        ?
+        <span class="floor-info-dot" aria-hidden="true">
+          ?
+        </span>
       </button>
       <span id={id} class="floor-about" role="note" hidden={!open}>
         {floorAbout(level, l)}
@@ -139,12 +167,24 @@ export function Summary() {
   const c = counts.value;
   const g = goal.value ? PROFESSION_BY_ID.get(goal.value) : undefined;
   const ge = g ? evaluations.value.get(g.id) : undefined;
+  const text = t(l, 'summary.counts', { open: c.open, total: c.total, near: c.near });
+
+  // aria-live is debounced: a live region on the visible line would speak on every slider step.
+  const [settled, setSettled] = useState(text);
+  useEffect(() => {
+    const timer = setTimeout(() => setSettled(text), ANNOUNCE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [text]);
+
   return (
     <div class={`summary ${g ? 'has-goal' : ''}`}>
-      <p class="summary-counts" aria-live="polite">
-        {t(l, 'summary.counts', { open: c.open, total: c.total, near: c.near })}
+      <p class="summary-counts" aria-hidden="true">
+        {text}
       </p>
-      <p class={`headline band-${band.value}`}>{t(l, `headline.${band.value}` as MessageKey)}</p>
+      <p class="visually-hidden" aria-live="polite">
+        {settled}
+      </p>
+      <p class={`headline band-${band.value}`}>{t(l, `headline.${band.value}`)}</p>
       {g && ge && (
         <button type="button" class={`summary-goal ${ge.state === 'open' ? 'is-open' : ''}`} onClick={() => (selected.value = g.id)}>
           {goalText(g, ge, l)}

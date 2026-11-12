@@ -3,7 +3,7 @@ import { SUBJECTS } from '../data/subjects';
 import { GRADE_MAX, GRADE_MIN, type Subject } from '../engine/types';
 import { t } from '../i18n';
 import { shortName } from './format';
-import { applyPreset, goal, lang, plusOneBySubject, setSlider, sliders } from './store';
+import { applyPreset, dismissFromLink, fromLink, goal, lang, plusOneBySubject, setSlider, sliders } from './store';
 
 const PRESETS = [
   { value: 3, key: 'presets.low' },
@@ -88,6 +88,14 @@ export function SlidersPanel() {
         <h2 id="sliders-title">{t(l, 'sliders.title')}</h2>
         <p class="sliders-scale">{t(l, 'sliders.scale')}</p>
       </div>
+      {fromLink.value && (
+        <div class="from-link">
+          <p>{t(l, 'fromLink.text')}</p>
+          <button type="button" class="from-link-close" aria-label={t(l, 'fromLink.dismiss')} onClick={dismissFromLink}>
+            ×
+          </button>
+        </div>
+      )}
       <div class="presets" role="group" aria-label={t(l, 'presets.label')}>
         {PRESETS.map((p) => (
           <button key={p.value} type="button" class="preset-btn" onClick={() => applyPreset(p.value)}>
