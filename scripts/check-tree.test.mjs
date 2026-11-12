@@ -167,9 +167,15 @@ describe('check-tree', () => {
     ['a Windows drive path with slashes', `Built in ${['D:', 'dev', 'Alice', 'wat-word-ik'].join('/')}\n`],
     ['a Windows drive path with backslashes', `Built in ${['D:', 'dev', 'Alice'].join('\\')}\n`],
     ['a UNC path', `Copied from ${'\\'.repeat(2)}${['nas', 'share', 'site'].join('\\')}\n`],
-    ['a drive path in inline code', `Run it from \`${['C:', 'Users', 'x'].join('\\')}\`.\n`],
+    // Forward-slash drive paths, one per token start; no `Users` part, so that the
+    // macOS home-folder alternative cannot be what finds them.
+    ['a forward-slash drive path in inline code', `Run it from \`${['C:', 'work', 'x'].join('/')}\`.\n`],
     ['a drive path as a link target', `See [the build](${['D:', 'dev', 'x'].join('/')}).\n`],
-    ['a drive path at the start of a line', `${['C:', 'Users', 'x'].join('\\')} holds it\n`],
+    ['a forward-slash drive path at the start of the file', `${['C:', 'work', 'x'].join('/')} holds it\n`],
+    ['a forward-slash drive path at the start of a later line', `intro\n${['D:', 'dev', 'x'].join('/')} holds it\n`],
+    ['a file URL pathname with a drive', `Open "/${['D:', 'dev', 'x'].join('/')}" there.\n`],
+    ['a file URL with two slashes and a drive', `See file://${['D:', 'x'].join('/')} first.\n`],
+    ['a file URL with a drive in angle brackets', `See <file:///${['D:', 'x'].join('/')}>.\n`],
     ['a backslash drive path after =', `Set ROOT=${['D:', 'dev', 'x'].join('\\')} first.\n`],
     ['a backslash drive path in brackets', `The folder [${['C:', 'Users', 'x'].join('\\')}] holds it.\n`],
     ['a backslash drive path as a later PATH entry', `PATH=bin;${['D:', 'tools', 'bin'].join('\\')}\n`],
@@ -217,7 +223,7 @@ describe('check-tree', () => {
   it('does not take a one-letter key or label before a regular expression for a drive', () => {
     const r = repo({
       'src/ui/App.tsx': 'export const r={a:/beta/},o={b:/x/g},t=(c:boolean)=>c?r:/re/;\n',
-      'scripts/check-tree.mjs': 'const m={a:/beta/};for(;;){e:/x/.test("");break}\n',
+      'scripts/check-tree.mjs': 'const m={a:/beta/};for(;;){e:/x/.test("");break}const u=c?/a/g:/b/g,v=a/b:/c/;\n',
     });
     expect(rules(r)).toEqual([]);
   });

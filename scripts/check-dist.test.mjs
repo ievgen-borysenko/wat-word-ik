@@ -161,6 +161,11 @@ describe('check-dist', () => {
       ['local-path', `\`${win('C', '\\\\', 'Users', 'x')}\``],
       ['local-path', `"Built in ${win('D', '/', 'dev', 'Alice')}"`],
       ['local-path', `f(${'`'}${win('E', '/', 'build')}${'`'})`],
+      // File URLs: the pathname (one slash before the drive), two slashes, and
+      // `file:///` after a character that does not start a token.
+      ['local-path', `"/${win('D', '/', 'dev', 'x')}"`],
+      ['local-path', `"file://${win('D', '/', 'x')}"`],
+      ['local-path', `"<file:///${win('D', '/', 'x')}>"`],
       // The backslash form is found whatever precedes it short of a letter or digit
       // (one backslash, so that the UNC alternative cannot be what finds it).
       ['local-path', `"--root=${win('D', '\\', 'dev', 'x')}"`],
@@ -200,6 +205,8 @@ describe('check-dist', () => {
       'f(c?x=a:/re/:0)',
       'for(;;){e:/x/.test(s);break}',
       'if(x){}a:/y/g.exec(s)',
+      'c?/a/g:/b/g',
+      'x=a/b:/c/',
       '"a\\nb"',
       '"172.32.0.1"',
       '"10.0.0"',
