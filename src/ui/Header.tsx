@@ -2,6 +2,7 @@ import { PROFESSION_BY_ID } from '../data/professions';
 import { LANGS } from '../engine/types';
 import { t } from '../i18n';
 import { goalText } from './format';
+import { openedBy } from './modal';
 import { aboutOpen, evaluations, goal, lang, selected, setLang, toggleGoal } from './store';
 
 export function Header() {
@@ -14,7 +15,15 @@ export function Header() {
       </div>
       <GoalBanner />
       <div class="header-side">
-        <button type="button" class="help-btn" aria-haspopup="dialog" onClick={() => (aboutOpen.value = true)}>
+        <button
+          type="button"
+          class="help-btn"
+          aria-haspopup="dialog"
+          onClick={(ev) => {
+            openedBy(ev);
+            aboutOpen.value = true;
+          }}
+        >
           <span class="help-icon" aria-hidden="true">
             ?
           </span>
@@ -54,7 +63,14 @@ export function GoalBanner() {
   const open = e.state === 'open';
   return (
     <div class={`goal-banner ${open ? 'is-open' : ''}`}>
-      <button type="button" class="goal-banner-text" onClick={() => (selected.value = p.id)}>
+      <button
+        type="button"
+        class="goal-banner-text"
+        onClick={(ev) => {
+          openedBy(ev);
+          selected.value = p.id;
+        }}
+      >
         <span aria-hidden="true">{p.emoji}</span>{' '}
         {goalText(p, e, l)}
       </button>
