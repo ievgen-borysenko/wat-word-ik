@@ -13,7 +13,7 @@ repository. Every third-party action is pinned to a full commit hash.
 
 | Check | What it protects against |
 |-------|--------------------------|
-| `npm run check:tree` | Files that do not belong to the program: settings of personal tools, editor folders, notes, dumps, scratch files. Every tracked file must match the list in `scripts/check-tree.mjs`; symlinks, submodules and executable files are refused, and no tracked text file may contain an e-mail address, a path from a developer's computer or a private key. |
+| `npm run check:tree` | Files that do not belong to the program: settings of personal tools, editor folders, notes, dumps, scratch files. Every tracked file must match the list in `scripts/check-tree.mjs`, and so must every path that a commit of the pull request adds, copies or renames to (on a push to `main`: any commit in the history), even when a later commit removes it again. Symlinks, submodules, executable files and files that are not UTF-8 text (binary data, UTF-16) are refused. No tracked file may contain an e-mail address, a path from a developer's computer, a private key or a private network address (RFC 1918), and files other than code may not name a host under `.local`, `.lan` or `.internal`. Loopback addresses (`127.0.0.1`, `localhost`) are allowed in the repository on purpose: they are the same on every machine and the test setup serves the site on one; the built site may not contain them (`check:dist`). |
 | Secret scan of the full git history and the working tree (gitleaks, a pinned release whose checksum is verified) | A key, token or password committed now or in any earlier commit. Inline "allow" comments are ignored, and a gitleaks config or ignore file fails the step until the step is updated with it. |
 | `npm ci --ignore-scripts` | Dependencies that differ from the reviewed lockfile, and install scripts running code on the build machine. |
 | `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script. |
@@ -24,6 +24,15 @@ repository. Every third-party action is pinned to a full commit hash.
 | `npm run build` | |
 | `npm run check:dist` | See below. |
 | Secret scan of the built site | A secret that reached the build output. |
+
+What the history checks cover: `check:tree` and `check:commits` read every
+commit of a pull request, because GitHub keeps those commits visible with the
+pull request even after a squash merge. They check each commit's paths, author,
+committer and message. The content of a commit that a later commit replaces is
+covered only by the secret scan (gitleaks reads every commit): the e-mail,
+local-path and host checks read the files as they are now. A personal address
+added in one commit and removed in the next stays in that pull request's
+history unless it looks like a secret.
 
 `check:dist` audits the built site, the exact files that will be published:
 
@@ -117,14 +126,22 @@ These are repository settings, not files, so CI cannot check them:
 - Security: enable **private vulnerability reporting** (the only channel in
   [SECURITY.md](../SECURITY.md)).
 - Pages: set the source to **GitHub Actions**.
-- Branch protection for `main`: require the status checks **Verify and build**
-  and **End-to-end (built site)** before merging.
+- Branch protection for `main`: require a **pull request** before merging (no
+  direct pushes), and require the status checks **Verify and build** and
+  **End-to-end (built site)**.
+- Pull requests: allow **squash merging only** (no merge commits, no rebase
+  merging), so `main` gets one commit per pull request and none of the
+  intermediate ones. Keep the default commit message, not the pull request
+  description: a Dependabot description quotes upstream release notes, and
+  those may hold addresses. The squash commit is written on github.com and is
+  checked only by the push run after the merge, so before confirming, remove
+  any `Co-authored-by` lines GitHub added for other authors of the branch.
 
 ## Running the checks locally
 
 ```sh
 npm ci --ignore-scripts
-npm run check:tree
+npm run check:tree -- --range origin/main HEAD
 npm run typecheck && npm test
 npm run check:lock && npm run check:links
 npm run check:commits -- origin/main HEAD

@@ -46,11 +46,14 @@ The repository holds only what belongs to the program. `npm run check:tree`
 fails for any tracked file that is not on the list in `scripts/check-tree.mjs`
 (root files by name, the docs by name, and patterns for `src/`, `scripts/` and
 `e2e/`). When you add a file outside those patterns, add its path to the list
-in the same pull request, so the reviewer sees it. The same check refuses
-symlinks, submodules, executable files, and e-mail addresses, paths from your
-computer or private keys in any tracked file. Keep personal settings, notes
-and scratch files out of the repository; your global git ignore file is the
-place for their patterns.
+in the same pull request, so the reviewer sees it. In a pull request the check
+also reads every commit: a file that is not on the list must not appear in any
+of them, even if a later commit deletes it, so rewrite the branch rather than
+deleting such a file afterwards. The same check refuses symlinks, submodules,
+executable files, files that are not UTF-8 text, and e-mail addresses, paths
+from your computer, private keys, private network addresses or local host
+names in any tracked file. Keep personal settings, notes and scratch files out
+of the repository; your global git ignore file is the place for their patterns.
 
 ## Add a profession
 

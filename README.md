@@ -38,14 +38,15 @@ npm run build      # static site in dist/, works from any sub-path
 Every pull request and every push to `main` runs the same checks, so that we
 ship the page and nothing else:
 
-- the repository holds only files on an explicit list, and no tracked file
-  contains an e-mail address, a path from a developer's computer or a private
-  key;
+- the repository, and every commit of a pull request, holds only files on an
+  explicit list, and no tracked file contains an e-mail address, a path from a
+  developer's computer, a private key or a private network address;
 - secret scan of the whole git history and of the built site;
 - dependencies only from the npm registry, with integrity hashes and
   permissive licences; no known high or critical vulnerabilities at run time;
-- commits carry only GitHub noreply addresses and no trailers other than
-  Co-Authored-By and Signed-off-by;
+- commits carry only GitHub noreply addresses, no trailers but the
+  maintainer's co-author line and Dependabot's sign-off, and no generated-by
+  footers;
 - the built site holds only the page and its bundles, stays within a size
   budget, contains no local paths, private addresses, e-mail addresses or
   keys, uses no browser feature that sends or stores data, and keeps a

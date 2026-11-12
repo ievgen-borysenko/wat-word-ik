@@ -6,11 +6,14 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { checkTree, onList } from './check-tree.mjs';
 
 /*
- * The strings this check refuses (e-mail addresses, home folders, key headers)
- * are put together at run time, so this file holds none of them.
+ * The strings this check refuses (e-mail addresses, home folders, key headers,
+ * private network addresses) are put together at run time, so this file holds
+ * none of them.
  */
 const AT = '@';
 const SCRIPT = resolve(import.meta.dirname, 'check-tree.mjs');
+const ip = (/** @type {number[]} */ ...octets) => octets.join('.');
+const ZERO = '0'.repeat(40);
 
 /** @type {string[]} */
 const made = [];
@@ -35,7 +38,7 @@ const CLEAN = {
  * A throw-away repository in its own temp directory, with the files staged
  * (check:tree reads the index, so no commit is needed). Git runs without the
  * machine's global or system config and without inherited GIT_* variables.
- * @param {Record<string, string>} [extra]
+ * @param {Record<string, string | Uint8Array>} [extra]
  */
 function repo(extra = {}) {
   const root = mkdtempSync(join(tmpdir(), 'check-tree-'));
@@ -53,7 +56,23 @@ function repo(extra = {}) {
     writeFileSync(join(dir, path), content);
   }
   git(['add', '--all']);
-  return { dir, env, git };
+  const who = `dev${AT}example.com`;
+  /** @param {string} message */
+  const commit = (message) => {
+    execFileSync('git', ['-c', 'commit.gpgsign=false', 'commit', '--quiet', '--no-verify', '--allow-empty', '-m', message], {
+      cwd: dir,
+      env: { ...env, GIT_AUTHOR_NAME: 'A', GIT_AUTHOR_EMAIL: who, GIT_COMMITTER_NAME: 'C', GIT_COMMITTER_EMAIL: who },
+      stdio: ['ignore', 'pipe', 'pipe'],
+    });
+    return git(['rev-parse', 'HEAD']);
+  };
+  /** @param {string} path @param {string} [content] */
+  const write = (path, content = 'x\n') => {
+    mkdirSync(dirname(join(dir, path)), { recursive: true });
+    writeFileSync(join(dir, path), content);
+    git(['add', '--', path]);
+  };
+  return { dir, env, git, commit, write };
 }
 
 /** @param {ReturnType<typeof repo>} r */
@@ -130,6 +149,133 @@ describe('check-tree', () => {
     expect(rules(repo({ 'notes.md': `mail someone${AT}example.com\n` }))).toEqual(['notes.md not-listed', 'notes.md email']);
   });
 
+  it.each([
+    ['root home', `See /${'root'}/project/x\n`],
+    ['a mount point', `Copied from /${'mnt'}/c/work/x\n`],
+  ])('refuses a local path: %s', (_what, content) => {
+    expect(rules(repo({ 'docs/ci.md': content }))).toEqual(['docs/ci.md local-path']);
+  });
+
+  it.each([
+    ['docs/ci.md', `The printer is at ${ip(192, 168, 1, 20)}.\n`],
+    ['README.md', `Server ${ip(10, 0, 0, 5)} and ${ip(172, 16, 4, 1)}\n`],
+    ['src/ui/App.tsx', `const host = '${ip(192, 168, 0, 1)}';\n`],
+    ['.github/workflows/ci.yml', `env:\n  HOST: ${ip(10, 1, 2, 3)}\n`],
+  ])('refuses a private network address in %s', (path, content) => {
+    const found = rules(repo({ [path]: content }));
+    expect(found.length).toBeGreaterThan(0);
+    expect(new Set(found)).toEqual(new Set([`${path} private-host`]));
+  });
+
+  it.each([
+    ['docs/ci.md', 'Open nas.local in a browser.\n'],
+    ['README.md', 'The build server is ci.lan.\n'],
+    ['.github/workflows/ci.yml', 'env:\n  REGISTRY: npm.corp.internal\n'],
+  ])('refuses a private host name in %s', (path, content) => {
+    expect(rules(repo({ [path]: content }))).toEqual([`${path} private-host`]);
+  });
+
+  it('does not take a property in code for a host name, nor a public address for a private one', () => {
+    const r = repo({
+      'src/ui/App.tsx': 'export const f = (e: { local: number }) => e.local;\n',
+      'docs/ci.md': `Not private: ${ip(172, 32, 0, 1)}, ${ip(11, 0, 0, 1)}, version 10.0.0.\n`,
+    });
+    expect(rules(r)).toEqual([]);
+  });
+
+  it('accepts loopback addresses in the test setup and the docs', () => {
+    const r = repo({
+      'playwright.config.ts': `const ORIGIN = 'http://${ip(127, 0, 0, 1)}:4173';\n`,
+      'docs/ci.md': 'Serve it on localhost or [::1].\n',
+    });
+    expect(rules(r)).toEqual([]);
+  });
+
+  it.each([
+    ['a NUL byte (binary)', Uint8Array.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0x00, 0x00])],
+    ['UTF-16 text', Buffer.from(`\ufeff# CI\nMail someone${AT}example.com\n`, 'utf16le')],
+    ['a NUL byte after the first 8000 bytes', Buffer.concat([Buffer.from('x'.repeat(9000)), Buffer.from([0])])],
+    ['invalid UTF-8', Uint8Array.from([0x23, 0x20, 0xff, 0xfe, 0x41, 0x0a])],
+  ])('refuses a file that is not UTF-8 text: %s', (_what, bytes) => {
+    expect(rules(repo({ 'docs/ci.md': bytes }))).toEqual(['docs/ci.md encoding']);
+  });
+
+  describe('history (--range)', () => {
+    /** @param {ReturnType<typeof repo>} r @param {string} base */
+    const inHistory = (r, base, head = 'HEAD') =>
+      checkTree(r.dir, r.env, { base, head }).violations.map((v) => `${v.path} ${v.rule}`);
+
+    it('refuses a file that a commit adds and a later one removes', () => {
+      const r = repo();
+      const base = r.commit('base');
+      r.write('notes.md');
+      const bad = r.commit('Add my notes');
+      r.git(['rm', '--quiet', 'notes.md']);
+      r.commit('Remove my notes');
+      expect(rules(r)).toEqual([]);
+      const found = checkTree(r.dir, r.env, { base, head: 'HEAD' });
+      expect(found.violations.map((v) => `${v.path} ${v.rule}`)).toEqual(['notes.md history']);
+      expect(found.violations[0]?.message).toContain(`${bad.slice(0, 12)} "Add my notes"`);
+      expect(found.history).toEqual({ commits: 2, paths: 1, what: `${base}..HEAD` });
+    });
+
+    it('refuses a path that a rename brings in, and file names with spaces or new lines', () => {
+      const r = repo();
+      const base = r.commit('base');
+      r.git(['mv', 'docs/ci.md', 'docs/ci draft.md']);
+      r.commit('Rename');
+      r.git(['mv', 'docs/ci draft.md', 'docs/ci.md']);
+      r.write('odd\nname.md');
+      r.commit('Rename back, add an odd name');
+      r.git(['rm', '--quiet', 'odd\nname.md']);
+      r.commit('Remove it');
+      expect(inHistory(r, base)).toEqual(['docs/ci draft.md history', 'odd\nname.md history']);
+    });
+
+    it('checks only the range, or every commit with a base of zeros', () => {
+      const r = repo();
+      r.commit('first');
+      r.write('scratch.txt');
+      r.commit('Add scratch');
+      r.git(['rm', '--quiet', 'scratch.txt']);
+      const base = r.commit('Remove scratch');
+      r.write('src/ui/Extra.tsx', 'export {};\n');
+      r.commit('Add a listed file');
+      expect(inHistory(r, base)).toEqual([]);
+      expect(inHistory(r, ZERO)).toEqual(['scratch.txt history']);
+    });
+
+    it('sees files that a merge adds itself and files that the merged commits add', () => {
+      const r = repo();
+      const base = r.commit('base');
+      r.git(['checkout', '--quiet', '-b', 'side']);
+      r.write('side-notes.md');
+      r.commit('Side notes');
+      r.git(['rm', '--quiet', 'side-notes.md']);
+      r.commit('Remove side notes');
+      r.git(['checkout', '--quiet', 'main']);
+      r.write('src/ui/Main.tsx', 'export {};\n');
+      r.commit('Main work');
+      r.git(['merge', '--quiet', '--no-ff', '--no-commit', 'side']);
+      r.write('merge-notes.md');
+      r.git(['rm', '--quiet', '--cached', 'merge-notes.md']);
+      r.write('merge-only.md');
+      r.commit('Merge side');
+      r.git(['rm', '--quiet', 'merge-only.md']);
+      r.commit('Clean up');
+      const found = inHistory(r, base);
+      expect(found).toContain('side-notes.md history');
+      expect(found).toContain('merge-only.md history');
+      expect(found).not.toContain('src/ui/Main.tsx history');
+    });
+
+    it('refuses an unknown base', () => {
+      const r = repo();
+      r.commit('base');
+      expect(() => inHistory(r, '1234567890abcdef1234567890abcdef12345678')).toThrow(/not a commit/);
+    });
+  });
+
   describe('command line', () => {
     /**
      * @param {string} dir
@@ -166,6 +312,34 @@ describe('check-tree', () => {
       const res = run(dir, { PATH: process.env.PATH ?? '', GIT_CEILING_DIRECTORIES: dirname(dir), HOME: dir });
       expect(res.status).toBe(2);
       expect(res.stderr).toContain('could not run');
+    });
+
+    it('exits 1 for a file that only the history holds, 0 without it in the range', () => {
+      const r = repo();
+      const base = r.commit('base');
+      r.write('notes.md');
+      r.commit('Add notes');
+      r.git(['rm', '--quiet', 'notes.md']);
+      const after = r.commit('Remove notes');
+      const bad = spawnSync(process.execPath, [SCRIPT, '--range', base, 'HEAD', r.dir], { env: r.env, encoding: 'utf8' });
+      expect(bad.status).toBe(1);
+      expect(bad.stderr).toContain('notes.md: [history] is added in commit');
+      const ok = spawnSync(process.execPath, [SCRIPT, '--range', after, 'HEAD', r.dir], { env: r.env, encoding: 'utf8' });
+      expect(ok.status).toBe(0);
+      expect(ok.stdout).toContain('0 paths added in the 0 commit(s)');
+    });
+
+    it('exits 2 on bad arguments or an unknown revision', () => {
+      const r = repo();
+      r.commit('base');
+      /** @param {string[]} args */
+      const status = (args) => spawnSync(process.execPath, [SCRIPT, ...args], { cwd: r.dir, env: r.env, encoding: 'utf8' }).status;
+      expect(status(['--range'])).toBe(2);
+      expect(status(['--range', 'HEAD'])).toBe(2);
+      expect(status(['--range', 'HEAD', 'HEAD', '.', 'extra'])).toBe(2);
+      expect(status(['--other'])).toBe(2);
+      expect(status(['--range', 'no-such-ref', 'HEAD'])).toBe(2);
+      expect(status(['--range', 'HEAD', 'HEAD'])).toBe(0);
     });
 
     it('exits 2 when git is not available', () => {

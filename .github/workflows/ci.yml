@@ -44,8 +44,19 @@ jobs:
           node-version-file: .nvmrc
           cache: npm
 
-      - name: Repository holds only listed files (no dependencies needed)
-        run: npm run check:tree
+      - name: Repository holds only listed files, also in history (no dependencies needed)
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_HEAD: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            npm run check:tree -- --range "$PR_BASE" "$PR_HEAD"
+          else
+            # Every path any commit reachable from the pushed head ever added.
+            npm run check:tree -- --range 0000000000000000000000000000000000000000 "$PUSH_HEAD"
+          fi
 
       - name: Install gitleaks (pinned release, sha256 checked)
         run: |
