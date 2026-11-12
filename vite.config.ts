@@ -1,16 +1,17 @@
 import { defineConfig, type Plugin } from 'vitest/config';
 
-// Built page only (the dev server needs its own websocket): no network access at all.
-// The docs stay in the repository; the page explains itself in its "How it works" dialog.
+// Built page only (the dev server needs its own websocket): the page may load its own
+// script and stylesheet and nothing else. default-src 'none' covers every fetch
+// directive that is not listed (connections, fonts, media, frames, objects, workers,
+// manifests), so the browser blocks even a same-origin image or request. The only
+// image is the inline icon, a data: URL. The docs stay in the repository; the page
+// explains itself in its "How it works" dialog.
 const CSP = [
-  "default-src 'self'",
+  "default-src 'none'",
   "script-src 'self'",
   "style-src 'self'",
-  "img-src 'self' data:",
-  "connect-src 'none'",
-  "font-src 'none'",
-  "object-src 'none'",
-  "base-uri 'self'",
+  'img-src data:',
+  "base-uri 'none'",
   "form-action 'none'",
 ].join('; ');
 
