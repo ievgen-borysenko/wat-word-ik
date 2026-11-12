@@ -485,18 +485,18 @@ describe('check-dist', () => {
     /** @param {string} name @param {string} version @param {string} file */
     const entry = (name, version, file) => ({ name, version, license: 'MIT', ...splitLicence(file) });
     const RUNTIME = [
-      { name: 'a', version: '1.0.0', license: 'MIT' },
-      { name: '@s/b', version: '2.0.0', license: 'MIT' },
+      { name: 'alpha', version: '1.0.0', license: 'MIT' },
+      { name: '@scope/beta', version: '2.0.0', license: 'MIT' },
     ];
-    const NOTICE = formatNotice([entry('a', '1.0.0', mit('Ann')), entry('@s/b', '2.0.0', mit('Bob'))]);
+    const NOTICE = formatNotice([entry('alpha', '1.0.0', mit('Ann')), entry('@scope/beta', '2.0.0', mit('Bob'))]);
     /** @param {string} notice @param {typeof RUNTIME} [runtime] */
     const problems = (notice, runtime = RUNTIME) => noticeProblems([`${notice}\n${CLEAN_JS}`], runtime);
 
     it('lists each package with its copyright lines, then each distinct licence text once', () => {
       expect(NOTICE.startsWith(`${NOTICE_HEAD}\n`)).toBe(true);
-      expect(NOTICE).toContain('\n * @s/b 2.0.0, licence MIT\n * Copyright (c) 2020-present Bob\n');
-      expect(NOTICE).toContain('\n * a 1.0.0, licence MIT\n * Copyright (c) 2020-present Ann\n');
-      expect(NOTICE).toContain('\n * Licence text of @s/b, a:\n *\n * MIT License\n *\n * Permission is hereby granted');
+      expect(NOTICE).toContain('\n * @scope/beta 2.0.0, licence MIT\n * Copyright (c) 2020-present Bob\n');
+      expect(NOTICE).toContain('\n * alpha 1.0.0, licence MIT\n * Copyright (c) 2020-present Ann\n');
+      expect(NOTICE).toContain('\n * Licence text of @scope/beta, alpha:\n *\n * MIT License\n *\n * Permission is hereby granted');
       expect(NOTICE.split('Permission is hereby granted')).toHaveLength(2);
       expect(NOTICE.endsWith('\n * SOFTWARE.\n */')).toBe(true);
       expect(problems(NOTICE)).toEqual([]);
@@ -504,12 +504,12 @@ describe('check-dist', () => {
 
     it('writes different licence texts separately', () => {
       const isc = 'ISC License\n\nCopyright (c) 2019 Cy\n\nPermission to use, copy, modify, and/or distribute this software is granted.\n';
-      const notice = formatNotice([entry('a', '1.0.0', mit('Ann')), { ...entry('c', '3.0.0', isc), license: 'ISC' }]);
-      expect(notice).toContain(' * Licence text of a:\n');
-      expect(notice).toContain(' * Licence text of c:\n *\n * ISC License\n *\n * Permission to use');
+      const notice = formatNotice([entry('alpha', '1.0.0', mit('Ann')), { ...entry('gamma', '3.0.0', isc), license: 'ISC' }]);
+      expect(notice).toContain(' * Licence text of alpha:\n');
+      expect(notice).toContain(' * Licence text of gamma:\n *\n * ISC License\n *\n * Permission to use');
       const runtime = [
-        { name: 'a', version: '1.0.0', license: 'MIT' },
-        { name: 'c', version: '3.0.0', license: 'ISC' },
+        { name: 'alpha', version: '1.0.0', license: 'MIT' },
+        { name: 'gamma', version: '3.0.0', license: 'ISC' },
       ];
       expect(problems(notice, runtime)).toEqual([]);
     });
@@ -543,9 +543,9 @@ describe('check-dist', () => {
     });
 
     it('refuses to write a notice without a copyright line or text, or one that a licence file would end early', () => {
-      expect(() => formatNotice([entry('a', '1.0.0', 'MIT License\n\nPermission is granted.')])).toThrow(/a has no copyright line/);
-      expect(() => formatNotice([entry('a', '1.0.0', 'Copyright (c) 2020 Ann\n')])).toThrow(/a has no licence text/);
-      expect(() => formatNotice([entry('a', '1.0.0', `${mit('Ann')}\n*/ alert(1) /*`)])).toThrow(/end the comment early/);
+      expect(() => formatNotice([entry('alpha', '1.0.0', 'MIT License\n\nPermission is granted.')])).toThrow(/alpha has no copyright line/);
+      expect(() => formatNotice([entry('alpha', '1.0.0', 'Copyright (c) 2020 Ann\n')])).toThrow(/alpha has no licence text/);
+      expect(() => formatNotice([entry('alpha', '1.0.0', `${mit('Ann')}\n*/ alert(1) /*`)])).toThrow(/end the comment early/);
       expect(formatNotice([])).toBe('');
     });
 
@@ -554,7 +554,7 @@ describe('check-dist', () => {
       const report = auditDist(dir, RUNTIME);
       expect(report.violations).toEqual([]);
       expect(report.totals.js).toBe(NOTICE.length + 1 + CLEAN_JS.length);
-      expect(formatReport(report)).toContain('Licence notices required (runtime packages of the lockfile): a 1.0.0, @s/b 2.0.0');
+      expect(formatReport(report)).toContain('Licence notices required (runtime packages of the lockfile): alpha 1.0.0, @scope/beta 2.0.0');
     });
 
     it.each([
@@ -566,49 +566,49 @@ describe('check-dist', () => {
       ],
       [
         'a notice with one package left out',
-        formatNotice([entry('a', '1.0.0', mit('Ann'))]),
+        formatNotice([entry('alpha', '1.0.0', mit('Ann'))]),
         RUNTIME,
-        ['no licence notice for the runtime package @s/b 2.0.0'],
+        ['no licence notice for the runtime package @scope/beta 2.0.0'],
       ],
       [
         'a notice for another version',
-        NOTICE.replace(' a 1.0.0,', ' a 0.9.0,'),
+        NOTICE.replace(' alpha 1.0.0,', ' alpha 0.9.0,'),
         RUNTIME,
         [
-          'no licence notice for the runtime package a 1.0.0',
-          'the notice names a 0.9.0, which is not a runtime package of the lockfile at that version',
+          'no licence notice for the runtime package alpha 1.0.0',
+          'the notice names alpha 0.9.0, which is not a runtime package of the lockfile at that version',
         ],
       ],
       [
         'a notice with another licence',
-        NOTICE.replace(' a 1.0.0, licence MIT', ' a 1.0.0, licence ISC'),
+        NOTICE.replace(' alpha 1.0.0, licence MIT', ' alpha 1.0.0, licence ISC'),
         RUNTIME,
-        ['the notice gives a 1.0.0 the licence ISC, the lockfile MIT'],
+        ['the notice gives alpha 1.0.0 the licence ISC, the lockfile MIT'],
       ],
       [
         'a package without its copyright line',
         NOTICE.replace(' * Copyright (c) 2020-present Ann\n', ''),
         RUNTIME,
-        ['the notice for a 1.0.0 has no copyright line'],
+        ['the notice for alpha 1.0.0 has no copyright line'],
       ],
       [
         'a licence text that does not name the package',
-        NOTICE.replace('Licence text of @s/b, a:', 'Licence text of a:'),
+        NOTICE.replace('Licence text of @scope/beta, alpha:', 'Licence text of alpha:'),
         RUNTIME,
-        ['the notice has no licence text for @s/b 2.0.0'],
+        ['the notice has no licence text for @scope/beta 2.0.0'],
       ],
       [
         'an MIT text without the sentence that asks for the notice',
         NOTICE.replace('this permission notice shall be included', 'this permission notice may be included'),
         RUNTIME,
         [
-          `the licence text for a 1.0.0 lacks the sentence of the MIT licence: ${MIT_NOTICE_SENTENCE}`,
-          `the licence text for @s/b 2.0.0 lacks the sentence of the MIT licence: ${MIT_NOTICE_SENTENCE}`,
+          `the licence text for alpha 1.0.0 lacks the sentence of the MIT licence: ${MIT_NOTICE_SENTENCE}`,
+          `the licence text for @scope/beta 2.0.0 lacks the sentence of the MIT licence: ${MIT_NOTICE_SENTENCE}`,
         ],
       ],
       [
         'a notice for a package that is not a runtime package',
-        formatNotice([entry('a', '1.0.0', mit('Ann')), entry('@s/b', '2.0.0', mit('Bob')), entry('dev-tool', '5.0.0', mit('Dee'))]),
+        formatNotice([entry('alpha', '1.0.0', mit('Ann')), entry('@scope/beta', '2.0.0', mit('Bob')), entry('dev-tool', '5.0.0', mit('Dee'))]),
         RUNTIME,
         ['the notice names dev-tool 5.0.0, which is not a runtime package of the lockfile at that version'],
       ],
@@ -617,7 +617,7 @@ describe('check-dist', () => {
     });
 
     it('requires a notice in the built site when the lockfile has runtime packages, and only then', () => {
-      expect(noticeProblems([CLEAN_JS], RUNTIME)).toEqual(['no licence notice in any script; needed for a 1.0.0, @s/b 2.0.0']);
+      expect(noticeProblems([CLEAN_JS], RUNTIME)).toEqual(['no licence notice in any script; needed for alpha 1.0.0, @scope/beta 2.0.0']);
       expect(noticeProblems([CLEAN_JS], [])).toEqual([]);
       expect(rules(tree())).toEqual([]);
       const report = auditDist(tree(), RUNTIME);
