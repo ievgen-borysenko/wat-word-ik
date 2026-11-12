@@ -22,15 +22,19 @@
 //               page load its own script and stylesheet and nothing else
 //               (default-src 'none'); it loads nothing from another host, has
 //               no inline scripts or event handlers and no local URL with a
-//               query string.
+//               query string;
+//   7. notice   the JS carries the licence notice of every runtime package of
+//               the lockfile (see NOTICE_HEAD below).
 //
-// Usage: node scripts/check-dist.mjs [dir]   (default: dist)
+// Usage: node scripts/check-dist.mjs [dir] [lockfile]
+//        (defaults: dist, package-lock.json)
 // Exit codes: 0 clean, 1 violations found (all of them are listed), 2 the audit
-// itself could not run (missing directory, unreadable file).
+// itself could not run (missing directory, unreadable file or lockfile).
 
 import { lstatSync, readdirSync, readFileSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { runtimePackages } from './check-lockfile.mjs';
 
 /** Future public repository; links to it may appear in shipped files. */
 export const REPO_URL = 'https://github.com/ievgen-borysenko/wat-word-ik';
@@ -320,10 +324,202 @@ const URL_ATTRS = new Set([
   'srcset',
 ]);
 
+/*
+ * Licence notices. The page bundles the code of its runtime dependencies (the
+ * lockfile entries without `dev`, runtimePackages in check-lockfile.mjs), and
+ * their licences ask that the copyright and permission notice go with every
+ * copy. The build (vite.config.ts) writes one legal comment at the top of the
+ * entry script with formatNotice below, from each installed package's own
+ * licence file: every package with its version, licence and copyright lines,
+ * then each distinct licence text once, with the packages it applies to.
+ *
+ * This audit installs no dependencies, so it cannot read those files. It
+ * checks the notice against the reviewed lockfile instead: every runtime
+ * package is named with its locked version and licence, followed by at least
+ * one copyright line, and a licence text names it; for MIT, that text holds
+ * the sentence that asks for the notice. A notice for a package that is not a
+ * runtime package of the lockfile, at that version, is refused too. Whether
+ * the copyright lines and texts are the packages' own is not checked here: the
+ * build copies them from the installed files. The notice passes the content
+ * checks above like the rest of the script, and counts towards its budget.
+ */
+
+/** First line of the notice. */
+export const NOTICE_HEAD = '/*! Licences of the third-party code bundled in this file';
+const NOTICE_SUBHEAD = '(generated at build time from the licence file of each package).';
+/** Starts the line above each licence text: `Licence text of a, b:`. */
+const TEXT_HEAD = 'Licence text of ';
+/** A package line: `<name> <version>, licence <SPDX expression>`. */
+const PACKAGE_LINE = /^(\S+) (\S+), licence (.+)$/;
+
+/** The sentence of the MIT licence that asks for the notice in every copy. */
+export const MIT_NOTICE_SENTENCE =
+  'The above copyright notice and this permission notice shall be included in all copies or substantial portions of the Software.';
+
+/**
+ * A copyright line of a licence file: `Copyright (c) 2015 ...`, `Copyright 2015
+ * ...`, `(c) 2015 ...`, `© 2015 ...`. Case-sensitive, so that a wrapped line of
+ * the licence text (`COPYRIGHT HOLDERS BE LIABLE`, `copyright holder nor`) and
+ * the template line of the Apache licence (`Copyright [yyyy]`) stay in the text.
+ */
+const COPYRIGHT_LINE = /^\s*(?:Copyright\s+(?:\([cC]\)|©|\d)|\([cC]\)\s*\d|©\s*\d)/;
+
+/**
+ * @typedef {{ name: string, version: string, license: string, copyright: string[], text: string }} NoticeEntry
+ * @typedef {{ name: string, version: string, license: string }} RuntimePackage
+ */
+
+/** @param {string} text */
+const squash = (text) => text.replace(/\s+/g, ' ').trim();
+
+/**
+ * Splits a package's licence file into its copyright lines and its licence text.
+ * @param {string} file the contents of the licence file
+ * @returns {{ copyright: string[], text: string }}
+ */
+export function splitLicence(file) {
+  const lines = file
+    .replace(/\r\n?/g, '\n')
+    .split('\n')
+    .map((l) => l.trimEnd());
+  return {
+    copyright: lines.filter((l) => COPYRIGHT_LINE.test(l)).map((l) => l.trim()),
+    text: lines
+      .filter((l) => !COPYRIGHT_LINE.test(l))
+      .join('\n')
+      .replace(/\n{3,}/g, '\n\n')
+      .trim(),
+  };
+}
+
+/**
+ * The legal comment for the top of the entry script; empty without entries.
+ * Throws when an entry has no copyright line or no text, or when a text would
+ * end the comment early.
+ * @param {NoticeEntry[]} entries
+ */
+export function formatNotice(entries) {
+  if (entries.length === 0) return '';
+  const sorted = [...entries].sort((a, b) => (a.name === b.name ? 0 : a.name < b.name ? -1 : 1));
+  /** @type {Map<string, { text: string, names: string[] }>} */
+  const texts = new Map();
+  const lines = [NOTICE_SUBHEAD, ''];
+  for (const e of sorted) {
+    if (e.copyright.length === 0) throw new Error(`the licence file of ${e.name} has no copyright line`);
+    if (e.text === '') throw new Error(`the licence file of ${e.name} has no licence text`);
+    lines.push(`${e.name} ${e.version}, licence ${e.license}`, ...e.copyright, '');
+    const group = texts.get(squash(e.text)) ?? { text: e.text, names: [] };
+    if (!group.names.includes(e.name)) group.names.push(e.name);
+    texts.set(squash(e.text), group);
+  }
+  for (const { text, names } of texts.values()) lines.push(`${TEXT_HEAD}${names.join(', ')}:`, '', ...text.split('\n'), '');
+  lines.pop();
+  const comment = [NOTICE_HEAD, ...lines.map((l) => (l === '' ? ' *' : ` * ${l}`)), ' */'].join('\n');
+  if (comment.indexOf('*/') !== comment.length - 2) throw new Error('a licence file contains "*/", which would end the comment early');
+  return comment;
+}
+
+/**
+ * @typedef {{ name: string, version: string, license: string, copyright: string[] }} NoticePackage
+ */
+
+/**
+ * The package lines, copyright lines and licence texts of one notice: the text
+ * after NOTICE_HEAD, up to the end of the comment.
+ * @param {string} comment
+ */
+function readNotice(comment) {
+  /** @type {Map<string, NoticePackage>} key: name and version */
+  const packages = new Map();
+  /** @type {Map<string, string[]>} package name -> the texts (whitespace squashed) that name it */
+  const texts = new Map();
+  /** @type {NoticePackage | null} */
+  let current = null;
+  /** @type {string[] | null} */
+  let names = null;
+  /** @type {string[]} */
+  let body = [];
+  const flush = () => {
+    for (const name of names ?? []) texts.set(name, [...(texts.get(name) ?? []), squash(body.join('\n'))]);
+  };
+  for (const raw of comment.split('\n').slice(1)) {
+    const line = raw.replace(/^\s*\*(?: |$)/, '').trimEnd();
+    if (line.startsWith(TEXT_HEAD) && line.endsWith(':')) {
+      flush();
+      names = line.slice(TEXT_HEAD.length, -1).split(', ');
+      body = [];
+      current = null;
+    } else if (names !== null) {
+      body.push(line);
+    } else if (line === '') {
+      current = null;
+    } else if (current !== null && COPYRIGHT_LINE.test(line)) {
+      current.copyright.push(line);
+    } else {
+      const m = PACKAGE_LINE.exec(line);
+      if (!m) continue;
+      current = { name: m[1] ?? '', version: m[2] ?? '', license: m[3] ?? '', copyright: [] };
+      packages.set(`${current.name} ${current.version}`, current);
+    }
+  }
+  flush();
+  return { packages, texts };
+}
+
+/**
+ * Problems with the licence notices in the shipped scripts, measured against
+ * the runtime packages of the lockfile.
+ * @param {string[]} scripts the text of every shipped JS file
+ * @param {RuntimePackage[]} runtime
+ * @returns {string[]}
+ */
+export function noticeProblems(scripts, runtime) {
+  /** @type {Map<string, NoticePackage>} */
+  const packages = new Map();
+  /** @type {Map<string, string[]>} */
+  const texts = new Map();
+  let found = 0;
+  for (const script of scripts) {
+    for (const at of indexesOf(script, NOTICE_HEAD)) {
+      found++;
+      const end = script.indexOf('*/', at + 2);
+      const notice = readNotice(script.slice(at + NOTICE_HEAD.length, end === -1 ? script.length : end));
+      for (const [key, p] of notice.packages) packages.set(key, p);
+      for (const [name, t] of notice.texts) texts.set(name, [...(texts.get(name) ?? []), ...t]);
+    }
+  }
+  const label = (/** @type {{ name: string, version: string }} */ p) => `${p.name} ${p.version}`;
+  if (found === 0) {
+    return runtime.length === 0 ? [] : [`no licence notice in any script; needed for ${runtime.map(label).join(', ')}`];
+  }
+  /** @type {string[]} */
+  const problems = [];
+  const sentence = squash(MIT_NOTICE_SENTENCE);
+  for (const p of runtime) {
+    const entry = packages.get(label(p));
+    if (!entry) {
+      problems.push(`no licence notice for the runtime package ${label(p)}`);
+      continue;
+    }
+    if (entry.license !== p.license) problems.push(`the notice gives ${label(p)} the licence ${entry.license}, the lockfile ${p.license}`);
+    if (entry.copyright.length === 0) problems.push(`the notice for ${label(p)} has no copyright line`);
+    const own = (texts.get(p.name) ?? []).filter((t) => t !== '');
+    if (own.length === 0) problems.push(`the notice has no licence text for ${label(p)}`);
+    else if (p.license === 'MIT' && !own.some((t) => t.includes(sentence))) {
+      problems.push(`the licence text for ${label(p)} lacks the sentence of the MIT licence: ${MIT_NOTICE_SENTENCE}`);
+    }
+  }
+  const wanted = new Set(runtime.map(label));
+  for (const [key] of packages) {
+    if (!wanted.has(key)) problems.push(`the notice names ${key}, which is not a runtime package of the lockfile at that version`);
+  }
+  return problems;
+}
+
 /**
  * @typedef {{ file: string, rule: string, message: string }} Violation
  * @typedef {{ path: string, bytes: number }} SizeRow
- * @typedef {{ violations: Violation[], sizes: SizeRow[], totals: { js: number, css: number, total: number } }} Report
+ * @typedef {{ violations: Violation[], sizes: SizeRow[], totals: { js: number, css: number, total: number }, notices: string[] }} Report
  */
 
 /**
@@ -502,9 +698,11 @@ function checkIndexHtml(html, shipped) {
 /**
  * Runs every check on the tree at `dir`.
  * @param {string} dir
+ * @param {RuntimePackage[]} [runtime] the runtime packages of the lockfile, each of
+ *   which needs a licence notice; none by default
  * @returns {Report}
  */
-export function auditDist(dir) {
+export function auditDist(dir, runtime = []) {
   const root = resolve(dir);
   const st = lstatSync(root, { throwIfNoEntry: false });
   if (!st || !st.isDirectory()) throw new Error(`${dir} is not a directory; run the build first`);
@@ -579,8 +777,12 @@ export function auditDist(dir) {
   const html = texts.get('index.html');
   if (html !== undefined) violations.push(...checkIndexHtml(html, shipped));
 
+  // 7. notice
+  const scripts = [...texts].filter(([path]) => path.endsWith('.js')).map(([, text]) => text);
+  for (const message of noticeProblems(scripts, runtime)) violations.push({ file: '(dist)', rule: 'notice', message });
+
   const sizes = files.map((f) => ({ path: f.path, bytes: f.bytes }));
-  return { violations, sizes, totals };
+  return { violations, sizes, totals, notices: runtime.map((p) => `${p.name} ${p.version}`) };
 }
 
 /** @param {string} url */
@@ -608,6 +810,7 @@ export function formatReport(report) {
     const ok = report.totals[key] <= BUDGET[key] ? 'ok' : 'OVER BUDGET';
     lines.push(`  ${labels[key].padEnd(width)}  ${kb(report.totals[key]).padStart(9)}  budget ${kb(BUDGET[key])}  ${ok}`);
   }
+  lines.push(`Licence notices required (runtime packages of the lockfile): ${report.notices.join(', ') || 'none'}`);
   if (report.violations.length === 0) {
     lines.push('check:dist: clean, no violations');
   } else {
@@ -620,9 +823,16 @@ export function formatReport(report) {
 /** @param {string[]} argv */
 function main(argv) {
   const dir = argv[0] ?? 'dist';
+  const lockfile = argv[1] ?? 'package-lock.json';
   let report;
   try {
-    report = auditDist(dir);
+    let runtime;
+    try {
+      runtime = runtimePackages(JSON.parse(readFileSync(lockfile, 'utf8')));
+    } catch (err) {
+      throw new Error(`cannot read the lockfile ${lockfile}: ${err instanceof Error ? err.message : String(err)}`);
+    }
+    report = auditDist(dir, runtime);
   } catch (err) {
     console.error(`check:dist: the audit could not run: ${err instanceof Error ? err.message : String(err)}`);
     return 2;

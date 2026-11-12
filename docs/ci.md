@@ -70,7 +70,7 @@ What this does not cover:
 | No `node_modules` | A dependency installed into the job that audits. |
 | `npm run check:tree` | Files that do not belong to the program: settings of personal tools, editor folders, notes, dumps, scratch files. Every tracked file must match the list in `scripts/check-tree.mjs`, and so must every path that a commit of the pull request adds, copies or renames to (on a push to `main`: any commit in the history), even when a later commit removes it again. Symlinks, submodules, executable files and files that are not UTF-8 text (binary data, UTF-16) are refused, with one exception: `docs/demo.gif`, the animation in the README, must be a GIF of at most 2 MiB that holds images and nothing else. Its parse accepts the GIF89a header, the screen descriptor, colour tables, frame timing (graphic control extensions), at most one loop count (the NETSCAPE2.0 extension, before the first image) and images inside the screen whose compressed data decodes to exactly their pixels, with the trailer as the last byte; a comment, plain text, any other application extension (XMP, colour profiles), bytes after an image's data or after the trailer, and a truncated file are refused. The animation gets no text checks, and the secret scan does not read binary files: what its pixels show is checked in review. No tracked text file may contain an e-mail address, a path from a developer's computer, a private key or a private network address (RFC 1918), and files other than code may not name a host under `.local`, `.lan` or `.internal`. Loopback addresses (`127.0.0.1`, `localhost`) are allowed in the repository on purpose: they are the same on every machine and the test setup serves the site on one; the built site may not contain them (`check:dist`). |
 | Secret scan of the full git history and the working tree (gitleaks, a pinned release whose checksum is verified) | A key, token or password committed now or in any earlier commit. Inline "allow" comments are ignored, and a gitleaks config or ignore file fails the step until the step is updated with it. |
-| `npm run check:lock` | A dependency downloaded from anywhere but the public npm registry, a dependency without a sha512 integrity hash, and a runtime dependency (any package not marked dev-only, so optional ones and those npm marks `devOptional` count) under a licence outside MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0 and 0BSD. |
+| `npm run check:lock` | A dependency downloaded from anywhere but the public npm registry, a dependency without a sha512 integrity hash, and a runtime dependency (any package not marked dev-only, so optional ones and those npm marks `devOptional` count) under a licence outside MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0 and 0BSD. The same runtime packages must have their licence notice in the built site (`check:dist`). |
 | `npm audit --omit=dev --audit-level=high` | A known high or critical vulnerability in a runtime dependency. A second, full audit of all dependencies only reports. Both read the lockfile; nothing is installed. |
 | `npm run check:commits` | A personal e-mail address or a stray line in a commit. Author and committer must be personal GitHub noreply addresses, GitHub's own noreply address (web merges) or Dependabot; any other bot is refused. The message may contain no other address. Trailers: `Co-Authored-By` only with the maintainer's own co-author account, `Signed-off-by` only as Dependabot's sign-off; any other key or value, and a trailer without an address, is refused, and so is any line that looks like a generated-by footer. A pull request checks its own commits; a push to `main` and a run started by hand check the whole history, so a cancelled run never leaves a commit unchecked. |
 | `npm run check:links` | Links in the Markdown files at the top of the repository and in `docs/` that point to files that do not exist. |
@@ -121,6 +121,22 @@ whatever it is used for; who may author commits is decided in review.
   only as `data:` URLs (the icon), `base-uri 'none'` and `form-action 'none'`,
   and no other source anywhere. It must load nothing from another site, have
   no inline scripts or event handlers, and no local URL with a query string.
+- **Licence notices:** the built script bundles the code of the runtime
+  packages (Preact and Preact Signals, all MIT), whose licences ask that their
+  copyright and permission notice go with every copy. The build writes them as
+  one comment at the top of the script, from each installed package's own
+  licence file: name, version, licence and copyright lines of each package,
+  then each distinct licence text once. An update of a dependency therefore
+  brings its own notice, and the build fails when the bundle holds code from
+  a package that is not a runtime package of the lockfile. `check:dist` reads
+  the lockfile of its own checkout (the same runtime packages as `check:lock`)
+  and refuses the site when one of them is missing from the notice at its
+  locked version and licence, has no copyright line or no licence text, or,
+  for MIT, a text without the sentence that asks for the notice; a notice for
+  any other package or version is refused too. The comment passes every
+  content check above and counts towards the size budget. What the audit
+  cannot see, since it installs no package: whether the copyright lines and
+  texts are the packages' own.
 
 ## Job 3: end-to-end tests
 

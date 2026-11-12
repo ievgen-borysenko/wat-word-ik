@@ -57,9 +57,10 @@ ship the page and nothing else:
   so no package code can touch the audit: it holds only the page and its
   bundles, stays within a size budget, contains no local paths, private
   addresses, e-mail addresses or keys, uses no browser feature that sends or
-  stores data and no way to send data to its own host, and keeps a
+  stores data and no way to send data to its own host, keeps a
   Content-Security-Policy that lets the page load its own script and
-  stylesheet and nothing else;
+  stylesheet and nothing else, and carries the licence notice of every
+  package bundled into it;
 - end-to-end tests in Chromium on that same audited build: the browser asks
   only for the page and its own files, never with a query string, nothing is
   stored, no console errors, no serious accessibility findings, and the
@@ -91,4 +92,5 @@ e2e          end-to-end tests of the built site (Playwright)
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE).
+MIT, see [LICENSE](LICENSE). The built page bundles Preact and Preact Signals
+(MIT); their copyright and licence notices open the built script.

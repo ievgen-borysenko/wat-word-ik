@@ -203,7 +203,8 @@ jobs:
       - name: Audit the built site
         run: |
           if [ -e node_modules ]; then echo "::error::node_modules appeared"; exit 1; fi
-          node scripts/check-dist.mjs "$RUNNER_TEMP/site"
+          # The lockfile of this checkout decides which licence notices the site must carry.
+          node scripts/check-dist.mjs "$RUNNER_TEMP/site" package-lock.json
 
       - name: Secret scan - built site
         run: gitleaks dir --no-banner --redact --ignore-gitleaks-allow "$RUNNER_TEMP/site"

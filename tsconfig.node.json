@@ -1,6 +1,7 @@
 {
-  // Node-side code: CI check scripts (JavaScript, checked through JSDoc) and the
-  // end-to-end tests. The page itself is checked by tsconfig.json.
+  // Node-side code: CI check scripts (JavaScript, checked through JSDoc), the
+  // end-to-end tests and the build configuration, which uses two of the check
+  // scripts. The page itself is checked by tsconfig.json.
   "compilerOptions": {
     "target": "ES2023",
     "lib": ["ES2023", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
@@ -19,5 +20,5 @@
     "noEmit": true,
     "types": ["node"]
   },
-  "include": ["scripts", "e2e", "playwright.config.ts"]
+  "include": ["scripts", "e2e", "playwright.config.ts", "vite.config.ts"]
 }
