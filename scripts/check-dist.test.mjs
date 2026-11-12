@@ -157,6 +157,10 @@ describe('check-dist', () => {
       ['local-path', `"${win('D', '\\\\', 'dev', 'Alice')}"`],
       ['local-path', `"file:///${win('C', '/', 'x')}"`],
       ['local-path', `"${unc('\\\\', 'nas', 'share', 'site')}"`],
+      ['local-path', `'${win('D', '/', 'dev', 'x')}'`],
+      ['local-path', `\`${win('C', '\\\\', 'Users', 'x')}\``],
+      ['local-path', `"Built in ${win('D', '/', 'dev', 'Alice')}"`],
+      ['local-path', `f(${'`'}${win('E', '/', 'build')}${'`'})`],
       ['local-host', '"127.0.0.1"'],
       ['local-host', '"LOCALHOST"'],
       ['private-host', `"${ip(10, 0, 0, 5)}"`],
@@ -182,6 +186,14 @@ describe('check-dist', () => {
       '"|:---|:---:|"',
       '"data:image/svg+xml,x"',
       'c?e:/[a-z]/.test(s)',
+      // Minified JavaScript: a one-letter key, ternary branch or label before a regular expression.
+      'const r={a:/beta/}',
+      'const o={a:/beta/,b:/x/g,c:/y/gi}',
+      'f(c?a:/re/.test(s):0)',
+      'f(c?x.a:/re/:0)',
+      'f(c?x=a:/re/:0)',
+      'for(;;){e:/x/.test(s);break}',
+      'if(x){}a:/y/g.exec(s)',
       '"a\\nb"',
       '"172.32.0.1"',
       '"10.0.0"',
@@ -192,6 +204,10 @@ describe('check-dist', () => {
       '/\\/\\/x.y/.test(s)',
     ])('does not flag %s', (js) => {
       expect(rules(withJs(js))).toEqual([]);
+    });
+
+    it('passes a bundle whose only odd shape is a one-letter key before a regex literal', () => {
+      expect(rules(withJs('const r={a:/beta/};'))).toEqual([]);
     });
 
     it('rejects every e-mail address, a noreply address included', () => {

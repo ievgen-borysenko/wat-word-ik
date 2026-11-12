@@ -167,6 +167,9 @@ describe('check-tree', () => {
     ['a Windows drive path with slashes', `Built in ${['D:', 'dev', 'Alice', 'wat-word-ik'].join('/')}\n`],
     ['a Windows drive path with backslashes', `Built in ${['D:', 'dev', 'Alice'].join('\\')}\n`],
     ['a UNC path', `Copied from ${'\\'.repeat(2)}${['nas', 'share', 'site'].join('\\')}\n`],
+    ['a drive path in inline code', `Run it from \`${['C:', 'Users', 'x'].join('\\')}\`.\n`],
+    ['a drive path as a link target', `See [the build](${['D:', 'dev', 'x'].join('/')}).\n`],
+    ['a drive path at the start of a line', `${['C:', 'Users', 'x'].join('\\')} holds it\n`],
   ])('refuses a local path: %s', (_what, content) => {
     expect(rules(repo({ 'docs/ci.md': content }))).toEqual(['docs/ci.md local-path']);
   });
@@ -203,6 +206,14 @@ describe('check-tree', () => {
       'docs/ci.md': '| a | b |\n|:---|---:|\nAt 12:30 see https://example.com/x and data:image/png.\n',
       'src/styles.css': 'a:hover { color: red; }\n',
       'src/ui/App.tsx': 'export const re = { a: /[a-z]/, b: "\\n" };\n',
+    });
+    expect(rules(r)).toEqual([]);
+  });
+
+  it('does not take a one-letter key or label before a regular expression for a drive', () => {
+    const r = repo({
+      'src/ui/App.tsx': 'export const r={a:/beta/},o={b:/x/g},t=(c:boolean)=>c?r:/re/;\n',
+      'scripts/check-tree.mjs': 'const m={a:/beta/};for(;;){e:/x/.test("");break}\n',
     });
     expect(rules(r)).toEqual([]);
   });

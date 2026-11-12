@@ -71,22 +71,33 @@ const CSP_REQUIRED = ['default-src', 'base-uri', 'form-action'];
 /**
  * Absolute paths from a developer's machine: macOS and Linux home folders (root's
  * included), macOS temporary and volume folders, Linux and WSL mount points; on
- * Windows, any path from a drive root (a drive letter, a colon, a slash or one or
- * two backslashes, then a path character; with forward slashes too, and inside a
- * file URL) and UNC paths (two or four backslashes, a host name, a backslash).
- * Not on the list, because they also appear in ordinary text or code and say
- * nothing about a person: `~/`, `/opt/`; a "drive letter" right after a letter
- * or digit (so the colon of `https:` or `data:` is no drive); a colon that is not
- * followed by a separator and a path character (`a:hover`, `12:30`, Markdown
- * table rules, a regular expression starting with `[` or `\`); a drive-relative
- * path without a separator; UNC paths written with forward slashes, which in the
- * built site are refused as protocol-relative URLs and in the repository cannot
- * be told from `//` comments. A one-letter object key whose value is a regular
- * expression starting with a letter (`{a: /b/}` without the space) is reported
- * as a path: rename the key.
+ * Windows, paths from a drive root (a drive letter, a colon, a slash or one or two
+ * backslashes, then a path character) and UNC paths (two or four backslashes, a
+ * host name, a backslash).
+ *
+ * The rule for drive paths: the drive letter must start a token, that is, stand
+ * at the start of the text or a line, after whitespace, a quote, a backtick, `(`
+ * or `file:///`, because minified JavaScript puts a one-letter object key,
+ * ternary branch or label before `:/regex/` only right after other punctuation
+ * (`{a:/b/}`, `,b:/x/g`, `c?a:/re/`, `x.a:`, `x=a:`, `;e:`, `}a:`).
+ * Accepted gaps of that rule:
+ *   - not found: a drive path right after other punctuation, such as `;D:\x` in
+ *     a PATH-like list (its first entry is found), `=D:/x`, `[D:/x]`, `<D:/x>`
+ *     or Markdown emphasis around it;
+ *   - still reported: a one-letter key, label or case value after whitespace
+ *     and directly followed by a regular expression (`case a:` or `{ a:` with
+ *     no space before the `/`; write `a: /x/`), and a one-letter word right
+ *     after a quote and followed by a colon, a backslash and a letter (an
+ *     escaped new line in a string that starts with such a word).
+ * Not on the list at all, because they also appear in ordinary text or code and
+ * say nothing about a person: `~/`, `/opt/`; a colon that is not followed by a
+ * separator and a path character (`a:hover`, `12:30`, Markdown table rules,
+ * `https:`); a drive-relative path without a separator; UNC paths written with
+ * forward slashes, which in the built site are refused as protocol-relative URLs
+ * and in the repository cannot be told from `//` comments.
  */
 export const LOCAL_PATH_RE =
-  /\/Users\/|\/home\/|\/root\/|\/private\/var\/|\/var\/folders\/|\/Volumes\/|\/mnt\/|(?<![A-Za-z0-9])[A-Za-z]:(?:\\{1,2}|\/)(?=[A-Za-z0-9_$~.-])|(?<![\\\w])\\{2}(?:\\{2})?[A-Za-z0-9_$.-]+\\{1,2}[A-Za-z0-9_$.-]/g;
+  /\/Users\/|\/home\/|\/root\/|\/private\/var\/|\/var\/folders\/|\/Volumes\/|\/mnt\/|(?<=^|[\s"'`(]|file:\/\/\/)[A-Za-z]:(?:\\{1,2}|\/)(?=[A-Za-z0-9_$~.-])|(?<![\\\w])\\{2}(?:\\{2})?[A-Za-z0-9_$.-]+\\{1,2}[A-Za-z0-9_$.-]/g;
 
 /** Header of a PEM or OpenPGP private key. */
 export const PRIVATE_KEY_RE = /-----BEGIN[A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/g;
