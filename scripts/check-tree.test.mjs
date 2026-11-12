@@ -620,7 +620,9 @@ describe('check-tree', () => {
         expect(found.some((m) => m.includes(`commit ${merge.slice(0, 12)} "Merge side"`))).toBe(true);
       });
 
-      it('refuses an oversize version without reading it', () => {
+      // The size is checked before the version is read, so a huge one is never loaded;
+      // parseGif refuses it with the same message, so this test cannot tell the two apart.
+      it('refuses an oversize version', () => {
         const r = repo({ 'docs/demo.gif': GIF });
         const base = r.commit('Add the animation');
         r.write('docs/demo.gif', bytes(GIF.subarray(0, GIF.length - 1), new Uint8Array(DEMO_GIF_MAX_BYTES), TRAILER));
@@ -630,6 +632,20 @@ describe('check-tree', () => {
         const found = gifFindings(r, base);
         expect(found).toHaveLength(1);
         expect(found[0]).toContain(`more than the cap of ${DEMO_GIF_MAX_BYTES}`);
+      });
+
+      it('refuses a folder at the path', () => {
+        const r = repo({ 'docs/demo.gif': GIF });
+        const base = r.commit('Add the animation');
+        r.git(['rm', '--quiet', 'docs/demo.gif']);
+        r.write('docs/demo.gif/frame.md');
+        const folder = r.commit('Make it a folder');
+        r.git(['rm', '--quiet', '-r', 'docs/demo.gif']);
+        r.write('docs/demo.gif', GIF);
+        r.commit('Put the recorded animation back');
+        expect(inHistory(r, base)).toEqual(['docs/demo.gif/frame.md history', 'docs/demo.gif history-gif']);
+        expect(gifFindings(r, base)[0]).toContain(`commit ${folder.slice(0, 12)} "Make it a folder" writes is not a GIF`);
+        expect(gifFindings(r, base)[0]).toContain('it is a tree, not a file');
       });
     });
   });
