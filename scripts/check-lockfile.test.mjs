@@ -47,7 +47,8 @@ describe('check-lockfile', () => {
     'https://registry.yarnpkg.com/a/-/a-1.0.0.tgz',
     'http://registry.npmjs.org/a/-/a-1.0.0.tgz',
     'https://registry.npmjs.org.evil.example/a/-/a-1.0.0.tgz',
-    'git+ssh://git@github.com/someone/a.git#abc',
+    // Put together at run time: the tree check refuses anything shaped like an e-mail address.
+    `git+ssh://${['git', 'github.com'].join('@')}/someone/a.git#abc`,
     'file:../a',
   ])('rejects a package resolved from %s', (resolved) => {
     expect(rules(lock({ 'node_modules/a': pkg('a', { resolved }) }))).toEqual(['node_modules/a source']);

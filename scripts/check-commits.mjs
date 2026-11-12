@@ -1,16 +1,29 @@
 #!/usr/bin/env node
-// Checks the e-mail addresses in a range of commits before it becomes public.
+// Checks commits before they become public: a personal e-mail address that
+// slips into one commit stays in the public history for good.
 //
-// Every commit in <base>..<head> must have an author AND a committer e-mail on
-// the allow-list below, and every e-mail in a trailer line of the message
-// (Co-Authored-By:, Signed-off-by:, ...) must be on it too. A personal address
-// that slips into one commit stays in the public history for good.
+// For every commit in <base>..<head>:
+//   - the author and the committer e-mail are GitHub noreply addresses: the
+//     personal form <digits>+<login> at users.noreply.github.com (bot logins
+//     such as dependabot[bot] included), or GitHub's own noreply address, which
+//     GitHub uses as committer of web merges and bot commits;
+//   - every e-mail address anywhere in the message (subject and body) follows
+//     the same rule. The only exception is GitHub's support address in the
+//     sign-off trailer that Dependabot writes ("Signed-off-by: dependabot[bot]");
+//   - the message has no trailers other than Co-Authored-By and Signed-off-by.
+//     Trailers are parsed by git itself (`git interpret-trailers --parse
+//     --no-divider`), so a "key: value" line inside the message body, such as
+//     the YAML block of a Dependabot message, is not mistaken for a trailer.
 //
-// The raw addresses of the commit objects are read (%ae/%ce), not the ones
-// rewritten by a .mailmap, which only changes how they are displayed.
+// The raw addresses of the commit objects are read (%ae/%ce), not the ones a
+// .mailmap rewrites for display.
+//
+// No address is written literally in this file: the repository check
+// (scripts/check-tree.mjs) refuses e-mail addresses in tracked files.
 //
 // Usage: node scripts/check-commits.mjs <base> <head>
-//   <base> of all zeros (a new branch) means: every commit reachable from <head>.
+//   <base> of all zeros means: every commit reachable from <head> (CI uses this
+//   on pushes, so a cancelled earlier run never leaves commits unchecked).
 // Exit codes: 0 clean, 1 violations found (all listed), 2 usage or git error.
 
 import { execFileSync } from 'node:child_process';
@@ -18,35 +31,45 @@ import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { findEmails } from './check-dist.mjs';
 
-export const ALLOWED_EMAILS = new Set([
-  '10108630+ievgen-borysenko@users.noreply.github.com',
-  '310343018+xevbor@users.noreply.github.com',
-  'noreply@github.com',
-  '49699333+dependabot[bot]@users.noreply.github.com',
-]);
+const AT = '@';
 
-/** Also allowed in trailers: Dependabot signs its commits off with this address. */
-export const ALLOWED_TRAILER_EMAILS = new Set([...ALLOWED_EMAILS, 'support@github.com']);
+/** A personal or bot noreply address of a GitHub account: <digits>+<login>@users.noreply.github.com. */
+export const NOREPLY_RE = /^\d+\+[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\[bot\])?@users\.noreply\.github\.com$/i;
 
-/** A trailer line, e.g. "Co-Authored-By: Name <address>". */
-const TRAILER_LINE = /^[A-Za-z][A-Za-z0-9-]*:\s/;
+/** GitHub's own noreply address (committer of web merges and of signed bot commits). */
+export const GITHUB_NOREPLY = `noreply${AT}github.com`;
+
+/** The sign-off value Dependabot writes; the only place GitHub's support address may appear. */
+export const DEPENDABOT_SIGN_OFF = `dependabot[bot] <support${AT}github.com>`;
+
+/** Trailer keys allowed in a commit message (compared without regard to case). */
+export const TRAILER_KEYS = ['Co-Authored-By', 'Signed-off-by'];
 
 /**
- * @typedef {{ sha: string, authorEmail: string, committerEmail: string, subject: string, body: string }} Commit
+ * @typedef {{ sha: string, authorEmail: string, committerEmail: string, subject: string, message: string }} Commit
+ * @typedef {{ key: string, value: string }} Trailer
  * @typedef {{ sha: string, rule: string, message: string }} Violation
  * @typedef {{ cwd?: string, env?: NodeJS.ProcessEnv }} GitOptions
  */
 
+/** @param {string} address */
+export function allowedAddress(address) {
+  const a = address.toLowerCase();
+  return a === GITHUB_NOREPLY || NOREPLY_RE.test(a);
+}
+
 /**
  * @param {string[]} args
  * @param {GitOptions} opts
+ * @param {string} [input]
  */
-function git(args, opts) {
+function git(args, opts, input) {
   return execFileSync('git', args, {
     cwd: opts.cwd,
     env: opts.env ?? process.env,
     encoding: 'utf8',
-    stdio: ['ignore', 'pipe', 'pipe'],
+    input,
+    stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
     maxBuffer: 64 * 1024 * 1024,
   });
 }
@@ -74,46 +97,82 @@ function commitSha(rev, opts) {
 export function listCommits(base, head, opts = {}) {
   const headSha = commitSha(head, opts);
   const range = /^0+$/.test(base) ? [headSha] : [`${commitSha(base, opts)}..${headSha}`];
-  const out = git(['log', '--reverse', '--no-mailmap', '--format=%H%x1f%ae%x1f%ce%x1f%s%x1f%B%x1e', ...range, '--'], opts);
+  const out = git(['log', '--reverse', '--no-mailmap', '--format=%H%x1f%ae%x1f%ce%x1f%B%x1e', ...range, '--'], opts);
   return out
     .split('\x1e')
     .map((rec) => rec.replace(/^\n/, ''))
     .filter((rec) => rec !== '')
     .map((rec) => {
-      const [sha = '', authorEmail = '', committerEmail = '', subject = '', body = ''] = rec.split('\x1f');
-      return { sha, authorEmail, committerEmail, subject, body };
+      const [sha = '', authorEmail = '', committerEmail = '', message = ''] = rec.split('\x1f');
+      return { sha, authorEmail, committerEmail, subject: message.split('\n')[0] ?? '', message };
     });
 }
 
 /**
- * @param {Commit[]} commits
+ * The trailers of a commit message, as git reads them.
+ * @param {string} message
+ * @param {GitOptions} [opts]
+ * @returns {Trailer[]}
+ */
+export function parseTrailers(message, opts = {}) {
+  const out = git(['interpret-trailers', '--parse', '--no-divider'], opts, message);
+  return out
+    .split('\n')
+    .filter((line) => line.trim() !== '')
+    .map((line) => {
+      const sep = line.indexOf(':');
+      return sep === -1 ? { key: line.trim(), value: '' } : { key: line.slice(0, sep).trim(), value: line.slice(sep + 1).trim() };
+    });
+}
+
+/**
+ * @param {Commit} c
+ * @param {Trailer[]} trailers
  * @returns {Violation[]}
  */
-export function checkCommits(commits) {
+export function checkCommit(c, trailers) {
   /** @type {Violation[]} */
   const violations = [];
-  for (const c of commits) {
-    const short = c.sha.slice(0, 12);
-    /** @param {string} rule @param {string} message */
-    const add = (rule, message) => violations.push({ sha: c.sha, rule, message: `${short} "${c.subject}": ${message}` });
-    if (!ALLOWED_EMAILS.has(c.authorEmail.toLowerCase())) {
-      add('author', `author e-mail <${c.authorEmail}> is not on the allow-list`);
-    }
-    if (!ALLOWED_EMAILS.has(c.committerEmail.toLowerCase())) {
-      add('committer', `committer e-mail <${c.committerEmail}> is not on the allow-list`);
-    }
-    for (const line of c.body.split('\n')) {
-      if (!TRAILER_LINE.test(line)) continue;
-      const bracketed = [...line.matchAll(/<([^<>\s]+@[^<>\s]+)>/g)].map((m) => m[1] ?? '');
-      const bare = [...findEmails(line)].map((m) => m.value);
-      for (const address of new Set([...bracketed, ...bare])) {
-        if (!ALLOWED_TRAILER_EMAILS.has(address.toLowerCase())) {
-          add('trailer', `trailer "${line.trim().slice(0, 100)}" names an address that is not on the allow-list`);
-        }
-      }
+  const short = c.sha.slice(0, 12);
+  /** @param {string} rule @param {string} message */
+  const add = (rule, message) => violations.push({ sha: c.sha, rule, message: `${short} "${c.subject}": ${message}` });
+
+  if (!allowedAddress(c.authorEmail)) add('author', `author e-mail <${c.authorEmail}> is not a GitHub noreply address`);
+  if (!allowedAddress(c.committerEmail)) {
+    add('committer', `committer e-mail <${c.committerEmail}> is not a GitHub noreply address`);
+  }
+
+  const allowedKeys = new Set(TRAILER_KEYS.map((k) => k.toLowerCase()));
+  for (const t of trailers) {
+    if (!allowedKeys.has(t.key.toLowerCase())) {
+      add('trailer', `trailer "${t.key}" is not allowed (only ${TRAILER_KEYS.join(' and ')})`);
     }
   }
+
+  // Dependabot's own sign-off is the one place GitHub's support address may appear.
+  const signedByDependabot = trailers.some(
+    (t) => t.key.toLowerCase() === 'signed-off-by' && t.value === DEPENDABOT_SIGN_OFF,
+  );
+  const isDependabotSignOff = (/** @type {string} */ line) =>
+    /^signed-off-by:\s*(.*)$/i.exec(line.trim())?.[1] === DEPENDABOT_SIGN_OFF;
+  const text = signedByDependabot ? c.message.split('\n').filter((l) => !isDependabotSignOff(l)).join('\n') : c.message;
+  const addresses = new Set([
+    ...[...text.matchAll(/<([^<>\s]+@[^<>\s]+)>/g)].map((m) => m[1] ?? ''),
+    ...[...findEmails(text)].map((m) => m.value),
+  ]);
+  for (const address of addresses) {
+    if (!allowedAddress(address)) add('message', `the message contains <${address}>, which is not a GitHub noreply address`);
+  }
   return violations;
+}
+
+/**
+ * @param {Commit[]} commits
+ * @param {GitOptions} [opts]
+ * @returns {Violation[]}
+ */
+export function checkCommits(commits, opts = {}) {
+  return commits.flatMap((c) => checkCommit(c, parseTrailers(c.message, opts)));
 }
 
 /** @param {string[]} argv */
@@ -123,23 +182,27 @@ function main(argv) {
     console.error('usage: node scripts/check-commits.mjs <base> <head>   (npm run check:commits -- <base> <head>)');
     return 2;
   }
+  /** @type {Violation[]} */
+  let violations;
   /** @type {Commit[]} */
   let commits;
   try {
     commits = listCommits(base, head);
+    violations = checkCommits(commits);
   } catch (err) {
     console.error(`check:commits: ${err instanceof Error ? err.message : String(err)}`);
     return 2;
   }
-  const violations = checkCommits(commits);
   const what = /^0+$/.test(base) ? `all commits of ${head}` : `${base}..${head}`;
   if (violations.length === 0) {
-    console.log(`check:commits: ${commits.length} commit(s) in ${what}, every author and committer e-mail is on the allow-list`);
+    console.log(
+      `check:commits: ${commits.length} commit(s) in ${what}: every address is a GitHub noreply address, trailers only ${TRAILER_KEYS.join(' and ')}`,
+    );
     return 0;
   }
   console.error(`check:commits: ${violations.length} violation(s) in ${commits.length} commit(s) of ${what}:`);
   for (const v of violations) console.error(`  [${v.rule}] ${v.message}`);
-  console.error(`allowed: ${[...ALLOWED_EMAILS].join(', ')}`);
+  console.error('The rules and how to fix a commit: docs/contributing.md, section "Commits".');
   return 1;
 }
 
