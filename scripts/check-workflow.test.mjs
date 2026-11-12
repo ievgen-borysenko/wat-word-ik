@@ -5,11 +5,12 @@ import { join } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
 
 /*
- * Tests of .github/workflows/ci.yml: when the deploy job runs, and what a run
- * started by hand (workflow_dispatch) checks. The file is read as text (the
- * project has no YAML parser, and the audit job installs none); the helpers
- * below know only the layout of this file: two spaces per level, `- name:`
- * first in every step, shell scripts as `run: |` blocks.
+ * Tests of .github/workflows/ci.yml: when the deploy job runs, what a run
+ * started by hand (workflow_dispatch) checks, and how the secret scan reads
+ * the history. The file is read as text (the project has no YAML parser, and
+ * the audit job installs none); the helpers below know only the layout of
+ * this file: two spaces per level, `- name:` first in every step, shell
+ * scripts as `run: |` blocks.
  */
 const WORKFLOW = readFileSync(join(import.meta.dirname, '..', '.github', 'workflows', 'ci.yml'), 'utf8');
 const LINES = WORKFLOW.split('\n');
@@ -220,8 +221,9 @@ const PRIVATE = { private: true, visibility: 'private' };
 
 /**
  * Runs a step's script as GitHub runs `shell: bash`, with only the given
- * environment (none of the test runner's own GITHUB_* variables) and an `npm`
- * that prints its arguments instead of running.
+ * environment (none of the test runner's own GITHUB_* variables), an `npm`
+ * that prints its arguments instead of running, and a `gitleaks` that prints
+ * each of its arguments in brackets.
  * @param {string} script
  * @param {Record<string, string>} env
  */
@@ -239,6 +241,7 @@ function stubDir() {
   if (stub === undefined) {
     stub = mkdtempSync(join(tmpdir(), 'check-workflow-'));
     writeFileSync(join(stub, 'npm'), '#!/bin/sh\necho "npm $*"\n', { mode: 0o755 });
+    writeFileSync(join(stub, 'gitleaks'), '#!/bin/sh\nprintf gitleaks\nprintf \' [%s]\' "$@"\necho\n', { mode: 0o755 });
   }
   return stub;
 }
@@ -398,5 +401,20 @@ describe('history checks in the audit job', () => {
     const res = runStep(runScript(step(audit, name)), { EVENT: 'schedule', PR_BASE: '', PR_HEAD: '', RUN_SHA: 'run1' });
     expect(res.status).toBe(1);
     expect(res.out).toMatch(/^::error::no (?:history|commit) range is defined for the event schedule$/);
+  });
+});
+
+describe('secret scan of the history in the audit job', () => {
+  // `git log -p`, which gitleaks runs, shows no diff for a merge commit unless
+  // asked, so what a merge resolution added would never be scanned.
+  it('reads every commit, merge commits as their changes against the first parent', () => {
+    const res = runStep(runScript(step(job('audit'), 'Secret scan - full git history')), {});
+    expect(res).toEqual({
+      status: 0,
+      out: [
+        'gitleaks [git] [--no-banner] [--redact] [--ignore-gitleaks-allow] [--log-opts=--all --full-history --diff-merges=first-parent] [.]',
+        'gitleaks [dir] [--no-banner] [--redact] [--ignore-gitleaks-allow] [.]',
+      ].join('\n'),
+    });
   });
 });

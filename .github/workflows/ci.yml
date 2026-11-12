@@ -148,7 +148,10 @@ jobs:
           for f in .gitleaks.toml .gitleaksignore; do
             if [ -e "$f" ]; then echo "::error file=$f::$f changes the secret scan; review it and update this step"; exit 1; fi
           done
-          gitleaks git --no-banner --redact --ignore-gitleaks-allow --log-opts="--all --full-history" .
+          # git log -p shows no diff for a merge commit unless asked; with
+          # --diff-merges=first-parent it shows the merge's changes against its
+          # first parent, so what a merge resolution added is scanned too.
+          gitleaks git --no-banner --redact --ignore-gitleaks-allow --log-opts="--all --full-history --diff-merges=first-parent" .
           gitleaks dir --no-banner --redact --ignore-gitleaks-allow .
 
       - name: Lockfile - registry, integrity, runtime licences
