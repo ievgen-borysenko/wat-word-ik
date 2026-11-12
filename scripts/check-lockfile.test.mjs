@@ -86,13 +86,17 @@ describe('check-lockfile', () => {
     expect(rules(lock({ 'node_modules/a': pkg('a', { license: undefined }) }))).toEqual(['node_modules/a license']);
   });
 
-  it('counts optional runtime packages as runtime, dev and devOptional ones not', () => {
+  it('counts optional and devOptional packages as runtime, dev ones (also dev and optional) not', () => {
+    // devOptional: a dev dependency that is also an optional dependency of a
+    // runtime package, so it can end up in the page.
     const l = lock({
       'node_modules/a': pkg('a', { optional: true, license: 'GPL-3.0-only' }),
-      'node_modules/b': pkg('b', { devOptional: true, license: 'GPL-3.0-only' }),
+      'node_modules/b': pkg('b', { devOptional: true, optional: true, license: 'GPL-3.0-only' }),
       'node_modules/c': pkg('c', { dev: true, license: 'MPL-2.0' }),
+      'node_modules/d': pkg('d', { dev: true, optional: true, license: 'MPL-2.0' }),
+      'node_modules/e': pkg('e', { devOptional: true, license: undefined }),
     });
-    expect(rules(l)).toEqual(['node_modules/a license']);
+    expect(rules(l)).toEqual(['node_modules/a license', 'node_modules/b license', 'node_modules/e license']);
   });
 
   it('rejects an old lockfile format', () => {

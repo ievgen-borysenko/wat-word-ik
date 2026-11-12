@@ -4,8 +4,10 @@
 //     (no git URLs, tarball URLs on other hosts, local files or links);
 //   - every package has an `integrity` hash (sha512), so `npm ci` refuses a
 //     tarball that differs from the one that was reviewed;
-//   - every runtime (non-dev) package, which ends up in the shipped page, has a
-//     licence from a short allow-list of permissive licences.
+//   - every runtime package, which can end up in the shipped page, has a licence
+//     from a short allow-list of permissive licences. Runtime means every entry
+//     without `dev`: an entry with `devOptional` (a dev dependency that is also
+//     an optional dependency of a runtime package) counts as runtime too.
 //
 // Usage: node scripts/check-lockfile.mjs [package-lock.json]
 // Exit codes: 0 clean, 1 violations found (all listed), 2 the file could not be read.
@@ -111,7 +113,7 @@ export function auditLockfile(lock) {
         add('integrity', `has no sha512 integrity hash (${entry.integrity.slice(0, 12)}...)`);
       }
     }
-    if (!entry.dev && !entry.devOptional) {
+    if (!entry.dev) {
       const license = entry.license;
       if (typeof license !== 'string' || license === '') add('license', `runtime package ${pkg} declares no licence`);
       else if (!licenseAllowed(license, RUNTIME_LICENSES)) {
