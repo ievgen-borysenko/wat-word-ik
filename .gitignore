@@ -8,3 +8,10 @@ Thumbs.db
 playwright-report/
 test-results/
 blob-report/
+.npmrc
+.idea/
+.vscode/
+coverage/
+*.tsbuildinfo
+.vite/
+.eslintcache

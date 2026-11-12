@@ -31,11 +31,11 @@ but never the grades: browsers do not send the part after `#`.
 Requires Node.js and npm.
 
 ```sh
-npm ci
-npm run dev        # local dev server
-npm test           # unit tests (engine, data, translations, store, built CSP)
+npm ci --ignore-scripts  # install exactly what package-lock.json lists, run no install scripts
+npm run dev              # local dev server
+npm test                 # unit tests (engine, data, translations, store, built CSP)
 npm run typecheck
-npm run build      # static site in dist/, works from any sub-path
+npm run build            # static site in dist/, works from any sub-path
 ```
 
 ## What CI checks
