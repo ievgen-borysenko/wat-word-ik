@@ -78,7 +78,7 @@ function repo(extra = {}) {
     });
     return git(['rev-parse', 'HEAD']);
   };
-  /** @param {string} path @param {string} [content] */
+  /** @param {string} path @param {string | Uint8Array} [content] */
   const write = (path, content = 'x\n') => {
     mkdirSync(dirname(join(dir, path)), { recursive: true });
     writeFileSync(join(dir, path), content);
@@ -157,11 +157,15 @@ const screen = (w = 2, h = 2) => bytes(...le16(w), ...le16(h), 0x80, 0, 0, [0, 0
 const LOOP = bytes(0x21, 0xff, 11, 'NETSCAPE2.0', 3, 1, ...le16(0), 0);
 const gce = (delayCs = 10) => bytes(0x21, 0xf9, 4, 0, ...le16(delayCs), 0, 0);
 /** An image at (0, 0) of w x h pixels, alternating black and white unless `data` is given. */
-const image = (w = 2, h = 2, data = lzw(Array.from({ length: w * h }, (_, i) => i % 2))) =>
+const image = (w = 2, h = 2, /** @type {Uint8Array} */ data = lzw(Array.from({ length: w * h }, (_, i) => i % 2))) =>
   bytes(0x2c, ...le16(0), ...le16(0), ...le16(w), ...le16(h), 0, 2, subBlocks(data));
 const TRAILER = bytes(0x3b);
 /** Two frames of 2x2 pixels, 0.1 s each, looping forever. */
 const GIF = bytes('GIF89a', screen(), LOOP, gce(), image(), gce(), image(), TRAILER);
+/** Header, logical screen and loop extension: everything before the first frame. */
+const start = (w = 2, h = 2) => bytes('GIF89a', screen(w, h), LOOP);
+/** A frame: a delay of 0.1 s, then an image of w x h pixels. */
+const frame = (/** @type {Uint8Array | undefined} */ data = undefined, w = 2, h = 2) => bytes(gce(), image(w, h, data));
 
 describe('check-tree', () => {
   it('passes a tree of listed files', () => {
@@ -458,7 +462,7 @@ describe('check-tree', () => {
       const found = checkTree(r.dir, r.env, { base, head: 'HEAD' });
       expect(found.violations.map((v) => `${v.path} ${v.rule}`)).toEqual(['notes.md history']);
       expect(found.violations[0]?.message).toContain(`${bad.slice(0, 12)} "Add my notes"`);
-      expect(found.history).toEqual({ commits: 2, paths: 1, what: `${base}..HEAD` });
+      expect(found.history).toEqual({ commits: 2, paths: 1, gifVersions: 0, what: `${base}..HEAD` });
     });
 
     it('refuses a path that a rename brings in, and file names with spaces or new lines', () => {
@@ -516,6 +520,93 @@ describe('check-tree', () => {
       r.commit('base');
       expect(() => inHistory(r, '1234567890abcdef1234567890abcdef12345678')).toThrow(/not a commit/);
     });
+
+    describe('every version of docs/demo.gif that a commit writes', () => {
+      const WITH_COMMENT = bytes(start(), 0x21, 0xfe, subBlocks('note'), frame(), TRAILER);
+      const APPENDED = bytes(GIF, 'note');
+      /** @param {ReturnType<typeof repo>} r @param {string} base */
+      const gifFindings = (r, base) =>
+        checkTree(r.dir, r.env, { base, head: 'HEAD' })
+          .violations.filter((v) => v.rule === 'history-gif')
+          .map((v) => v.message);
+
+      it('refuses a version that a later commit replaces, in the range and with a base of zeros', () => {
+        const r = repo({ 'docs/demo.gif': GIF });
+        const base = r.commit('Add the animation');
+        r.write('docs/demo.gif', WITH_COMMENT);
+        const bad = r.commit('Add a comment to the animation');
+        r.write('docs/demo.gif', GIF);
+        r.commit('Put the recorded animation back');
+        expect(rules(r)).toEqual([]);
+        const found = checkTree(r.dir, r.env, { base, head: 'HEAD' });
+        expect(found.violations.map((v) => `${v.path} ${v.rule}`)).toEqual(['docs/demo.gif history-gif']);
+        expect(found.violations[0]?.message).toContain(`commit ${bad.slice(0, 12)} "Add a comment to the animation" writes`);
+        expect(found.violations[0]?.message).toContain('a comment extension is not allowed');
+        expect(found.history?.gifVersions).toBe(2);
+        expect(inHistory(r, ZERO)).toEqual(['docs/demo.gif history-gif']);
+        expect(inHistory(r, bad)).toEqual([]);
+      });
+
+      it('refuses a version that a rename brings to the path', () => {
+        const r = repo({ 'docs/demo.gif': GIF });
+        const base = r.commit('Add the animation');
+        r.write('docs/methodology.md', APPENDED);
+        r.commit('Keep a draft');
+        r.git(['rm', '--quiet', 'docs/demo.gif']);
+        r.git(['mv', 'docs/methodology.md', 'docs/demo.gif']);
+        const renamed = r.commit('Use the draft as the animation');
+        r.write('docs/demo.gif', GIF);
+        r.commit('Put the recorded animation back');
+        const found = gifFindings(r, base);
+        expect(found).toHaveLength(1);
+        expect(found[0]).toContain(`commit ${renamed.slice(0, 12)} "Use the draft as the animation"`);
+        expect(found[0]).toContain('bytes follow the trailer');
+      });
+
+      it('passes a deletion and the version that comes back', () => {
+        const r = repo({ 'docs/demo.gif': GIF });
+        const base = r.commit('Add the animation');
+        r.git(['rm', '--quiet', 'docs/demo.gif']);
+        r.commit('Remove it');
+        r.write('docs/demo.gif', GIF);
+        r.commit('Bring it back');
+        const found = checkTree(r.dir, r.env, { base, head: 'HEAD' });
+        expect(found.violations).toEqual([]);
+        expect(found.history?.gifVersions).toBe(1);
+      });
+
+      it('refuses a version from a merged branch and one that a merge writes itself', () => {
+        const r = repo({ 'docs/demo.gif': GIF });
+        const base = r.commit('Add the animation');
+        r.git(['checkout', '--quiet', '-b', 'side']);
+        r.write('docs/demo.gif', WITH_COMMENT);
+        const side = r.commit('Side: comment');
+        r.git(['checkout', '--quiet', 'main']);
+        r.write('src/ui/Main.tsx', 'export {};\n');
+        r.commit('Main work');
+        r.git(['merge', '--quiet', '--no-ff', '--no-commit', 'side']);
+        r.write('docs/demo.gif', APPENDED);
+        const merge = r.commit('Merge side');
+        r.write('docs/demo.gif', GIF);
+        r.commit('Put the recorded animation back');
+        const found = gifFindings(r, base);
+        expect(found).toHaveLength(2);
+        expect(found.some((m) => m.includes(`commit ${side.slice(0, 12)} "Side: comment"`))).toBe(true);
+        expect(found.some((m) => m.includes(`commit ${merge.slice(0, 12)} "Merge side"`))).toBe(true);
+      });
+
+      it('refuses an oversize version without reading it', () => {
+        const r = repo({ 'docs/demo.gif': GIF });
+        const base = r.commit('Add the animation');
+        r.write('docs/demo.gif', bytes(GIF.subarray(0, GIF.length - 1), new Uint8Array(DEMO_GIF_MAX_BYTES), TRAILER));
+        r.commit('A big one');
+        r.write('docs/demo.gif', GIF);
+        r.commit('Put the recorded animation back');
+        const found = gifFindings(r, base);
+        expect(found).toHaveLength(1);
+        expect(found[0]).toContain(`more than the cap of ${DEMO_GIF_MAX_BYTES}`);
+      });
+    });
   });
 
   describe('command line', () => {
@@ -541,6 +632,23 @@ describe('check-tree', () => {
       const bad = run(r.dir, r.env);
       expect(bad.status).toBe(1);
       expect(bad.stderr).toContain('docs/demo.gif: [gif] must be a GIF that holds images and nothing else: 4 bytes follow the trailer');
+    });
+
+    it('exits 1 for a version of the animation that only the history holds', () => {
+      const r = repo({ 'docs/demo.gif': GIF });
+      const base = r.commit('base');
+      r.write('docs/demo.gif', bytes(start(), 0x21, 0xfe, subBlocks('note'), frame(), TRAILER));
+      r.commit('Add a note to the animation');
+      r.write('docs/demo.gif', GIF);
+      r.commit('Put the animation back');
+      expect(run(r.dir, r.env).status).toBe(0);
+      const bad = spawnSync(process.execPath, [SCRIPT, '--range', base, 'HEAD', r.dir], { env: r.env, encoding: 'utf8' });
+      expect(bad.status).toBe(1);
+      expect(bad.stderr).toContain('docs/demo.gif: [history-gif] the version that commit');
+      expect(bad.stderr).toContain('"Add a note to the animation" writes is not a GIF');
+      const ok = spawnSync(process.execPath, [SCRIPT, '--range', 'HEAD', 'HEAD', r.dir], { env: r.env, encoding: 'utf8' });
+      expect(ok.status).toBe(0);
+      expect(ok.stdout).toContain('0 version(s) of docs/demo.gif written in them');
     });
 
     it('exits 1 and explains how to add a file', () => {

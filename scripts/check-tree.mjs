@@ -34,10 +34,12 @@
 //
 // With --range <base> <head>, every path that a commit in base..head adds,
 // copies or renames to must be on the list as well, so a file cannot enter the
-// history in one commit and leave it in the next. A base of all zeros means
-// every commit reachable from head. Only the paths of those commits are checked
-// here; their content is covered by the secret scan in CI, not by the e-mail,
-// path and host checks, which read the working tree.
+// history in one commit and leave it in the next, and every version of
+// docs/demo.gif that such a commit writes must pass parseGif too. A base of
+// all zeros means every commit reachable from head. Apart from that file, only
+// the paths of those commits are checked here; their content is covered by the
+// secret scan in CI, not by the e-mail, path and host checks, which read the
+// working tree.
 //
 // Usage: node scripts/check-tree.mjs [--range <base> <head>] [repo]   (repo
 // defaults to the current directory)
@@ -113,22 +115,40 @@ const CODE_FILE_RE = /\.(?:[cm]?js|tsx?)$/;
  * @typedef {{ path: string, rule: string, message: string }} Violation
  * @typedef {{ mode: string, path: string }} Entry
  * @typedef {{ base: string, head: string }} Range
- * @typedef {{ commits: number, paths: number, what: string }} HistoryResult
+ * @typedef {{ commits: number, paths: number, gifVersions: number, what: string }} HistoryResult
  */
 
 /**
+ * Runs git and returns its output as bytes.
  * @param {string[]} args
  * @param {string} root
  * @param {NodeJS.ProcessEnv} env
+ * @param {string} [input] written to git's standard input
  */
-function git(args, root, env) {
+function gitBytes(args, root, env, input) {
   try {
-    return execFileSync('git', args, { cwd: root, env, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], maxBuffer: 64 * 1024 * 1024 });
+    return execFileSync('git', args, {
+      cwd: root,
+      env,
+      input,
+      stdio: [input === undefined ? 'ignore' : 'pipe', 'pipe', 'pipe'],
+      maxBuffer: 64 * 1024 * 1024,
+    });
   } catch (err) {
     const e = /** @type {NodeJS.ErrnoException & { stderr?: string }} */ (err);
     if (e.code === 'ENOENT') throw new Error('git is not available');
     throw new Error(`git ${args[0]} failed in ${root}: ${String(e.stderr ?? e.message).trim()}`);
   }
+}
+
+/**
+ * @param {string[]} args
+ * @param {string} root
+ * @param {NodeJS.ProcessEnv} env
+ * @param {string} [input] written to git's standard input
+ */
+function git(args, root, env, input) {
+  return gitBytes(args, root, env, input).toString('utf8');
 }
 
 /**
@@ -403,6 +423,55 @@ function lzwProblem(data, minCodeSize, pixels, colours) {
 }
 
 /**
+ * Every version of DEMO_GIF that a commit in base..head writes: the object at
+ * that path in the commit's tree when none of the commit's parents has the same
+ * object there. That is a commit that adds, changes, copies or renames a file
+ * to the path; a merge counts only with a version that none of its sides had
+ * (the sides' own commits are in the range or in the base). A deletion writes
+ * nothing. Each distinct object once, with the first commit that writes it.
+ * @param {string} root
+ * @param {Range} range
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {{ sha: string, object: string, type: string, size: number }[]}
+ */
+export function demoGifVersionsInHistory(root, range, env) {
+  const opts = { cwd: root, env };
+  const head = commitSha(range.head, opts);
+  const revs = isAllZeros(range.base) ? [head] : [`${commitSha(range.base, opts)}..${head}`];
+  const commits = git(['rev-list', '--reverse', '--parents', ...revs, '--'], root, env)
+    .split('\n')
+    .filter((line) => line !== '')
+    .map((line) => {
+      const [sha = '', ...parents] = line.split(' ');
+      return { sha, parents };
+    });
+  const shas = [...new Set(commits.flatMap((c) => [c.sha, ...c.parents]))];
+  if (shas.length === 0) return [];
+  // One line per `<commit>:<path>`: "<object> <type> <size>", or "<name> missing" when the path is not there.
+  const lines = git(['cat-file', '--batch-check'], root, env, shas.map((sha) => `${sha}:${DEMO_GIF}\n`).join('')).split('\n');
+  /** @type {Map<string, { object: string, type: string, size: number } | null>} */
+  const at = new Map();
+  shas.forEach((sha, i) => {
+    const line = lines[i] ?? '';
+    const m = /^([0-9a-f]{40,64}) (\S+) (\d+)$/.exec(line);
+    if (!m && !line.endsWith(' missing')) throw new Error(`git cat-file gave an unexpected line for ${sha}:${DEMO_GIF}: ${line}`);
+    at.set(sha, m ? { object: m[1] ?? '', type: m[2] ?? '', size: Number(m[3]) } : null);
+  });
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @type {{ sha: string, object: string, type: string, size: number }[]} */
+  const versions = [];
+  for (const { sha, parents } of commits) {
+    const version = at.get(sha);
+    if (!version || seen.has(version.object)) continue;
+    if (parents.some((p) => at.get(p)?.object === version.object)) continue;
+    seen.add(version.object);
+    versions.push({ sha, ...version });
+  }
+  return versions;
+}
+
+/**
  * @param {string} rootDir
  * @param {NodeJS.ProcessEnv} [env]
  * @param {Range} [range] also check the paths that commits in base..head add
@@ -489,8 +558,29 @@ export function checkTree(rootDir, env = process.env, range) {
         message: `is added in commit ${sha.slice(0, 12)} "${subject}" and is not on the list. No commit may add such a file, not even one that a later commit removes: rewrite the branch so that no commit adds it.`,
       });
     }
+    // The parse above reads the working tree only; every version a commit wrote stays in the history.
+    const versions = demoGifVersionsInHistory(root, range, env);
+    for (const { sha, object, type, size } of versions) {
+      let problem = null;
+      if (type !== 'blob') problem = `it is a ${type}, not a file`;
+      else if (size > DEMO_GIF_MAX_BYTES) problem = `the file has ${size} bytes, more than the cap of ${DEMO_GIF_MAX_BYTES}`;
+      else {
+        try {
+          parseGif(gitBytes(['cat-file', 'blob', object], root, env));
+        } catch (err) {
+          problem = err instanceof Error ? err.message : String(err);
+        }
+      }
+      if (problem === null) continue;
+      const subject = git(['log', '-1', '--format=%s', sha, '--'], root, env).trim();
+      violations.push({
+        path: DEMO_GIF,
+        rule: 'history-gif',
+        message: `the version that commit ${sha.slice(0, 12)} "${subject}" writes is not a GIF that holds images and nothing else: ${problem}. A later commit that replaces it does not take it out of the history: rewrite the branch so that no commit writes such a version.`,
+      });
+    }
     const what = isAllZeros(range.base) ? `all commits of ${range.head}` : `${range.base}..${range.head}`;
-    history = { commits: commits.length, paths: added.size, what };
+    history = { commits: commits.length, paths: added.size, gifVersions: versions.length, what };
   }
   return { violations, checked: entries.length, scanned, gif, history };
 }
@@ -526,7 +616,7 @@ function main(argv) {
   const { violations, checked, scanned, gif, history } = result;
   if (violations.length === 0) {
     const inHistory = history
-      ? `; ${history.paths} paths added in the ${history.commits} commit(s) of ${history.what}, all on the list`
+      ? `; ${history.paths} paths added in the ${history.commits} commit(s) of ${history.what}, all on the list, and ${history.gifVersions} version(s) of ${DEMO_GIF} written in them, each holding images only`
       : '';
     const animation = gif
       ? `; ${DEMO_GIF} holds images only (${gif.width}x${gif.height}, ${gif.frames} frames, ${(gif.durationCs / 100).toFixed(2)} s)`

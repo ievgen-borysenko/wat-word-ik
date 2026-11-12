@@ -81,11 +81,15 @@ What this does not cover:
 What the history checks cover: `check:tree` and `check:commits` read every
 commit of a pull request, because GitHub keeps those commits visible with the
 pull request even after a squash merge. They check each commit's paths, author,
-committer and message. The content of a commit that a later commit replaces is
-covered only by the secret scan (gitleaks reads every commit): the e-mail,
-local-path and host checks, and the parse of `docs/demo.gif`, read the files
-as they are now. A personal address added in one commit and removed in the
-next stays in that pull request's history unless it looks like a secret.
+committer and message, and `check:tree` parses every version of
+`docs/demo.gif` that a commit writes, whether it adds, changes, copies or
+renames the file to that path, or a merge writes a version that none of its
+sides had: the secret scan does not read binary files, so nothing else would.
+The content of any other file that a later commit replaces is covered only by
+the secret scan (gitleaks reads every commit): the e-mail, local-path and host
+checks read the files as they are now. A personal address added in one commit
+and removed in the next stays in that pull request's history unless it looks
+like a secret.
 
 A known limit of `check:commits`: an author or committer is judged by the
 form of the address. An account without the `[bot]` suffix passes as a person,
