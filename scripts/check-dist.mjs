@@ -15,11 +15,14 @@
 //               source map comments, e-mail addresses (none at all), URLs outside
 //               an allow-list or protocol-relative URLs;
 //   5. runtime  the JS names no browser API that talks to the network, stores
-//               data or starts a worker;
-//   6. html     index.html carries a Content-Security-Policy meta whose
-//               default-src is 'self' or 'none', that forbids connections and
-//               allows no remote source; it loads nothing from another host and
-//               has no inline scripts or event handlers.
+//               data or starts a worker, and no way to send data to the page's
+//               own host without one (an image request, a navigation, a URL
+//               written into an element, a string that starts a query string);
+//   6. html     index.html carries a Content-Security-Policy meta that lets the
+//               page load its own script and stylesheet and nothing else
+//               (default-src 'none'); it loads nothing from another host, has
+//               no inline scripts or event handlers and no local URL with a
+//               query string.
 //
 // Usage: node scripts/check-dist.mjs [dir]   (default: dist)
 // Exit codes: 0 clean, 1 violations found (all of them are listed), 2 the audit
@@ -47,9 +50,23 @@ export const ALLOWED_URLS = [
   'http://www.w3.org/XML/1998/namespace',
 ];
 
-/** CSP source expressions that keep the page offline. `data:` only where listed. */
-const CSP_SAFE_SOURCES = new Set(["'self'", "'none'"]);
-const CSP_DATA_ALLOWED = new Set(['img-src']);
+/**
+ * Content-Security-Policy: the sources each directive may list. default-src must
+ * be exactly 'none', so every fetch directive that is not listed (connect, font,
+ * media, frame, object, worker, manifest, ...) falls back to it. Only the page's
+ * own script and stylesheet may come from 'self'; images only from data: (the
+ * inline icon). Any directive not in this table may only be 'none'.
+ */
+export const CSP_ALLOWED = new Map([
+  ['default-src', ["'none'"]],
+  ['script-src', ["'self'", "'none'"]],
+  ['style-src', ["'self'", "'none'"]],
+  ['img-src', ['data:', "'none'"]],
+  ['base-uri', ["'none'"]],
+  ['form-action', ["'none'"]],
+]);
+/** Directives that default-src does not cover, so the policy must set them. */
+const CSP_REQUIRED = ['default-src', 'base-uri', 'form-action'];
 
 /**
  * Absolute paths from a developer's machine: macOS and Linux home folders (root's
@@ -179,7 +196,7 @@ export function* findPrivateHostNames(text) {
  * It does NOT find a name assembled at run time ("fe" + "tch", atob(...), char
  * codes) used with bracket access, or an API reached by iterating over window.
  * eval and the Function constructor are forbidden too, so code cannot be built
- * from strings; the remaining gaps are covered by the CSP meta (connect-src) and
+ * from strings; the remaining gaps are covered by the CSP meta (default-src 'none') and
  * by the end-to-end tests, which record every request the page makes and, after
  * using every control, find no cookies, local or session storage, IndexedDB
  * databases, service workers, Cache Storage or origin private file system entries.
@@ -208,6 +225,47 @@ export const RUNTIME_APIS = [
   ['importScripts', /\bimportScripts\b/],
   ['eval', /\beval\b/],
   ['Function constructor', /\bnew\s+Function\b|(?<![.\w$])Function\s*\(/],
+];
+
+/*
+ * Ways to send data to the page's own host without the APIs above. A request
+ * to the own host is not blocked by connect-src, and the host's logs keep its
+ * query string. This scan finds:
+ *   - the Image and Audio constructors (new Image(), Image(), aliasing);
+ *   - writes to location (location = u, location.href, .search, .pathname and
+ *     the other parts but the hash; location.assign(u), location.replace(u));
+ *   - open(u), window.open(u);
+ *   - URL properties written directly (.src, .srcset, .href, .action,
+ *     .formAction, .poster, .ping, .search), also with a literal in brackets;
+ *   - URL attributes as keys of element props (src:, srcset:, poster:, ping:,
+ *     formAction:), the form that JSX compiles to;
+ *   - a string literal that starts a query string ("?key=", "/path?key=",
+ *     "./x?key=", also as a template literal) where an expression begins.
+ * It does NOT find a property or attribute name assembled at run time
+ * (el[k] = v, setAttribute(k, v)), a URL built from character codes, aliasing
+ * of open or location, history.pushState/replaceState with a query (the page
+ * writes its own hash with replaceState; a query written there reaches the
+ * host on the next reload), or a link the user clicks. The CSP (default-src
+ * 'none') makes the browser block image, media, frame and object loads in
+ * any case; a navigation is not a load that CSP can block, so for those the
+ * end-to-end guard, which refuses every request with a query string, is the
+ * remaining layer, for the paths the tests take. A UI string containing
+ * "Image", "Audio" or "open(" is reported as well: reword the string.
+ */
+/** @type {[name: string, pattern: RegExp][]} */
+export const REQUEST_SINKS = [
+  ['Image or Audio constructor', /\b(?:Image|Audio)\b/],
+  [
+    'write to location',
+    /\blocation\s*(?:\.\s*(?:href|search|pathname|host|hostname|port|protocol|origin)\s*)?=(?!=)|\blocation\s*\.\s*(?:assign|replace)\s*\(/,
+  ],
+  ['window.open', /\b(?:window|self|globalThis|top|parent)\s*\.\s*open\s*\(|(?<![\w$.])open\s*\(/],
+  [
+    'URL property write',
+    /\.\s*(?:src|srcset|href|action|formAction|poster|ping|search)\s*=(?!=)|\[\s*(["'`])(?:src|srcset|href|action|formAction|poster|ping|search)\1\s*\]\s*=(?!=)/,
+  ],
+  ['URL attribute in element props', /(?<![\w$.-])(["'`]?)(?:src|srcset|poster|ping|formAction|formaction)\1\s*:/],
+  ['query string literal', /(?<=(?:^|[=(,:+[{;!&|?>]|\breturn)\s*)(["'`])(?:\.{0,2}\/[^"'`\s?]*)?\?[A-Za-z_][\w.-]*=/],
 ];
 
 /** Attributes whose value is a URL that the browser may load or navigate to. */
@@ -329,24 +387,24 @@ export function checkCsp(content) {
   /** @type {string[]} */
   const problems = [];
   const policy = parseCsp(content);
-  const fallback = policy.get('default-src');
-  const single = (/** @type {string[] | undefined} */ list) => (list && list.length === 1 ? list[0]?.toLowerCase() : undefined);
-  // Without default-src, every fetch directive that is not listed allows any host.
-  if (!fallback) problems.push("default-src is missing: every directive not listed would allow any host");
-  else if (!["'self'", "'none'"].includes(single(fallback) ?? '')) {
-    problems.push(`default-src must be exactly 'self' or 'none', found: ${fallback.join(' ') || '(empty)'}`);
+  for (const name of CSP_REQUIRED) {
+    if (!policy.has(name)) {
+      const why = name === 'default-src' ? 'every fetch directive not listed would allow any host' : 'default-src does not cover it';
+      problems.push(`${name} is missing: ${why}`);
+    }
   }
-  const connect = policy.get('connect-src');
-  if (connect) {
-    if (single(connect) !== "'none'") problems.push(`connect-src must be 'none', found: ${connect.join(' ') || '(empty)'}`);
-  } else if (single(fallback) !== "'none'") {
-    problems.push("connections are not forbidden: add connect-src 'none' (or default-src 'none')");
+  const fallback = policy.get('default-src');
+  if (fallback && !(fallback.length === 1 && fallback[0]?.toLowerCase() === "'none'")) {
+    problems.push(`default-src must be exactly 'none', found: ${fallback.join(' ') || '(empty)'}`);
   }
   for (const [name, sources] of policy) {
+    if (name === 'default-src') continue;
+    const allowed = CSP_ALLOWED.get(name) ?? ["'none'"];
+    const lower = sources.map((src) => src.toLowerCase());
+    if (lower.includes("'none'") && lower.length > 1) problems.push(`${name} lists 'none' together with other sources`);
     for (const src of sources) {
-      if (CSP_SAFE_SOURCES.has(src.toLowerCase())) continue;
-      if (src.toLowerCase() === 'data:' && CSP_DATA_ALLOWED.has(name)) continue;
-      problems.push(`${name} allows ${src}; only 'self', 'none' (and data: in img-src) keep the page offline`);
+      if (allowed.includes(src.toLowerCase())) continue;
+      problems.push(`${name} allows ${src}; allowed there: ${allowed.join(' ')}`);
     }
   }
   return problems;
@@ -394,6 +452,7 @@ function checkIndexHtml(html, shipped) {
           if (!allowedData) add('html', `<${t.name} ${name}="${url.slice(0, 80)}"> points outside the site`);
           continue;
         }
+        if (url.includes('?')) add('html', `<${t.name} ${name}="${url.slice(0, 80)}"> carries a query string`);
         const local = url.replace(/[?#].*$/, '').replace(/^\.\//, '').replace(/^\//, '');
         if (local !== '' && !shipped.has(local)) add('html', `<${t.name} ${name}="${url}"> refers to a missing file`);
       }
@@ -471,6 +530,10 @@ export function auditDist(dir) {
       for (const [name, re] of RUNTIME_APIS) {
         const m = text.match(re);
         if (m && m.index !== undefined) add('runtime', `${name} at ${where(text, m.index, m[0].length)}`);
+      }
+      for (const [name, re] of REQUEST_SINKS) {
+        const m = text.match(re);
+        if (m && m.index !== undefined) add('request', `${name} at ${where(text, m.index, m[0].length)}`);
       }
     }
   }

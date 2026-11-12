@@ -17,8 +17,7 @@ const KEY_HEADER = (/** @type {string} */ kind) => `-----BEGIN ${kind}PRI${'VATE
 const ip = (/** @type {number[]} */ ...octets) => octets.join('.');
 
 const SCRIPT = resolve(import.meta.dirname, 'check-dist.mjs');
-const CSP =
-  "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; object-src 'none'";
+const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'";
 
 /** @type {string[]} */
 const made = [];
@@ -259,44 +258,117 @@ describe('check-dist', () => {
     });
   });
 
-  describe('Content-Security-Policy', () => {
-    it('accepts the policy of the real build', () => {
-      const real =
-        "default-src 'self'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'none'; font-src 'none'; object-src 'none'; base-uri 'self'; form-action 'none'";
-      expect(checkCsp(real)).toEqual([]);
+  describe('requests to the own host in JS', () => {
+    it('rejects the gate reproducer three times over: Image, a .src write, a query string', () => {
+      const js = 'new Image().src="/index.html?grades="+encodeURIComponent(location.hash);';
+      const found = auditDist(withJs(js)).violations.map((v) => v.message.split(' at ')[0]);
+      expect(found).toEqual(['Image or Audio constructor', 'URL property write', 'query string literal']);
     });
 
-    it('accepts default-src none without connect-src', () => {
-      expect(checkCsp("default-src 'none'; script-src 'self'; style-src 'self'")).toEqual([]);
+    it.each([
+      'new Image()',
+      'const I=Image;new I',
+      'new Audio(u)',
+      'location="/?x="+d',
+      'location.href=u',
+      'window.location.search=q',
+      'location.assign(u)',
+      'location.replace(u)',
+      'window.open(u)',
+      'open(u)',
+      'e.src=u',
+      'e.srcset=u',
+      'a.href=u',
+      'f.action=u',
+      'b.formAction=u',
+      'v.poster=u',
+      'a.ping=u',
+      'u.search=q',
+      'e["src"]=u',
+      'e[`href`]=u',
+      'h(`img`,{src:u})',
+      'h(`img`,{"srcset":u})',
+      'h(`a`,{ping:u})',
+      'x=`?g=${location.hash}`',
+      'go("?grades="+d)',
+      'go(`./index.html?d=`+d)',
+      'return"/x?y="+d',
+    ])('rejects %s', (js) => {
+      expect(new Set(rules(withJs(js)))).toEqual(new Set(['assets/index-abc123.js request']));
+    });
+
+    it.each([
+      // Real shapes from the minified bundle: ternaries after template literals, reads of location.
+      'for(o in n)o==`key`?i=n[o]:o==`ref`?a=n[o]:s[o]=n[o]',
+      'let t=location.hash;t!==h&&history.replaceState(history.state,``,t)',
+      'location.hash==t',
+      'n.data=x',
+      'e.srcElement',
+      'x.hrefLang',
+      'u.searchParams',
+      'new URLSearchParams(e.slice(1))',
+      '"Images open up as you go"',
+      'isOpen(x)',
+      'reopen(x)',
+      'c?"#s=":d',
+    ])('does not flag %s', (js) => {
+      expect(rules(withJs(`${js};`))).toEqual([]);
+    });
+  });
+
+  describe('Content-Security-Policy', () => {
+    it('accepts the policy of the real build', () => {
+      expect(checkCsp(CSP)).toEqual([]);
     });
 
     it.each([
       // connect-src 'none' alone: images, media, frames and scripts from any host.
-      "connect-src 'none'",
-      "script-src 'self'; connect-src 'none'",
-      "default-src *; connect-src 'none'",
-      "default-src 'self' 'none'; connect-src 'none'",
-      "default-src; connect-src 'none'",
-    ])('rejects a policy without a strict default-src: %s', (csp) => {
-      expect(checkCsp(csp).some((p) => p.startsWith('default-src'))).toBe(true);
+      "connect-src 'none'; base-uri 'none'; form-action 'none'",
+      "default-src *; base-uri 'none'; form-action 'none'",
+      "default-src 'self'; base-uri 'none'; form-action 'none'",
+      "default-src 'self' 'none'; base-uri 'none'; form-action 'none'",
+      "default-src; base-uri 'none'; form-action 'none'",
+    ])("rejects a policy whose default-src is not exactly 'none': %s", (csp) => {
+      expect(checkCsp(csp).filter((p) => p.startsWith('default-src'))).toHaveLength(1);
+    });
+
+    it.each(['base-uri', 'form-action'])('requires %s, which default-src does not cover', (name) => {
+      const csp = CSP.split('; ')
+        .filter((d) => !d.startsWith(name))
+        .join('; ');
+      expect(checkCsp(csp)).toEqual([`${name} is missing: default-src does not cover it`]);
     });
 
     it.each([
-      "default-src 'self'; script-src 'self'",
-      "default-src 'none'; connect-src 'self'",
-      "default-src 'self'; connect-src 'none' 'self'",
-    ])('rejects a policy that allows connections: %s', (csp) => {
-      expect(checkCsp(csp).length).toBeGreaterThan(0);
-    });
-
-    it.each([
-      "default-src 'self'; connect-src 'none'; script-src 'self' cdn.example.com",
-      "default-src 'self'; connect-src 'none'; img-src *",
-      "default-src 'self'; connect-src 'none'; script-src 'self' 'unsafe-eval'",
-      "default-src 'self'; connect-src 'none'; style-src 'self' data:",
-      "default-src 'self'; connect-src 'none'; report-uri /csp-report",
-    ])('rejects a remote or unsafe source: %s', (csp) => {
+      'connect-src',
+      'img-src',
+      'media-src',
+      'font-src',
+      'frame-src',
+      'child-src',
+      'object-src',
+      'worker-src',
+      'manifest-src',
+      'base-uri',
+      'form-action',
+    ])("rejects 'self' in %s: the page loads only its own script and stylesheet", (name) => {
+      const csp = [...CSP.split('; ').filter((d) => !d.startsWith(`${name} `)), `${name} 'self'`].join('; ');
       expect(checkCsp(csp)).toHaveLength(1);
+      expect(checkCsp(csp)[0]).toContain(`${name} allows 'self'`);
+    });
+
+    it.each([
+      "script-src 'self' cdn.example.com",
+      'img-src *',
+      'img-src data: https:',
+      "script-src 'self' 'unsafe-eval'",
+      'style-src data:',
+      'report-uri /csp-report',
+      "img-src 'none' data:",
+    ])('rejects a remote, unsafe or contradictory source: %s', (directive) => {
+      const name = directive.split(' ')[0] ?? '';
+      const csp = [...CSP.split('; ').filter((d) => !d.startsWith(`${name} `)), directive].join('; ');
+      expect(checkCsp(csp).length).toBeGreaterThan(0);
     });
   });
 
@@ -306,7 +378,13 @@ describe('check-dist', () => {
     });
 
     it("rejects a meta with connect-src 'none' alone", () => {
-      expect(rules(tree({ 'index.html': html({ csp: "connect-src 'none'" }) }))).toEqual(['index.html csp']);
+      const found = rules(tree({ 'index.html': html({ csp: "connect-src 'none'" }) }));
+      expect(new Set(found)).toEqual(new Set(['index.html csp']));
+    });
+
+    it('rejects a local URL with a query string', () => {
+      const head = '<link rel="prefetch" href="./index.html?grades=666">';
+      expect(rules(tree({ 'index.html': html({ head }) }))).toEqual(['index.html html']);
     });
 
     it('rejects a CSP meta that comes after a script', () => {
