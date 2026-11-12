@@ -12,6 +12,23 @@ interface ModalOptions {
   readonly fallbackFocus?: () => HTMLElement | null;
 }
 
+/** The control whose click is opening a dialog right now; see openedBy(). */
+let opener: HTMLElement | null = null;
+
+/**
+ * Call from the click handler that opens a dialog: focus goes back to that control when
+ * the dialog closes. The focused element cannot tell, because Safari does not focus a
+ * button that is clicked or tapped. Only the dialog this click opens takes it.
+ */
+export function openedBy(ev: Event): void {
+  const el = ev.currentTarget instanceof HTMLElement ? ev.currentTarget : null;
+  opener = el;
+  // The dialog opens in this task (see the layout effect below); then the control is forgotten.
+  setTimeout(() => {
+    if (opener === el) opener = null;
+  });
+}
+
 function onBackdrop(dlg: HTMLDialogElement, ev: MouseEvent): boolean {
   if (ev.target !== dlg) return false;
   const r = dlg.getBoundingClientRect();
@@ -35,7 +52,9 @@ export function useModalDialog(isOpen: boolean, options: ModalOptions) {
     const dlg = ref.current;
     if (!dlg) return;
     if (isOpen && !dlg.open) {
-      returnTo.current = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      const active = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+      returnTo.current = opener ?? active;
+      opener = null;
       dlg.showModal();
       openedAt.current = performance.now();
       document.documentElement.classList.add('has-modal');

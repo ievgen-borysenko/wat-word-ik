@@ -2,6 +2,7 @@ import { t } from '../i18n';
 import { AboutDialog } from './AboutDialog';
 import { Building, Summary } from './Building';
 import { Header } from './Header';
+import { openedBy } from './modal';
 import { ProfessionCard } from './ProfessionCard';
 import { SlidersPanel } from './SlidersPanel';
 import { aboutOpen, lang } from './store';
@@ -22,7 +23,15 @@ export function App() {
             </p>
             <p>
               {t(l, 'footer.privacy')}{' '}
-              <button type="button" class="link-btn" aria-haspopup="dialog" onClick={() => (aboutOpen.value = true)}>
+              <button
+                type="button"
+                class="link-btn"
+                aria-haspopup="dialog"
+                onClick={(ev) => {
+                  openedBy(ev);
+                  aboutOpen.value = true;
+                }}
+              >
                 {t(l, 'about.title')}
               </button>
             </p>
