@@ -32,7 +32,8 @@
 //
 // Usage: node scripts/check-commits.mjs <base> <head>
 //   <base> of all zeros means: every commit reachable from <head> (CI uses this
-//   on pushes, so a cancelled earlier run never leaves commits unchecked).
+//   on pushes and on runs started by hand, so a cancelled earlier run never
+//   leaves commits unchecked).
 // Exit codes: 0 clean, 1 violations found (all listed), 2 usage or git error.
 
 import { execFileSync } from 'node:child_process';

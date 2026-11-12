@@ -6,9 +6,9 @@ exists to prove, on every change, that we ship the page and nothing else: no
 secrets, no passwords, no personal details, no files that do not belong there.
 
 The workflow is [.github/workflows/ci.yml](../.github/workflows/ci.yml). It runs
-on every pull request and on every push to `main`, with read-only access to the
-repository. Every third-party action is pinned to a full commit hash. Four jobs,
-each starting on a fresh machine:
+on every pull request, on every push to `main` and when a maintainer starts it
+by hand, with read-only access to the repository. Every third-party action is
+pinned to a full commit hash. Four jobs, each starting on a fresh machine:
 
 ```text
 build ──> audit ──> e2e ──> deploy
@@ -17,7 +17,7 @@ build ──> audit ──> e2e ──> deploy
 ```
 
 The deploy job needs both the audit and the end-to-end job, and runs only for a
-push to `main` of a public repository.
+push to `main`, or a run started by hand on `main`, of a public repository.
 
 ## Who trusts what
 
@@ -57,8 +57,9 @@ What this does not cover:
 
 | Step | What it protects against |
 |------|--------------------------|
+| Show what decides the deploy | A deploy decision nobody can see: before anything is installed, the step prints the event, the ref and the repository's visibility, the three values the deploy job's condition reads (Job 4). |
 | `npm ci --ignore-scripts` | Dependencies that differ from the reviewed lockfile, and install scripts running code on the build machine. |
-| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script. |
+| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script, and `scripts/check-workflow.test.mjs` reads this workflow: when the deploy job runs, that nothing cancels a run on `main`, and which history range each event checks. |
 | `npm run build` | |
 | Upload as `site-candidate` | Hands the built site, hidden files included, to the audit job. |
 
@@ -71,7 +72,7 @@ What this does not cover:
 | Secret scan of the full git history and the working tree (gitleaks, a pinned release whose checksum is verified) | A key, token or password committed now or in any earlier commit. Inline "allow" comments are ignored, and a gitleaks config or ignore file fails the step until the step is updated with it. |
 | `npm run check:lock` | A dependency downloaded from anywhere but the public npm registry, a dependency without a sha512 integrity hash, and a runtime dependency (any package not marked dev-only, so optional ones and those npm marks `devOptional` count) under a licence outside MIT, ISC, BSD-2-Clause, BSD-3-Clause, Apache-2.0 and 0BSD. |
 | `npm audit --omit=dev --audit-level=high` | A known high or critical vulnerability in a runtime dependency. A second, full audit of all dependencies only reports. Both read the lockfile; nothing is installed. |
-| `npm run check:commits` | A personal e-mail address or a stray line in a commit. Author and committer must be personal GitHub noreply addresses, GitHub's own noreply address (web merges) or Dependabot; any other bot is refused. The message may contain no other address. Trailers: `Co-Authored-By` only with the maintainer's own co-author account, `Signed-off-by` only as Dependabot's sign-off; any other key or value, and a trailer without an address, is refused, and so is any line that looks like a generated-by footer. A pull request checks its own commits; a push to `main` checks the whole history, so a cancelled run never leaves a commit unchecked. |
+| `npm run check:commits` | A personal e-mail address or a stray line in a commit. Author and committer must be personal GitHub noreply addresses, GitHub's own noreply address (web merges) or Dependabot; any other bot is refused. The message may contain no other address. Trailers: `Co-Authored-By` only with the maintainer's own co-author account, `Signed-off-by` only as Dependabot's sign-off; any other key or value, and a trailer without an address, is refused, and so is any line that looks like a generated-by footer. A pull request checks its own commits; a push to `main` and a run started by hand check the whole history, so a cancelled run never leaves a commit unchecked. |
 | `npm run check:links` | Links in the Markdown files at the top of the repository and in `docs/` that point to files that do not exist. |
 | `check:dist` on the downloaded `site-candidate` | See below. |
 | Secret scan of the built site | A secret that reached the build output. |
@@ -174,22 +175,63 @@ the one the audit job uploaded (see below).
 
 ## Job 4: deploy
 
-Only after the audit and the end-to-end tests pass, only for a push to `main`,
-and only while the repository is public, the artifact is deployed to GitHub
-Pages. The job first checks that the run's `github-pages` artifact has the id
-that the audit job reported for its upload, so exactly the audited and tested
-files go out. This job alone may write to Pages, and it signs in with a
+Only after the audit and the end-to-end tests pass, only for a push to `main`
+or a run started by hand on `main`, and only while the repository is public,
+the artifact is deployed to GitHub Pages. The job first checks that the run is
+for `refs/heads/main` exactly, then that the run's `github-pages` artifact has
+the id that the audit job reported for its upload, so exactly the audited and
+tested files go out. This job alone may write to Pages, and it signs in with a
 short-lived token from GitHub, not a stored secret.
 
-Re-runs. Re-running only the failed jobs keeps the result of the jobs that
-passed: when the deploy or the end-to-end job is re-run, the run still holds
-one `github-pages` artifact with the id the audit job reported, and the deploy
+The job's condition reads the event name, the ref and the repository's
+visibility from the run's event; the build job prints all three. Two rules of
+GitHub's expressions shape it. A value missing from the event counts as equal
+to `false`, so the condition asks for the visibility `public` rather than for
+"private is false". Strings are compared without regard to case, so
+`refs/heads/Main` would pass the condition; the first step therefore compares
+the ref again, exactly, in the shell.
+
+Runs started by hand. A maintainer can start the workflow on any branch or
+tag: on the Actions tab choose CI, then Run workflow, or run
+`gh workflow run ci.yml --ref main`. The workflow takes no inputs, and such a
+run does everything a push run does. It has no pushed range of commits, so
+`check:tree` and `check:commits` read the whole history of the commit it runs
+on, as a push run does: that history is what the public repository and the
+deployment stand on. It deploys only on `main`; on any other branch or tag the
+deploy job is skipped. On `main` it shares the concurrency group of the push
+runs: a run that has started is never cancelled, and a run still waiting for
+an earlier one is replaced by a newer one, which then checks and deploys the
+newer `main`.
+
+Who can start one, and why that widens nothing: starting a run needs write
+access to the repository, the same access that pushing a branch needs. A run
+started by hand uses the copy of the workflow on the ref it runs on, and so
+does a pull request from a branch of this repository; someone who can push a
+branch can already run any workflow they write there. This file's condition
+stops every ref other than `main` that carries this version of it; a changed
+copy on another branch is stopped by the rule of the `github-pages` environment
+that only `main` may deploy (see "Settings for the switch to public"). No job
+of this workflow holds `actions: write`, so no job, and no dependency running
+in one, can start a run.
+
+Re-runs. A re-run keeps the original run's event: the same commit and ref
+([Re-run workflows and jobs](https://docs.github.com/en/actions/how-tos/manage-workflow-runs/re-run-workflows-and-jobs))
+and the same event payload, which GitHub stores with the run so that a re-run
+behaves like the original
+([changelog, 30 September 2019](https://github.blog/changelog/2019-09-30-github-actions-deterministic-re-runs-for-workflows)).
+The repository's visibility is part of that payload: the deploy job of a run
+that started while the repository was private is skipped however often the run
+is re-run, also after the switch. Start a new run by hand on `main` instead.
+
+Re-running only the failed jobs keeps the result of the jobs that passed: when
+the deploy or the end-to-end job is re-run, the run still holds one
+`github-pages` artifact with the id the audit job reported, and the deploy
 goes ahead. "Re-run all jobs" after a successful audit makes the audit job
 upload a second `github-pages` artifact to the same run, or fail on the name
 the run already holds. Either way nothing is deployed: a failed upload stops
-the run, and with two artifacts the check refuses. Push a new commit instead,
-or delete the older artifact on the run's page and re-run the failed deploy
-job.
+the run, and with two artifacts the check refuses. Start a new run by hand on
+`main` instead, or delete the older artifact on the run's page and re-run the
+failed deploy job.
 
 What the check does not close: it runs one step before the deploy action, and
 deploy-pages again picks the artifact by name. In the seconds between the two
@@ -216,21 +258,44 @@ few weeks apart may use different patch versions of Node.
 
 ## Settings for the switch to public
 
-These are repository settings, not files, so CI cannot check them:
+These are repository settings, not files, so CI cannot check them. Until the
+switch nothing deploys: every run sees a private repository.
 
-- Security: enable **private vulnerability reporting** (the only channel in
-  [SECURITY.md](../SECURITY.md)).
-- Pages: set the source to **GitHub Actions**.
-- Branch protection for `main`: require a **pull request** before merging (no
-  direct pushes), and require the status checks **Build and unit tests**,
-  **Audit (no dependencies installed)** and **End-to-end (built site)**.
-- Pull requests: allow **squash merging only** (no merge commits, no rebase
-  merging), so `main` gets one commit per pull request and none of the
-  intermediate ones. Keep the default commit message, not the pull request
-  description: a Dependabot description quotes upstream release notes, and
-  those may hold addresses. The squash commit is written on github.com and is
-  checked only by the push run after the merge, so before confirming, remove
-  any `Co-authored-by` lines GitHub added for other authors of the branch.
+Before the day, while the repository is still private, start a run by hand on
+`main` once (`gh workflow run ci.yml --ref main`). It must pass with the deploy
+job skipped, and the build job's first step must print
+`event: workflow_dispatch; ref: refs/heads/main; repository visibility: private`.
+That proves the trigger and every check; only the deployment is left.
+
+On the day of the switch, in this order:
+
+1. **Visibility.** Settings, General, Danger Zone: change the visibility to
+   public. Nothing deploys yet: no run has seen a public repository, and a
+   re-run of an earlier run never will (see "Re-runs" above).
+2. **Security.** Enable **private vulnerability reporting** (the only channel
+   in [SECURITY.md](../SECURITY.md)).
+3. **Pages.** Set the source to **GitHub Actions**. Then, under Settings,
+   Environments, open `github-pages` (create it with that name if it is not
+   there yet) and limit **Deployment branches and tags** to the branch `main`.
+   GitHub recommends this rule; it stops a run on any other branch, with its
+   own copy of the workflow, from deploying.
+4. **Branch protection for `main`.** Require a **pull request** before merging
+   (no direct pushes), and require the status checks **Build and unit tests**,
+   **Audit (no dependencies installed)** and **End-to-end (built site)**.
+   Pull requests: allow **squash merging only** (no merge commits, no rebase
+   merging), so `main` gets one commit per pull request and none of the
+   intermediate ones. Keep the default commit message, not the pull request
+   description: a Dependabot description quotes upstream release notes, and
+   those may hold addresses. The squash commit is written on github.com and is
+   checked only by the push run after the merge, so before confirming, remove
+   any `Co-authored-by` lines GitHub added for other authors of the branch.
+5. **First deployment.** Start the workflow by hand on `main`: Actions, CI,
+   Run workflow, branch `main` (or `gh workflow run ci.yml --ref main`). The
+   build job's first step must now print `repository visibility: public`, and
+   the deploy job must run, not be skipped.
+6. **Check the page.** Open the address the deploy job shows (Settings, Pages
+   shows it too): the page loads and the sliders light up the building, and
+   `curl -sI` on the address answers `200`.
 
 ## Running the checks locally
 
