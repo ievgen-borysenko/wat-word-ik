@@ -25,12 +25,12 @@ function forget(): void {
  * the dialog closes. The focused element cannot tell, because Safari does not focus a
  * button that is clicked or tapped.
  *
- * The dialog that opens next takes the control, however late it renders. A control whose
- * click opened nothing is forgotten on the next pointerdown or keydown (listened to on the
- * window in the capture phase, so before the press reaches any control): a click, a tap
- * and Enter or Space all start with one, so a later dialog never gets it. An open with no
- * input at all before it would still get it; no such open exists, because every control
- * that opens a dialog calls this.
+ * The dialog that opens next takes the control, however late it renders, as long as no
+ * other press comes first. A control whose click opened nothing is forgotten on the next
+ * pointerdown or keydown (listened to on the window in the capture phase, so before the
+ * press reaches any control): a click, a tap and Enter or Space all start with one, so a
+ * later dialog never gets it. An open with no input at all before it would still get it;
+ * no such open exists, because every control that opens a dialog calls this.
  */
 export function openedBy(ev: Event): void {
   opener = ev.currentTarget instanceof HTMLElement ? ev.currentTarget : null;
