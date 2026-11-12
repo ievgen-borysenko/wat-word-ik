@@ -14,6 +14,38 @@ npm run preview    # serve dist/ locally to look at it
 The data tests are written to explain what is wrong: the failure message names
 the profession, subject or language and the rule it breaks.
 
+CI runs more checks on every pull request; [ci.md](ci.md) lists them and how to
+run them locally. Two of them concern every contributor.
+
+## Commits: use your GitHub noreply address
+
+The repository is public, and so is every address in its history. CI
+(`npm run check:commits`) accepts a commit only when:
+
+- its author and committer e-mail are your GitHub noreply address. GitHub
+  shows it under Settings, Emails, "Keep my email addresses private"; it has
+  the form `<id>+<username>` at `users.noreply.github.com`. Set it for this
+  repository with `git config user.email` followed by that address;
+- the message contains no other e-mail address, in the text or in a trailer;
+- its only trailers are `Co-Authored-By` and `Signed-off-by`, with noreply
+  addresses.
+
+A commit that fails needs a new author or message (`git commit --amend
+--reset-author`, or `git rebase` for older commits) before the pull request
+can be merged.
+
+## Add a file
+
+The repository holds only what belongs to the program. `npm run check:tree`
+fails for any tracked file that is not on the list in `scripts/check-tree.mjs`
+(root files by name, the docs by name, and patterns for `src/`, `scripts/` and
+`e2e/`). When you add a file outside those patterns, add its path to the list
+in the same pull request, so the reviewer sees it. The same check refuses
+symlinks, submodules, executable files, and e-mail addresses, paths from your
+computer or private keys in any tracked file. Keep personal settings, notes
+and scratch files out of the repository; your global git ignore file is the
+place for their patterns.
+
 ## Add a profession
 
 Professions live in `src/data/professions.ts`, grouped by floor. The order

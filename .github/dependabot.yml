@@ -4,6 +4,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    # A new release waits 7 days before it is proposed (security updates do not wait).
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 3
     groups:
       npm-minor-and-patch:
@@ -13,6 +16,8 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    cooldown:
+      default-days: 7
     open-pull-requests-limit: 2
     groups:
       actions-minor-and-patch:

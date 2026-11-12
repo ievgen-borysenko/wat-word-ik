@@ -15,7 +15,9 @@ Examples of what we want to hear about:
 - a way to make the page run code or load content from another site.
 
 There is no e-mail address for reports; the advisory form is the only channel.
-We will answer in the advisory.
+We will answer in the advisory. (Maintainers: the form exists only while
+private vulnerability reporting is enabled in the repository settings; see
+"Settings for the switch to public" in [docs/ci.md](docs/ci.md).)
 
 ## Scope
 

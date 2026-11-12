@@ -29,6 +29,8 @@ jobs:
     name: Verify and build
     runs-on: ubuntu-24.04
     timeout-minutes: 15
+    outputs:
+      pages-artifact-id: ${{ steps.pages-artifact.outputs.artifact_id }}
     steps:
       - name: Check out the full history (secret scan and commit check need it)
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -41,6 +43,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: npm
+
+      - name: Repository holds only listed files (no dependencies needed)
+        run: npm run check:tree
 
       - name: Install gitleaks (pinned release, sha256 checked)
         run: |
@@ -96,26 +101,20 @@ jobs:
             console.log(`npm audit, all dependencies: ${v.total} total (critical ${v.critical}, high ${v.high}, moderate ${v.moderate}, low ${v.low}, info ${v.info})`);
           ' "$RUNNER_TEMP/audit.json" | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Commit e-mails in the proposed or pushed range
+      - name: Commit addresses and trailers (pull request range; on a push, all of history)
         env:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          PUSH_BEFORE: ${{ github.event.before }}
-          PUSH_AFTER: ${{ github.event.after }}
+          PUSH_HEAD: ${{ github.sha }}
         run: |
           if [ "$EVENT" = pull_request ]; then
-            base="$PR_BASE"
-            head="$PR_HEAD"
+            npm run check:commits -- "$PR_BASE" "$PR_HEAD"
           else
-            base="$PUSH_BEFORE"
-            head="$PUSH_AFTER"
-            if ! git cat-file -e "${base}^{commit}" 2>/dev/null; then
-              echo "::notice::previous tip ${base} is not in the history (new branch or force push): checking every commit of ${head}"
-              base=0000000000000000000000000000000000000000
-            fi
+            # Every commit reachable from the pushed head, not only before..after:
+            # a cancelled or failed earlier run must not leave commits unchecked.
+            npm run check:commits -- 0000000000000000000000000000000000000000 "$PUSH_HEAD"
           fi
-          npm run check:commits -- "$base" "$head"
 
       - name: Links in README and docs
         run: npm run check:links
@@ -130,6 +129,7 @@ jobs:
         run: gitleaks dir --no-banner --redact --ignore-gitleaks-allow dist
 
       - name: Upload the audited site as the Pages artifact
+        id: pages-artifact
         uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
         with:
           path: dist
@@ -191,6 +191,7 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
+      actions: read # list this run's artifacts (step below)
       pages: write
       id-token: write
     environment:
@@ -200,6 +201,22 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
+      # deploy-pages picks the artifact by name. A later job of this run could, if
+      # compromised, delete it and upload another with the same name; that one would
+      # get a new id. Deploy only the artifact verify uploaded.
+      - name: Check that the Pages artifact is the one verify uploaded
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_ID: ${{ needs.verify.outputs.pages-artifact-id }}
+        run: |
+          ids=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?name=github-pages&per_page=100" \
+            --jq '[.artifacts[] | select(.name == "github-pages") | .id | tostring] | join(" ")')
+          echo "verify uploaded artifact ${EXPECTED_ID:-(none)}; this run has: ${ids:-(none)}"
+          if [ -z "$EXPECTED_ID" ] || [ "$ids" != "$EXPECTED_ID" ]; then
+            echo "::error::the github-pages artifact is not the one verify uploaded; not deploying"
+            exit 1
+          fi
+
       - name: Check the Pages settings
         uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
 
