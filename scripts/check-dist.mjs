@@ -6,8 +6,8 @@
 // about to ship keep that promise and carry nothing else:
 //
 //   1. paths    every shipped file is on an allow-list (index.html and the JS and
-//               CSS bundles; no source maps, dotfiles, JSON dumps, docs, tests,
-//               images) and is a regular file;
+//               CSS bundles; no source maps, hidden files, JSON dumps, docs,
+//               tests, images) and is a regular file;
 //   2. refs     every file except index.html is referenced by another shipped
 //               file, and every local reference in index.html exists;
 //   3. size     JS, CSS and the whole tree stay within a budget;

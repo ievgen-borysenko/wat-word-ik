@@ -4,10 +4,11 @@
 // Every tracked file (`git ls-files`) must match an entry of the allow-list
 // below: the page's source and tests, the check scripts, the end-to-end tests,
 // the listed docs and the demo animation with its recording script, the two
-// files under .github/ and a few root files by exact name. Anything else fails: personal tool settings, editor folders, notes,
-// dumps and scratch files stay out without being named one by one. Adding a
-// file to the repository means adding its path to this list in the same pull
-// request, where the reviewer sees it.
+// files under .github/ and a few root files by exact name. Anything else
+// fails: personal tool settings, editor folders, notes, dumps and scratch
+// files stay out without being named one by one. Adding a file to the
+// repository means adding its path to this list in the same pull request,
+// where the reviewer sees it.
 //
 // Also refused:
 //   - symlinks, submodules and executable files (none are needed: the scripts

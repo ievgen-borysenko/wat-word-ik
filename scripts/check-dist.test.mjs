@@ -304,7 +304,7 @@ describe('check-dist', () => {
   });
 
   describe('requests to the own host in JS', () => {
-    it('rejects the gate reproducer three times over: Image, a .src write, a query string', () => {
+    it('rejects an image request that sends the grades three times over: Image, a .src write, a query string', () => {
       const js = 'new Image().src="/index.html?grades="+encodeURIComponent(location.hash);';
       const found = auditDist(withJs(js)).violations.map((v) => v.message.split(' at ')[0]);
       expect(found).toEqual(['Image or Audio constructor', 'URL property write', 'query string literal']);
