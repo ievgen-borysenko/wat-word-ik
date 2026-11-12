@@ -4,8 +4,8 @@ import { uniformSliders } from './scoring';
 /**
  * URL hash state, e.g. `#s=6666666666&g=arts&l=ua`.
  * Sliders are one character each in SUBJECT_IDS order; 10 is written as `a`.
- * `lang` is null unless the user picked a language on the page, so a shared
- * link does not force the sender's language on the receiver.
+ * `lang` is null unless the language came with the link or was picked on the
+ * page, so a guessed browser language never ends up in a shared link.
  */
 export interface HashState {
   readonly sliders: Sliders;

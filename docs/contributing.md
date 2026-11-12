@@ -39,9 +39,9 @@ Rules the tests check (`src/data/data.test.ts`):
   needs: every subject of the lower rung is listed again, with the same or a
   higher minimum. The engine relies on this, so a ladder always reads "the
   next step asks for a bit more".
-- **Floors.** Each floor has 5 to 10 tiles. The layout shows 8 tiles per row,
-  so keep a floor at 8 or fewer: a ninth tile starts a second row and the
-  whole building no longer fits on a phone screen.
+- **Floors.** Each floor has 5 to 8 tiles. The layout shows 8 tiles per row:
+  a ninth tile would start a second row and the whole building would no
+  longer fit on a phone screen.
 - **Key subjects.** Every subject must be the highest requirement of at least
   two professions, so every slider matters for something.
 - **Count.** The test pins the number of professions (36). When you add or
@@ -72,7 +72,8 @@ those fall back to the default grades. Update the tests that spell out a full
 2. Copy `src/i18n/en.json` to the new file and translate every value. Keep
    the `{placeholders}` exactly as they are. Strings with a count
    (`tile.ariaSteps`, `card.focusAverage`) need one entry per plural category
-   of the language (`.one`, `.few`, `.many`, `.other`, as CLDR lists them).
+   of the language, as `Intl.PluralRules` lists them (`.one`, `.few`, `.many`,
+   `.other`).
 3. Register the file in `MESSAGES` and the HTML language tag in `HTML_LANG`
    (`src/i18n/index.ts`), and map the browser language in `detectLang`.
 4. Add the new language to `L(...)` in `src/data/subjects.ts` and to every
@@ -82,6 +83,18 @@ those fall back to the default grades. Update the tests that spell out a full
 placeholders, and until the plural strings match the categories that
 `Intl.PluralRules` reports for the language. `src/data/data.test.ts` fails
 until every name and description exists in every language.
+
+Limits today:
+
+- Plural strings work for languages whose categories are `one` and `other`,
+  optionally with `few` and/or `many`: for example Dutch, English, German,
+  Turkish (one, other), French, Spanish, Portuguese (one, many, other),
+  Polish, Ukrainian (one, few, many, other). A language with `zero` or `two`
+  (Arabic, Welsh, Hebrew) or without `one` (Chinese, Japanese, Korean) needs
+  the translation types in `src/i18n/index.ts` and the key check in
+  `src/i18n/i18n.test.ts` extended first.
+- Right-to-left languages are not supported yet: the layout assumes
+  left-to-right text.
 
 ## Text style
 

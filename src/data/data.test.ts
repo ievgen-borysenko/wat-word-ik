@@ -30,11 +30,11 @@ describe('professions', () => {
     for (const p of PROFESSIONS) expect(p.id).toMatch(/^[a-z][a-z0-9-]*$/);
   });
 
-  it('every floor has 5 to 10 tiles', () => {
+  it('every floor has 5 to 8 tiles (one row of 8 on every screen)', () => {
     for (const level of LEVELS) {
       const count = PROFESSIONS.filter((p) => p.level === level).length;
       expect(count, `level ${level}`).toBeGreaterThanOrEqual(5);
-      expect(count, `level ${level}`).toBeLessThanOrEqual(10);
+      expect(count, `level ${level}`).toBeLessThanOrEqual(8);
     }
   });
 

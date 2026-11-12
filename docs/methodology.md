@@ -77,16 +77,17 @@ browser.
 
 The state lives only in the part of the address after `#`
 (`#s=6666666666&g=arts`), so a link can be shared. The language is added
-(`&l=en`) only when someone picks it on the page; otherwise each visitor gets
-their own browser language.
+(`&l=en`) only when it came with the link or was picked on the page;
+otherwise each visitor gets their own browser language.
 
 The hosting provider serves the files and sees an ordinary page request, like
 for any web page, but never the grades or the goal: browsers do not send the
 part after `#`. The address, with that part, stays in the browser history like
 any other page.
 
-When the page opens with grades in the link, it says so in one line ("these
-grades came from a link"), until the first slider change or preset.
+When a fresh visit (not a reload or a back step) opens the page with grades
+in the link, it says so in one line ("these grades came from a link"), until
+the first slider change or preset.
 
 ## Limits
 

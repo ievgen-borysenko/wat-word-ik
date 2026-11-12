@@ -28,7 +28,7 @@ Requires Node.js and npm.
 ```sh
 npm ci
 npm run dev        # local dev server
-npm test           # unit tests (engine, data, translations)
+npm test           # unit tests (engine, data, translations, store, built CSP)
 npm run typecheck
 npm run build      # static site in dist/, works from any sub-path
 ```
@@ -40,7 +40,7 @@ src/engine   pure TypeScript: scoring, hints, URL hash codec (+ tests)
 src/data     subjects and professions (demo data, 3 languages) + validation test
 src/i18n     UI strings: nl.json, en.json, ua.json
 src/ui       Preact components
-docs         methodology and sources
+docs         methodology, sources and how to contribute (docs/contributing.md)
 ```
 
 ## Licence
