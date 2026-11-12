@@ -3,7 +3,7 @@ import { mkdirSync, mkdtempSync, rmSync, symlinkSync, writeFileSync } from 'node
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { checkTree, onList } from './check-tree.mjs';
+import { DEMO_GIF_MAX_BYTES, checkTree, onList, parseGif } from './check-tree.mjs';
 
 /*
  * The strings this check refuses (e-mail addresses, home folders, key headers,
@@ -89,6 +89,79 @@ function repo(extra = {}) {
 
 /** @param {ReturnType<typeof repo>} r */
 const rules = (r) => checkTree(r.dir, r.env).violations.map((v) => `${v.path} ${v.rule}`);
+
+/*
+ * GIF parts for the tests, built at run time.
+ */
+/** @param {...(number | number[] | string | Uint8Array)} parts */
+const bytes = (...parts) =>
+  Buffer.concat(
+    parts.map((p) => (typeof p === 'number' ? Buffer.from([p]) : typeof p === 'string' ? Buffer.from(p, 'latin1') : Buffer.from(p))),
+  );
+const le16 = (/** @type {number} */ n) => [n & 0xff, n >> 8];
+
+/** Data split into GIF sub-blocks of at most 255 bytes, then the terminator. */
+function subBlocks(/** @type {Uint8Array | string} */ data) {
+  const buf = typeof data === 'string' ? Buffer.from(data, 'latin1') : Buffer.from(data);
+  /** @type {Buffer[]} */
+  const parts = [];
+  for (let i = 0; i < buf.length; i += 255) {
+    const chunk = buf.subarray(i, i + 255);
+    parts.push(Buffer.from([chunk.length]), chunk);
+  }
+  return Buffer.concat([...parts, Buffer.from([0])]);
+}
+
+/**
+ * LZW data as a GIF decoder reads it: a clear code, one literal code per pixel
+ * (the table grows as the decoder sees it, up to 4096 entries), the end code.
+ * @param {number[]} pixels colour indices
+ * @param {number} [clearAt] also send a clear code before this pixel
+ */
+function lzw(pixels, clearAt = -1) {
+  const minCodeSize = 2;
+  const clear = 1 << minCodeSize;
+  /** @type {number[]} */
+  const out = [];
+  let size = minCodeSize + 1;
+  let next = clear + 2;
+  let fresh = true;
+  let acc = 0;
+  let bits = 0;
+  const put = (/** @type {number} */ code) => {
+    acc |= code << bits;
+    bits += size;
+    for (; bits >= 8; bits -= 8, acc >>>= 8) out.push(acc & 0xff);
+  };
+  pixels.forEach((p, i) => {
+    if (i === 0 || i === clearAt) {
+      put(clear);
+      size = minCodeSize + 1;
+      next = clear + 2;
+      fresh = true;
+    }
+    put(p);
+    if (!fresh && next < 4096) {
+      next++;
+      if (next === 1 << size && size < 12) size++;
+    }
+    fresh = false;
+  });
+  put(clear + 1);
+  if (bits > 0) out.push(acc & 0xff);
+  return Buffer.from(out);
+}
+
+/** Logical screen with a global table of two colours (black, white). */
+const screen = (w = 2, h = 2) => bytes(...le16(w), ...le16(h), 0x80, 0, 0, [0, 0, 0, 255, 255, 255]);
+const LOOP = bytes(0x21, 0xff, 11, 'NETSCAPE2.0', 3, 1, ...le16(0), 0);
+const gce = (delayCs = 10) => bytes(0x21, 0xf9, 4, 0, ...le16(delayCs), 0, 0);
+/** An image at (0, 0) of w x h pixels, alternating black and white unless `data` is given. */
+const image = (w = 2, h = 2, data = lzw(Array.from({ length: w * h }, (_, i) => i % 2))) =>
+  bytes(0x2c, ...le16(0), ...le16(0), ...le16(w), ...le16(h), 0, 2, subBlocks(data));
+const TRAILER = bytes(0x3b);
+/** Two frames of 2x2 pixels, 0.1 s each, looping forever. */
+const GIF = bytes('GIF89a', screen(), LOOP, gce(), image(), gce(), image(), TRAILER);
 
 describe('check-tree', () => {
   it('passes a tree of listed files', () => {
@@ -245,6 +318,120 @@ describe('check-tree', () => {
     expect(rules(repo({ 'docs/ci.md': bytes }))).toEqual(['docs/ci.md encoding']);
   });
 
+  describe('the demo animation (docs/demo.gif)', () => {
+    /** @param {Uint8Array} gif */
+    const gifViolations = (gif) => {
+      const r = repo({ 'docs/demo.gif': gif });
+      return checkTree(r.dir, r.env).violations;
+    };
+
+    it('passes a GIF that holds images only, and reports what it shows', () => {
+      const r = repo({ 'docs/demo.gif': GIF });
+      const result = checkTree(r.dir, r.env);
+      expect(result.violations).toEqual([]);
+      expect(result.gif).toEqual({ width: 2, height: 2, frames: 2, durationCs: 20, loops: 0 });
+      expect(result.scanned).toBe(Object.keys(CLEAN).length);
+    });
+
+    it('passes a GIF with a local colour table, a transparent colour, no loop extension and a clear code inside the data', () => {
+      const local = bytes(0x2c, ...le16(1), ...le16(0), ...le16(1), ...le16(2), 0x80, [9, 9, 9, 8, 8, 8], 2, subBlocks(lzw([1, 0])));
+      const cleared = image(2, 2, lzw([0, 1, 1, 0], 2));
+      const gif = bytes('GIF89a', screen(), bytes(0x21, 0xf9, 4, 0x09, ...le16(5), 1, 0), cleared, local, TRAILER);
+      expect(parseGif(gif)).toEqual({ width: 2, height: 2, frames: 2, durationCs: 5, loops: null });
+    });
+
+    it('decodes a long run of codes past the full table of 4096 entries', () => {
+      const side = 128;
+      const pixels = Array.from({ length: side * side }, (_, i) => (i >> 3) % 2);
+      const gif = bytes('GIF89a', screen(side, side), image(side, side, lzw(pixels, 5000)), TRAILER);
+      expect(parseGif(gif)).toEqual({ width: side, height: side, frames: 1, durationCs: 0, loops: null });
+    });
+
+    const big = () => {
+      const side = 1024;
+      const frame = image(side, side, lzw(Array.from({ length: side * side }, (_, i) => (i + (i >> 10)) % 2)));
+      return bytes('GIF89a', screen(side, side), LOOP, gce(), frame, gce(), frame, TRAILER);
+    };
+
+    it.each([
+      ['the GIF87a header', () => bytes('GIF87a', GIF.subarray(6)), 'not with the GIF89a header'],
+      ['a PNG', () => bytes([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 0, 0, 0, 13]), 'not with the GIF89a header'],
+      ['text', () => bytes('# Demo\n'), 'not with the GIF89a header'],
+      ['an empty file', () => bytes(), 'ends inside the header'],
+      ['a comment extension', () => bytes('GIF89a', screen(), LOOP, 0x21, 0xfe, subBlocks('made by someone'), gce(), image(), TRAILER), 'comment'],
+      [
+        'a plain text extension',
+        () => bytes('GIF89a', screen(), 0x21, 0x01, 12, new Uint8Array(12), subBlocks('hello'), gce(), image(), TRAILER),
+        'plain text',
+      ],
+      ['an XMP extension', () => bytes('GIF89a', screen(), 0x21, 0xff, 11, 'XMP DataXMP', subBlocks('<x:xmpmeta/>'), image(), TRAILER), '"XMP DataXMP"'],
+      ['a colour profile', () => bytes('GIF89a', screen(), 0x21, 0xff, 11, 'ICCRGBG1012', subBlocks('profile'), image(), TRAILER), '"ICCRGBG1012"'],
+      ['another looping extension', () => bytes('GIF89a', screen(), 0x21, 0xff, 11, 'ANIMEXTS1.0', 3, 1, 0, 0, 0, image(), TRAILER), '"ANIMEXTS1.0"'],
+      ['a second NETSCAPE2.0 extension', () => bytes('GIF89a', screen(), LOOP, LOOP, image(), TRAILER), 'second NETSCAPE2.0'],
+      ['a NETSCAPE2.0 extension after an image', () => bytes('GIF89a', screen(), image(), LOOP, image(), TRAILER), 'after the first image'],
+      [
+        'more data in the NETSCAPE2.0 extension',
+        () => bytes('GIF89a', screen(), 0x21, 0xff, 11, 'NETSCAPE2.0', 3, 1, 0, 0, 5, 'hello', 0, image(), TRAILER),
+        'more than one sub-block',
+      ],
+      ['an unknown extension', () => bytes('GIF89a', screen(), 0x21, 0x02, subBlocks('x'), image(), TRAILER), 'unknown extension 0x2'],
+      ['an unknown block', () => bytes('GIF89a', screen(), 0x00, image(), TRAILER), 'unknown block type 0x0'],
+      ['bytes after the trailer', () => bytes(GIF, 'someone was here'), 'bytes follow the trailer'],
+      ['no trailer', () => GIF.subarray(0, GIF.length - 1), 'no trailer'],
+      ['a file cut inside an image', () => GIF.subarray(0, GIF.length - 6), 'the file ends inside'],
+      ['a file cut inside the colour table', () => GIF.subarray(0, 16), 'the file ends inside the global colour table'],
+      ['data after the end code of an image', () => bytes('GIF89a', screen(), image(2, 2, bytes(lzw([0, 1, 0, 1]), 'hidden')), TRAILER), 'data after the end code'],
+      ['too few pixels', () => bytes('GIF89a', screen(), image(2, 2, lzw([0, 1, 0])), TRAILER), 'holds 3 pixels, the image 4'],
+      ['too many pixels', () => bytes('GIF89a', screen(), image(2, 2, lzw([0, 1, 0, 1, 0])), TRAILER), 'more pixels than the image'],
+      ['a colour outside the table', () => bytes('GIF89a', screen(), image(2, 2, lzw([0, 1, 3, 1])), TRAILER), 'outside its table of 2'],
+      ['image data without an end code', () => bytes('GIF89a', screen(), image(2, 2, lzw([0, 1, 0, 1]).subarray(0, 2)), TRAILER), 'ends before the end code'],
+      [
+        'an image outside the logical screen',
+        () => bytes('GIF89a', screen(), 0x2c, ...le16(1), ...le16(0), ...le16(2), ...le16(2), 0, 2, subBlocks(lzw([0, 1, 0, 1])), TRAILER),
+        'outside the logical screen',
+      ],
+      ['a graphic control extension without an image', () => bytes('GIF89a', screen(), image(), gce(), TRAILER), 'no image after it'],
+      ['two graphic control extensions in a row', () => bytes('GIF89a', screen(), gce(), gce(), image(), TRAILER), 'not directly followed by its image'],
+      [
+        'an undefined disposal method',
+        () => bytes('GIF89a', screen(), 0x21, 0xf9, 4, 0x1c, ...le16(10), 0, 0, image(), TRAILER),
+        'undefined disposal method',
+      ],
+      ['no image', () => bytes('GIF89a', screen(), LOOP, TRAILER), 'holds no image'],
+      ['a file over the size cap', big, `more than the cap of ${DEMO_GIF_MAX_BYTES}`],
+    ])('refuses %s', (_what, make, message) => {
+      const found = gifViolations(make());
+      expect(found.map((v) => `${v.path} ${v.rule}`)).toEqual(['docs/demo.gif gif']);
+      expect(found[0]?.message).toContain(message);
+    });
+
+    it('refuses the oversize GIF for its size alone', () => {
+      const gif = big();
+      expect(gif.length).toBeGreaterThan(DEMO_GIF_MAX_BYTES);
+      expect(parseGif(gif, Infinity)).toMatchObject({ width: 1024, height: 1024, frames: 2 });
+    });
+
+    it.each([
+      ['docs/other.gif', ['docs/other.gif not-listed', 'docs/other.gif encoding']],
+      ['demo.gif', ['demo.gif not-listed', 'demo.gif encoding']],
+      ['docs/ci.md', ['docs/ci.md encoding']],
+      ['README.md', ['README.md encoding']],
+    ])('refuses the same GIF at %s', (path, expected) => {
+      expect(rules(repo({ [path]: GIF }))).toEqual(expected);
+    });
+
+    it('still refuses other binary files next to it', () => {
+      const r = repo({ 'docs/demo.gif': GIF, 'docs/methodology.md': bytes([0x89, 0x50, 0x4e, 0x47, 0, 0]) });
+      expect(rules(r)).toEqual(['docs/methodology.md encoding']);
+    });
+
+    it('lists the animation by exact path only', () => {
+      expect(onList('docs/demo.gif')).toBe(true);
+      expect(onList('docs/demo2.gif')).toBe(false);
+      expect(onList('docs/sub/demo.gif')).toBe(false);
+    });
+  });
+
   describe('history (--range)', () => {
     /** @param {ReturnType<typeof repo>} r @param {string} base */
     const inHistory = (r, base, head = 'HEAD') =>
@@ -333,6 +520,17 @@ describe('check-tree', () => {
       const res = run(r.dir, r.env);
       expect(res.status).toBe(0);
       expect(res.stdout).toContain('all on the list');
+    });
+
+    it('reports the animation it checked, and exits 1 for one that holds more than images', () => {
+      const good = repo({ 'docs/demo.gif': GIF });
+      const ok = run(good.dir, good.env);
+      expect(ok.status).toBe(0);
+      expect(ok.stdout).toContain('docs/demo.gif holds images only (2x2, 2 frames, 0.20 s)');
+      const r = repo({ 'docs/demo.gif': bytes(GIF, 'note') });
+      const bad = run(r.dir, r.env);
+      expect(bad.status).toBe(1);
+      expect(bad.stderr).toContain('docs/demo.gif: [gif] must be a GIF that holds images and nothing else: 4 bytes follow the trailer');
     });
 
     it('exits 1 and explains how to add a file', () => {
