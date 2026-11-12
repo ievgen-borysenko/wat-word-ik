@@ -104,6 +104,24 @@ reported for its upload, so exactly the audited and tested files go out. This
 job alone may write to Pages, and it signs in with a short-lived token from
 GitHub, not a stored secret.
 
+Re-runs. Re-running only the failed jobs keeps the first job's result: when
+the deploy or the end-to-end job is re-run, the run still holds one
+`github-pages` artifact with the id the first job reported, and the deploy goes
+ahead. "Re-run all jobs" after a successful first job makes the first job
+upload a second `github-pages` artifact to the same run, or fail on the name
+the run already holds. Either way nothing is deployed: a failed upload stops
+the run, and with two artifacts the check refuses. Push a new commit instead,
+or delete the older artifact on the run's page and re-run the failed deploy
+job.
+
+What the check does not close: it runs one step before the deploy action, and
+deploy-pages again picks the artifact by name. In the seconds between the two
+steps only the pinned configure-pages action runs, and no other job of the run
+is still running, but a token taken from an earlier job of the run (see the
+browser risk above), if GitHub still accepts it then, could swap the artifact
+inside that window. The check turns a swap at any time before the deploy into a
+swap within those few seconds; it does not make it impossible.
+
 ## Dependency updates
 
 Dependabot proposes updates weekly for npm packages and for the pinned actions,
