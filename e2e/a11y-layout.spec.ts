@@ -72,21 +72,22 @@ for (const lang of LANGS) {
 
 // Phones: the slider panel is fixed at the bottom; the whole building, down to the
 // ground floor, must stay above it, or a child dragging a slider cannot see the
-// floors change. This regressed once.
-test('phones: the ground floor stays above the slider panel', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile', 'phone sizes only');
-  for (const size of [
-    { width: 375, height: 812 },
-    { width: 375, height: 667 },
-    { width: 360, height: 640 },
-    { width: 320, height: 568 },
-  ]) {
+// floors change. This regressed once. Nothing may scroll sideways either.
+const PHONES = [
+  { width: 375, height: 812 },
+  { width: 375, height: 667 },
+  { width: 360, height: 640 },
+  { width: 320, height: 568 },
+];
+
+async function checkPhones(page: Page, font: string) {
+  for (const size of PHONES) {
     await page.setViewportSize(size);
     for (const lang of LANGS) {
       for (const [state, link] of STATES(lang)) {
         await openApp(page, link);
         const m = await measure(page);
-        const where = `${size.width}x${size.height}, ${lang}, ${state}`;
+        const where = `${size.width}x${size.height}, ${lang}, ${state}, ${font}`;
         expect(m.floor0Bottom, `ground floor (${where})`).not.toBeNull();
         expect(m.panelTop, `slider panel (${where})`).not.toBeNull();
         expect(m.floor0Bottom ?? Infinity, `ground floor bottom vs panel top (${where})`).toBeLessThanOrEqual(
@@ -96,4 +97,45 @@ test('phones: the ground floor stays above the slider panel', async ({ page }, t
       }
     }
   }
+}
+
+test('phones: the ground floor stays above the slider panel', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'phone sizes only');
+  await checkPhones(page, 'system font');
+});
+
+/** Wide sans-serif fonts: Verdana on macOS and Windows, DejaVu Sans on Linux. */
+const WIDE_FONTS = 'Verdana, "DejaVu Sans", sans-serif';
+/** Arial-width fonts, for comparison. */
+const NARROW_FONTS = 'Arial, "Liberation Sans", Helvetica, sans-serif';
+
+// The layout must not depend on the machine's default font: CI once failed at 320px
+// with a wider system font than the one the layout was tuned on.
+test('phones with a wide system font: the same rules hold', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'phone sizes only');
+  // Through the CSSOM before the page's scripts run: the page's CSP refuses a <style> tag.
+  await page.addInitScript((fonts) => {
+    const apply = () => document.documentElement?.style.setProperty('font-family', fonts, 'important');
+    apply();
+    document.addEventListener('DOMContentLoaded', apply);
+  }, WIDE_FONTS);
+
+  // The variant only proves something when a wide font is really installed.
+  await openApp(page);
+  const ratio = await page.evaluate(
+    ([wide, narrow]) => {
+      const ctx = document.createElement('canvas').getContext('2d');
+      if (!ctx) return 0;
+      const width = (fonts: string) => {
+        ctx.font = `16px ${fonts}`;
+        return ctx.measureText('Wat word ik? NL EN UA Demodata').width;
+      };
+      return width(wide ?? '') / width(narrow ?? '');
+    },
+    [WIDE_FONTS, NARROW_FONTS],
+  );
+  expect(ratio, 'a wide font (Verdana or DejaVu Sans) must be installed for this test').toBeGreaterThan(1.08);
+  await expect(page.locator('html')).toHaveCSS('font-family', /Verdana|DejaVu Sans/);
+
+  await checkPhones(page, 'wide font');
 });
