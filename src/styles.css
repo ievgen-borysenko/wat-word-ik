@@ -614,7 +614,7 @@ a {
     height: 28px;
     font-size: 1.1rem;
   }
-  /* Short desktop screens (1366x768, 1280x720): all ten sliders without scrolling the column. */
+  /* Short desktop screens (1366x768, 1280x800): all ten sliders without scrolling the column. */
   @media (max-height: 840px) {
     .slider-row {
       padding-top: 0;
