@@ -71,7 +71,7 @@ it locally and drives it in Chromium with Playwright, at desktop size
 - **No storage:** after dragging sliders, using the presets, opening a card,
   pinning a goal, switching languages and opening "How it works", there are no
   cookies, nothing in local or session storage, no IndexedDB databases, no
-  service workers and no caches.
+  service workers, no caches and nothing in the origin private file system.
 - **It works:** "all 3" opens exactly the five jobs that need no diploma, "all
   9" opens most of the building, the state in the address survives a reload,
   the language goes into the address only after it was chosen on the page, a

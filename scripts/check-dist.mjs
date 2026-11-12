@@ -180,8 +180,9 @@ export function* findPrivateHostNames(text) {
  * codes) used with bracket access, or an API reached by iterating over window.
  * eval and the Function constructor are forbidden too, so code cannot be built
  * from strings; the remaining gaps are covered by the CSP meta (connect-src) and
- * by the end-to-end test, which records every request the page makes and checks
- * every kind of browser storage.
+ * by the end-to-end tests, which record every request the page makes and, after
+ * using every control, find no cookies, local or session storage, IndexedDB
+ * databases, service workers, Cache Storage or origin private file system entries.
  * A UI string containing one of these words ("cookie", "fetch", "caches") is
  * reported as well: reword the string.
  */

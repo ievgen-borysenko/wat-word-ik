@@ -62,14 +62,19 @@ test('nothing is stored after using every control', async ({ page }) => {
   // The URL hash is the only state; wait for its debounced update.
   await expect.poll(() => page.evaluate(() => location.hash)).toMatch(/^#s=6{10}&g=[a-z-]+&l=en$/);
 
-  const state = await page.evaluate(async () => ({
-    cookie: document.cookie,
-    localStorage: localStorage.length,
-    sessionStorage: sessionStorage.length,
-    indexedDB: (await indexedDB.databases()).map((d) => d.name),
-    serviceWorkers: (await navigator.serviceWorker.getRegistrations()).length,
-    caches: await caches.keys(),
-  }));
+  const state = await page.evaluate(async () => {
+    const files: string[] = [];
+    for await (const name of (await navigator.storage.getDirectory()).keys()) files.push(name);
+    return {
+      cookie: document.cookie,
+      localStorage: localStorage.length,
+      sessionStorage: sessionStorage.length,
+      indexedDB: (await indexedDB.databases()).map((d) => d.name),
+      serviceWorkers: (await navigator.serviceWorker.getRegistrations()).length,
+      caches: await caches.keys(),
+      originFileSystem: files,
+    };
+  });
   expect(state).toEqual({
     cookie: '',
     localStorage: 0,
@@ -77,6 +82,7 @@ test('nothing is stored after using every control', async ({ page }) => {
     indexedDB: [],
     serviceWorkers: 0,
     caches: [],
+    originFileSystem: [],
   });
 
   // The same, seen from the browser side.
