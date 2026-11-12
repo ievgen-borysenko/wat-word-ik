@@ -1,10 +1,35 @@
+import { readdirSync } from 'node:fs';
+import { resolve } from 'node:path';
 import AxeBuilder from '@axe-core/playwright';
 import { test as base, expect, type Locator, type Page } from '@playwright/test';
 
+/** The built site under test; `vite preview` serves this folder. */
+const DIST = resolve(import.meta.dirname, '..', 'dist');
+
+/**
+ * Same-origin paths the page may load: the page itself and the files in
+ * dist/assets/ (read from the folder, not trusted from the server: `vite
+ * preview` answers any unknown path with index.html and status 200).
+ */
+function allowedPaths(): Map<string, RegExp> {
+  const paths = new Map<string, RegExp>([
+    ['/', /^text\/html\b/],
+    ['/index.html', /^text\/html\b/],
+  ]);
+  for (const name of readdirSync(resolve(DIST, 'assets'))) {
+    if (name.endsWith('.js')) paths.set(`/assets/${name}`, /^(?:text|application)\/javascript\b/);
+    else if (name.endsWith('.css')) paths.set(`/assets/${name}`, /^text\/css\b/);
+  }
+  return paths;
+}
+
 /**
  * Every test runs under a guard that records, for the whole test:
- *   - every request of the browser context: all must go to the page's own origin
- *     (data: URLs are allowed, they never leave the browser);
+ *   - every request of the browser context: only GET, only to the page's own
+ *     origin, and only for the page or one of its built assets (data: URLs are
+ *     allowed, they never leave the browser);
+ *   - every response to such a request: status 200 and the content type that
+ *     matches the file, so a missing file answered with index.html is caught;
  *   - every WebSocket: none at all;
  *   - console errors and uncaught page errors: none;
  *   - Content-Security-Policy violation events: none.
@@ -15,16 +40,28 @@ export const test = base.extend<{ guard: void }>({
     async ({ page, baseURL }, use) => {
       if (!baseURL) throw new Error('baseURL is not set in playwright.config.ts');
       const origin = new URL(baseURL).origin;
-      const foreign: string[] = [];
+      const paths = allowedPaths();
+      const bad: string[] = [];
       const errors: string[] = [];
       const csp: string[] = [];
 
       page.context().on('request', (req) => {
         const url = req.url();
         if (url.startsWith('data:')) return;
-        if (new URL(url).origin !== origin) foreign.push(`${req.method()} ${url}`);
+        const u = new URL(url);
+        if (req.method() !== 'GET') bad.push(`${req.method()} ${url}: only GET is expected`);
+        if (u.origin !== origin) bad.push(`${req.method()} ${url}: leaves the page origin`);
+        else if (!paths.has(u.pathname)) bad.push(`${req.method()} ${url}: not the page or one of its assets`);
       });
-      page.on('websocket', (ws) => foreign.push(`WebSocket ${ws.url()}`));
+      page.context().on('response', (res) => {
+        const u = new URL(res.url());
+        const type = paths.get(u.pathname);
+        if (u.origin !== origin || !type) return;
+        const contentType = res.headers()['content-type'] ?? '';
+        if (res.status() !== 200 && res.status() !== 304) bad.push(`${u.pathname}: status ${res.status()}`);
+        else if (res.status() === 200 && !type.test(contentType)) bad.push(`${u.pathname}: content type ${contentType}`);
+      });
+      page.on('websocket', (ws) => bad.push(`WebSocket ${ws.url()}`));
       page.on('console', (msg) => {
         if (msg.type() === 'error') errors.push(`console: ${msg.text()}`);
       });
@@ -44,7 +81,7 @@ export const test = base.extend<{ guard: void }>({
 
       await use();
 
-      expect(foreign, 'requests that leave the page origin').toEqual([]);
+      expect(bad, 'requests that are not GETs of the page and its assets').toEqual([]);
       expect(errors, 'console and page errors').toEqual([]);
       expect(csp, 'Content-Security-Policy violations').toEqual([]);
     },
@@ -56,8 +93,13 @@ export { expect };
 
 export const TOTAL_TILES = 36;
 
-/** Opens the page (optionally with a hash such as `#s=6666666666&l=nl`) and waits for the building. */
+/**
+ * Opens the page (optionally with a hash such as `#s=6666666666&l=nl`) as a fresh
+ * page load and waits for the building. Going from the page to the same page with
+ * another hash would only fire `hashchange`, so it leaves the page first.
+ */
 export async function openApp(page: Page, hash = ''): Promise<void> {
+  if (page.url() !== 'about:blank') await page.goto('about:blank');
   await page.goto(`/${hash}`);
   await expect(page.locator('.tile')).toHaveCount(TOTAL_TILES);
 }
@@ -77,7 +119,7 @@ export async function applyPreset(page: Page, grade: 3 | 6 | 9): Promise<void> {
   for (let i = 0; i < (await all.count()); i++) await expect(all.nth(i)).toHaveValue(String(grade));
 }
 
-/** Waits until running CSS animations and transitions (card fade-in, tile pop) have finished. */
+/** Waits until running CSS animations and transitions (dialog fade-in, tile pop) have finished. */
 export async function settle(page: Page): Promise<void> {
   await page.evaluate(async () => {
     // Two frames first, so an animation started by the last click exists before we wait for it.
@@ -89,6 +131,12 @@ export async function settle(page: Page): Promise<void> {
 /** The goal display: the banner in the header (desktop) or the line under the counts (narrow screens). */
 export const goalDisplay = (page: Page): Locator =>
   page.locator('.goal-banner, .summary-goal').filter({ visible: true });
+
+/** The "grades came from a link" notice that CSS shows: in the summary (wide) or the panel (narrow). */
+export const fromLinkNotice = (page: Page): Locator => page.locator('.from-link').filter({ visible: true });
+
+/** The current URL hash, as the page wrote it. */
+export const hash = (page: Page): Promise<string> => page.evaluate(() => location.hash);
 
 /**
  * Serious and critical axe findings, one readable line each. Runs after the

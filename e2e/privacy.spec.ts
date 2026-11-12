@@ -51,6 +51,13 @@ test('nothing is stored after using every control', async ({ page }) => {
     await expect(button).toHaveAttribute('aria-pressed', 'true');
   }
   await page.locator('.floor-info-btn').first().click();
+  await page.keyboard.press('Escape');
+
+  // Open and close "How it works".
+  await page.locator('.help-btn').click();
+  await expect(page.locator('.about-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await expect(page.locator('.about-dialog')).toBeHidden();
 
   // The URL hash is the only state; wait for its debounced update.
   await expect.poll(() => page.evaluate(() => location.hash)).toMatch(/^#s=6{10}&g=[a-z-]+&l=en$/);
