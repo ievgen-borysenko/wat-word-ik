@@ -24,7 +24,9 @@
 // Usage: node scripts/record-demo.mjs [output]   (default: docs/demo.gif)
 // Exit codes: 0 written and checked; 1 the recording failed or its result did
 // not pass the checks (the output file is left as it was); 2 something it
-// needs is missing (dist/, Chromium, ffmpeg) or the arguments are wrong.
+// needs is missing (dist/, Chromium, ffmpeg) or the arguments are wrong; 130,
+// 143 or 129 stopped by SIGINT (Ctrl-C), SIGTERM or SIGHUP. Whatever the
+// exit, the temporary folder with the screenshots is removed (SIGKILL aside).
 
 import { spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdtempSync, readFileSync, readdirSync, rmSync, statSync, writeFileSync } from 'node:fs';
@@ -484,6 +486,24 @@ async function main(argv) {
   }
   const out = resolve(argv[0] ?? DEFAULT_OUT);
   const dir = mkdtempSync(join(tmpdir(), 'record-demo-'));
+  // The folder holds every screenshot. It goes however the run ends: `finally`
+  // below for a return or an error, the exit listener for process.exit, and the
+  // signal listeners for Ctrl-C, SIGTERM and SIGHUP, which would otherwise end
+  // the process without running `finally`. Only SIGKILL leaves it behind.
+  const removeFrames = () => rmSync(dir, { recursive: true, force: true });
+  process.on('exit', removeFrames);
+  /** @type {[NodeJS.Signals, number][]} */
+  const signals = [
+    ['SIGINT', 130],
+    ['SIGTERM', 143],
+    ['SIGHUP', 129],
+  ];
+  for (const [signal, code] of signals) {
+    process.once(signal, () => {
+      console.error(`record-demo: stopped by ${signal}; the screenshots are removed`);
+      process.exit(code); // runs removeFrames; Playwright closes Chromium on exit
+    });
+  }
   try {
     preflight();
     if (!existsSync(dirname(out))) throw new Prerequisite(`the folder for ${out} does not exist`);
@@ -498,7 +518,7 @@ async function main(argv) {
     console.error(`record-demo: ${err instanceof Error ? err.message : String(err)}`);
     return err instanceof Prerequisite ? 2 : 1;
   } finally {
-    rmSync(dir, { recursive: true, force: true });
+    removeFrames();
   }
 }
 

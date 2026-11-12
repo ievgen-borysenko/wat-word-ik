@@ -86,7 +86,8 @@ the colour table or in the format's free fields. Look at the new file before
 you commit it, and update the description of the animation in the README if
 the scenario changed. In a pull request every version of the file that a
 commit writes is parsed as well, so if one fails, rewrite the branch rather
-than committing a fix on top.
+than committing a fix on top. Ctrl-C stops the script and removes its
+screenshots.
 
 ## Add a profession
 
