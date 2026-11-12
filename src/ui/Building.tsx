@@ -36,10 +36,13 @@ function Tile({ p, e }: { p: Profession; e: Evaluation }) {
 
   let stateText = t(l, `state.${e.state}`);
   if (e.state === 'near') stateText += `, ${tp(l, 'tile.ariaSteps', e.stepsToOpen)}`;
-  // The accessible name starts with the visible text (WCAG 2.5.3), then the full name.
+  // The accessible name starts with the visible text as whole words (WCAG 2.5.3): the
+  // short name and, on a "nearly there" tile, its +N badge. Then the full name if it differs.
   const visible = shortName(p, l);
+  const badge = e.state === 'near' ? ` +${e.stepsToOpen}` : '';
   const full = p.name[l];
-  const name = full.startsWith(visible) ? full : `${visible} (${full})`;
+  const continues = full === visible || full.startsWith(`${visible} `);
+  const name = badge === '' && continues ? full : `${visible}${badge}${full === visible ? '' : ` (${full})`}`;
   let aria = t(l, 'tile.aria', { name, floor: floorLabel(p.level, l), state: stateText });
   if (isGoal) aria += `, ${t(l, 'tile.goal')}`;
 
