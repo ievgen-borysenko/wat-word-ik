@@ -15,15 +15,18 @@ Languages: Dutch, English, Ukrainian.
 
 ## Privacy
 
-Static page, no backend. No accounts, cookies, local storage, analytics, ads,
-external fonts or network requests. The state lives only in the URL hash.
+Static page, no backend. The page itself stores nothing and sends nothing: no
+accounts, cookies, local storage, analytics, ads, external fonts or network
+requests. The grades and the goal live only in the part of the address after
+`#`. The hosting provider serves the files and sees an ordinary page request,
+but never the grades: browsers do not send the part after `#`.
 
 ## Run
 
 Requires Node.js and npm.
 
 ```sh
-npm install
+npm ci
 npm run dev        # local dev server
 npm test           # unit tests (engine, data, translations)
 npm run typecheck

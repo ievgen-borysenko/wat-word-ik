@@ -71,6 +71,39 @@ electrical engineer (wo). Each rung asks a bit more.
 
 ## Privacy
 
-Everything runs in the browser. The state (sliders, goal, language) lives only
-in the address bar (`#s=6666666666&g=arts&l=en`), so a link can be shared.
-No accounts, no cookies, no local storage, no analytics, no network requests.
+The page itself stores nothing and sends nothing: no accounts, no cookies, no
+local storage, no analytics, no network requests. Everything runs in the
+browser.
+
+The state lives only in the part of the address after `#`
+(`#s=6666666666&g=arts`), so a link can be shared. The language is added
+(`&l=en`) only when someone picks it on the page; otherwise each visitor gets
+their own browser language.
+
+The hosting provider serves the files and sees an ordinary page request, like
+for any web page, but never the grades or the goal: browsers do not send the
+part after `#`. The address, with that part, stays in the browser history like
+any other page.
+
+When the page opens with grades in the link, it says so in one line ("these
+grades came from a link"), until the first slider change or preset.
+
+## Limits
+
+- **Framing.** The site is plain static files without response headers. A
+  page like this cannot forbid another site from showing it inside a frame:
+  that needs a header (`Content-Security-Policy: frame-ancestors` or
+  `X-Frame-Options`), and `frame-ancestors` has no effect in a `<meta>` tag.
+  That is acceptable here: there are no accounts, no actions that change
+  anything outside the page and no data to take, so a framing site can only
+  show the page as it is.
+- **Crafted links.** A link can only choose among known values: ten grades
+  from 1 to 10, one goal from the list of professions and one of the three
+  languages. Anything else falls back to the defaults
+  (`src/engine/hash.ts` and its tests). A link cannot put text or code on the
+  page.
+
+## Contributing
+
+How to add a profession, a subject or a language, and how to run the checks:
+[contributing.md](contributing.md).
