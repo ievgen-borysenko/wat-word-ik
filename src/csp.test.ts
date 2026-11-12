@@ -51,13 +51,22 @@ describe('built site', async () => {
 
   it('allows no unsafe sources and no network access', () => {
     expect(policy).not.toMatch(/unsafe-|\*|https?:|data:[^;]*script/);
-    expect(csp.get('default-src')).toEqual(["'self'"]);
+    expect(csp.get('default-src')).toEqual(["'none'"]);
     expect(csp.get('script-src')).toEqual(["'self'"]);
     expect(csp.get('style-src')).toEqual(["'self'"]);
-    expect(csp.get('connect-src')).toEqual(["'none'"]);
-    expect(csp.get('object-src')).toEqual(["'none'"]);
+    expect(csp.get('img-src')).toEqual(['data:']);
     expect(csp.get('form-action')).toEqual(["'none'"]);
-    expect(csp.get('base-uri')).toEqual(["'self'"]);
+    expect(csp.get('base-uri')).toEqual(["'none'"]);
+  });
+
+  it('lets the page load only its own script and stylesheet, even from its own origin', () => {
+    for (const [name, sources] of csp) {
+      if (name !== 'script-src' && name !== 'style-src') expect(sources, name).not.toContain("'self'");
+    }
+    // Not listed, so they fall back to default-src 'none'.
+    for (const name of ['connect-src', 'media-src', 'font-src', 'frame-src', 'object-src', 'worker-src', 'manifest-src']) {
+      expect(csp.has(name), name).toBe(false);
+    }
   });
 
   it('ships no inline scripts or styles', () => {

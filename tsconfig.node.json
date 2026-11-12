@@ -1,0 +1,23 @@
+{
+  // Node-side code: CI check scripts (JavaScript, checked through JSDoc) and the
+  // end-to-end tests. The page itself is checked by tsconfig.json.
+  "compilerOptions": {
+    "target": "ES2023",
+    "lib": ["ES2023", "DOM", "DOM.Iterable", "DOM.AsyncIterable"],
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "exactOptionalPropertyTypes": true,
+    "allowJs": true,
+    "checkJs": true,
+    "isolatedModules": true,
+    "verbatimModuleSyntax": true,
+    "skipLibCheck": true,
+    "noEmit": true,
+    "types": ["node"]
+  },
+  "include": ["scripts", "e2e", "playwright.config.ts"]
+}

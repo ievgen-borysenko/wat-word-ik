@@ -1,0 +1,289 @@
+# What each step protects against: docs/ci.md.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  # Cancel superseded runs of a pull request; never cancel a run on main (it may deploy).
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  GITLEAKS_VERSION: 8.30.1
+  # sha256 of gitleaks_8.30.1_linux_x64.tar.gz, copied from the release's
+  # gitleaks_8.30.1_checksums.txt. The step below also checks that file.
+  GITLEAKS_SHA256: 551f6fc83ea457d62a0d98237cbad105af8d557003051f41f3e7ca7b3f2470eb
+
+jobs:
+  # Runs dependency code (TypeScript, Vitest, Vite). Nothing it leaves behind is
+  # trusted: its only product is the built site, which the audit job checks as
+  # untrusted input. See docs/ci.md, "Who trusts what".
+  build:
+    name: Build and unit tests
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node from .nvmrc
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies (lockfile only, no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Unit tests
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Hand the built site to the audit job (untrusted until audited)
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: site-candidate
+          path: dist/
+          include-hidden-files: true # the audit must see every file the build made
+          if-no-files-found: error
+          retention-days: 1
+
+  # Installs and runs no project dependency: Node's standard library, git, npm's
+  # own lockfile audit and a pinned gitleaks. Only this job uploads the Pages
+  # artifact, after it has audited exactly those files.
+  audit:
+    name: Audit (no dependencies installed)
+    needs: build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    outputs:
+      pages-artifact-id: ${{ steps.pages-artifact.outputs.artifact_id }}
+    steps:
+      - name: Check out the full history (secret scan and history checks need it)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up Node from .nvmrc (no package cache)
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          package-manager-cache: false
+
+      - name: No dependencies in this job
+        run: |
+          if [ -e node_modules ]; then echo "::error::node_modules exists; the audit job must not install dependencies"; exit 1; fi
+
+      - name: Repository holds only listed files, also in history
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_HEAD: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            npm run check:tree -- --range "$PR_BASE" "$PR_HEAD"
+          else
+            # Every path any commit reachable from the pushed head ever added.
+            npm run check:tree -- --range 0000000000000000000000000000000000000000 "$PUSH_HEAD"
+          fi
+
+      - name: Install gitleaks (pinned release, sha256 checked)
+        run: |
+          dir="$RUNNER_TEMP/gitleaks"
+          mkdir -p "$dir"
+          cd "$dir"
+          base="https://github.com/gitleaks/gitleaks/releases/download/v${GITLEAKS_VERSION}"
+          tarball="gitleaks_${GITLEAKS_VERSION}_linux_x64.tar.gz"
+          curl -fsSL --retry 3 -o "$tarball" "$base/$tarball"
+          curl -fsSL --retry 3 -o checksums.txt "$base/gitleaks_${GITLEAKS_VERSION}_checksums.txt"
+          grep -qxF "${GITLEAKS_SHA256}  ${tarball}" checksums.txt \
+            || { echo "::error::the pinned sha256 is not the one in the release checksums file"; exit 1; }
+          echo "${GITLEAKS_SHA256}  ${tarball}" | sha256sum --check --strict -
+          tar -xzf "$tarball" gitleaks
+          echo "$dir" >> "$GITHUB_PATH"
+          ./gitleaks version
+
+      - name: Secret scan - full git history and working tree
+        run: |
+          # A config or ignore file would change what gitleaks reports; adding one
+          # must be a deliberate change to this step as well.
+          for f in .gitleaks.toml .gitleaksignore; do
+            if [ -e "$f" ]; then echo "::error file=$f::$f changes the secret scan; review it and update this step"; exit 1; fi
+          done
+          gitleaks git --no-banner --redact --ignore-gitleaks-allow --log-opts="--all --full-history" .
+          gitleaks dir --no-banner --redact --ignore-gitleaks-allow .
+
+      - name: Lockfile - registry, integrity, runtime licences
+        run: npm run check:lock
+
+      - name: npm audit - runtime dependencies (reads the lockfile; fails on high or critical)
+        run: npm audit --omit=dev --audit-level=high
+
+      - name: npm audit - all dependencies (report only)
+        continue-on-error: true
+        run: |
+          rc=0
+          npm audit --json > "$RUNNER_TEMP/audit.json" || rc=$?
+          echo "npm audit exit code: $rc (non-zero means findings; this step only reports)"
+          node -e '
+            const r = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
+            const v = r.metadata && r.metadata.vulnerabilities;
+            if (!v) { console.error("npm audit gave no summary:", JSON.stringify(r).slice(0, 500)); process.exit(1); }
+            console.log(`npm audit, all dependencies: ${v.total} total (critical ${v.critical}, high ${v.high}, moderate ${v.moderate}, low ${v.low}, info ${v.info})`);
+          ' "$RUNNER_TEMP/audit.json" | tee -a "$GITHUB_STEP_SUMMARY"
+
+      - name: Commit addresses and trailers (pull request range; on a push, all of history)
+        env:
+          EVENT: ${{ github.event_name }}
+          PR_BASE: ${{ github.event.pull_request.base.sha }}
+          PR_HEAD: ${{ github.event.pull_request.head.sha }}
+          PUSH_HEAD: ${{ github.sha }}
+        run: |
+          if [ "$EVENT" = pull_request ]; then
+            npm run check:commits -- "$PR_BASE" "$PR_HEAD"
+          else
+            # Every commit reachable from the pushed head, not only before..after:
+            # a cancelled or failed earlier run must not leave commits unchecked.
+            npm run check:commits -- 0000000000000000000000000000000000000000 "$PUSH_HEAD"
+          fi
+
+      - name: Links in README and docs
+        run: npm run check:links
+
+      # From here on the job handles the one thing it takes from the build job: the
+      # built site, as untrusted input. The checks run with node directly (not
+      # npm run), from the checkout made above.
+      - name: Download the built site (untrusted input)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          name: site-candidate
+          path: ${{ runner.temp }}/site
+
+      - name: Audit the built site
+        run: |
+          if [ -e node_modules ]; then echo "::error::node_modules appeared"; exit 1; fi
+          node scripts/check-dist.mjs "$RUNNER_TEMP/site"
+
+      - name: Secret scan - built site
+        run: gitleaks dir --no-banner --redact --ignore-gitleaks-allow "$RUNNER_TEMP/site"
+
+      - name: Upload the audited site as the Pages artifact
+        id: pages-artifact
+        uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+        with:
+          path: ${{ runner.temp }}/site
+
+  e2e:
+    name: End-to-end (built site)
+    needs: audit
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - name: Check out (tests and config only; the site comes from the artifact)
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Node from .nvmrc
+        uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: npm
+
+      - name: Install dependencies (lockfile only, no install scripts)
+        run: npm ci --ignore-scripts
+
+      - name: Install the Chromium build of the pinned Playwright version
+        run: npx playwright install --with-deps chromium
+
+      - name: Check that the audit job reported its upload
+        env:
+          PAGES_ID: ${{ needs.audit.outputs.pages-artifact-id }}
+        run: |
+          if [ -z "$PAGES_ID" ]; then echo "::error::the audit job reported no artifact id"; exit 1; fi
+
+      - name: Download the audited site (by id, not by name)
+        uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        with:
+          artifact-ids: ${{ needs.audit.outputs.pages-artifact-id }}
+          path: ${{ runner.temp }}/pages
+
+      - name: Unpack it into dist/ (no rebuild)
+        run: |
+          mkdir dist
+          tar -xf "$RUNNER_TEMP/pages/artifact.tar" -C dist
+          find dist -type f | sort
+
+      - name: Playwright
+        run: npm run e2e
+
+      - name: Keep the Playwright report of a failed run
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: playwright-report
+          path: |
+            playwright-report/
+            test-results/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  deploy:
+    name: Deploy to GitHub Pages
+    needs: [audit, e2e]
+    # Only a push to main of a public repository deploys; pull requests never do.
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private == false
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      actions: read # list this run's artifacts (step below)
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    steps:
+      # deploy-pages picks the artifact by name. Another job of this run could, if
+      # compromised, upload a second one or replace it under the same name; either
+      # way the ids no longer match. Deploy only the artifact the audit job uploaded.
+      - name: Check that the Pages artifact is the one the audit job uploaded
+        env:
+          GH_TOKEN: ${{ github.token }}
+          EXPECTED_ID: ${{ needs.audit.outputs.pages-artifact-id }}
+        run: |
+          ids=$(gh api "repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/artifacts?name=github-pages&per_page=100" \
+            --jq '[.artifacts[] | select(.name == "github-pages") | .id | tostring] | join(" ")')
+          echo "the audit job uploaded artifact ${EXPECTED_ID:-(none)}; this run has: ${ids:-(none)}"
+          if [ -z "$EXPECTED_ID" ] || [ "$ids" != "$EXPECTED_ID" ]; then
+            echo "::error::the github-pages artifact is not the one the audit job uploaded; not deploying"
+            exit 1
+          fi
+
+      - name: Check the Pages settings
+        uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+
+      - name: Deploy the artifact that the audit job checked and e2e tested
+        id: deployment
+        uses: actions/deploy-pages@368f82528645a54fb793d4d04e342629a3f51346 # v5.0.1

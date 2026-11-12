@@ -10,13 +10,21 @@
     "build": "tsc --noEmit && vite build",
     "preview": "vite preview",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
+    "check:dist": "node scripts/check-dist.mjs dist",
+    "check:lock": "node scripts/check-lockfile.mjs package-lock.json",
+    "check:commits": "node scripts/check-commits.mjs",
+    "check:links": "node scripts/check-links.mjs",
+    "check:tree": "node scripts/check-tree.mjs",
+    "e2e": "playwright test"
   },
   "dependencies": {
     "@preact/signals": "2.11.4",
     "preact": "10.29.8"
   },
   "devDependencies": {
+    "@axe-core/playwright": "4.14.0",
+    "@playwright/test": "1.65.0",
     "@types/node": "24.19.2",
     "typescript": "7.0.2",
     "vite": "8.3.5",

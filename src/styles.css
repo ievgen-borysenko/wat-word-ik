@@ -337,6 +337,8 @@ a {
   .header {
     padding-bottom: 2px;
     gap: 6px;
+    /* Never wider than the screen, whatever the system font: wrap as a last resort. */
+    flex-wrap: wrap;
   }
   .header h1 {
     font-size: 1.05rem;
@@ -379,6 +381,26 @@ a {
     font-size: 0.66rem;
     padding: 2px 7px;
     white-space: nowrap;
+  }
+  /* 320px with a wide system font (Verdana, DejaVu Sans): keep the header on one line. */
+  @media (max-width: 340px) {
+    .header {
+      gap: 4px;
+    }
+    .header h1 {
+      font-size: 0.95rem;
+    }
+    .header-side {
+      gap: 3px;
+    }
+    .lang-btn,
+    .demo-badge {
+      padding-left: 4px;
+      padding-right: 4px;
+    }
+    .lang-btn {
+      min-width: 24px;
+    }
   }
   .col-building {
     padding-bottom: calc(var(--panel-h) + 8px);
@@ -614,7 +636,7 @@ a {
     height: 28px;
     font-size: 1.1rem;
   }
-  /* Short desktop screens (1366x768, 1280x720): all ten sliders without scrolling the column. */
+  /* Short desktop screens (1366x768, 1280x800): all ten sliders without scrolling the column. */
   @media (max-height: 840px) {
     .slider-row {
       padding-top: 0;

@@ -33,6 +33,42 @@ npm run typecheck
 npm run build      # static site in dist/, works from any sub-path
 ```
 
+## What CI checks
+
+Every pull request and every push to `main` runs the same checks, so that we
+ship the page and nothing else:
+
+- the repository, and every commit of a pull request, holds only files on an
+  explicit list, and no tracked file contains an e-mail address, a path from a
+  developer's computer, a private key or a private network address;
+- secret scan of the whole git history and of the built site;
+- dependencies only from the npm registry, with integrity hashes and
+  permissive licences; no known high or critical vulnerabilities at run time;
+- commits carry only GitHub noreply addresses, no trailers but the
+  maintainer's co-author line and Dependabot's sign-off, and no generated-by
+  footers;
+- the built site is audited in a separate job that installs no dependencies,
+  so no package code can touch the audit: it holds only the page and its
+  bundles, stays within a size budget, contains no local paths, private
+  addresses, e-mail addresses or keys, uses no browser feature that sends or
+  stores data and no way to send data to its own host, and keeps a
+  Content-Security-Policy that lets the page load its own script and
+  stylesheet and nothing else;
+- end-to-end tests in Chromium on that same audited build: the browser asks
+  only for the page and its own files, never with a query string, nothing is
+  stored, no console errors, no serious accessibility findings, and the
+  layout fits desktop and phone screens.
+
+Only then, and only from `main`, is that exact build deployed to GitHub Pages.
+Details: [docs/ci.md](docs/ci.md). To report a problem: [SECURITY.md](SECURITY.md).
+
+```sh
+npm run check:tree && npm run check:lock && npm run check:links
+npm run build && npm run check:dist
+npx playwright install chromium   # once
+npm run e2e                       # end-to-end tests of dist/
+```
+
 ## Layout
 
 ```
@@ -40,7 +76,10 @@ src/engine   pure TypeScript: scoring, hints, URL hash codec (+ tests)
 src/data     subjects and professions (demo data, 3 languages) + validation test
 src/i18n     UI strings: nl.json, en.json, ua.json
 src/ui       Preact components
-docs         methodology, sources and how to contribute (docs/contributing.md)
+docs         methodology, sources, how to contribute, what CI checks
+scripts      CI checks: lockfile, commits, links, built site (+ tests)
+e2e          end-to-end tests of the built site (Playwright)
+.github      CI workflow and Dependabot settings
 ```
 
 ## Licence
