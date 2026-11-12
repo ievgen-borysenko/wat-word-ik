@@ -164,6 +164,9 @@ describe('check-tree', () => {
   it.each([
     ['root home', `See /${'root'}/project/x\n`],
     ['a mount point', `Copied from /${'mnt'}/c/work/x\n`],
+    ['a Windows drive path with slashes', `Built in ${['D:', 'dev', 'Alice', 'wat-word-ik'].join('/')}\n`],
+    ['a Windows drive path with backslashes', `Built in ${['D:', 'dev', 'Alice'].join('\\')}\n`],
+    ['a UNC path', `Copied from ${'\\'.repeat(2)}${['nas', 'share', 'site'].join('\\')}\n`],
   ])('refuses a local path: %s', (_what, content) => {
     expect(rules(repo({ 'docs/ci.md': content }))).toEqual(['docs/ci.md local-path']);
   });
@@ -191,6 +194,15 @@ describe('check-tree', () => {
     const r = repo({
       'src/ui/App.tsx': 'export const f = (e: { local: number }) => e.local;\n',
       'docs/ci.md': `Not private: ${ip(172, 32, 0, 1)}, ${ip(11, 0, 0, 1)}, version 10.0.0.\n`,
+    });
+    expect(rules(r)).toEqual([]);
+  });
+
+  it('does not take URLs, times, CSS or Markdown tables for Windows paths', () => {
+    const r = repo({
+      'docs/ci.md': '| a | b |\n|:---|---:|\nAt 12:30 see https://example.com/x and data:image/png.\n',
+      'src/styles.css': 'a:hover { color: red; }\n',
+      'src/ui/App.tsx': 'export const re = { a: /[a-z]/, b: "\\n" };\n',
     });
     expect(rules(r)).toEqual([]);
   });

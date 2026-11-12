@@ -70,12 +70,23 @@ const CSP_REQUIRED = ['default-src', 'base-uri', 'form-action'];
 
 /**
  * Absolute paths from a developer's machine: macOS and Linux home folders (root's
- * included), macOS temporary and volume folders, Linux and WSL mount points,
- * Windows user folders. `~/` and `/opt/` are not on the list: they also appear in
- * ordinary text and say nothing about a person.
+ * included), macOS temporary and volume folders, Linux and WSL mount points; on
+ * Windows, any path from a drive root (a drive letter, a colon, a slash or one or
+ * two backslashes, then a path character; with forward slashes too, and inside a
+ * file URL) and UNC paths (two or four backslashes, a host name, a backslash).
+ * Not on the list, because they also appear in ordinary text or code and say
+ * nothing about a person: `~/`, `/opt/`; a "drive letter" right after a letter
+ * or digit (so the colon of `https:` or `data:` is no drive); a colon that is not
+ * followed by a separator and a path character (`a:hover`, `12:30`, Markdown
+ * table rules, a regular expression starting with `[` or `\`); a drive-relative
+ * path without a separator; UNC paths written with forward slashes, which in the
+ * built site are refused as protocol-relative URLs and in the repository cannot
+ * be told from `//` comments. A one-letter object key whose value is a regular
+ * expression starting with a letter (`{a: /b/}` without the space) is reported
+ * as a path: rename the key.
  */
 export const LOCAL_PATH_RE =
-  /\/Users\/|\/home\/|\/root\/|\/private\/var\/|\/var\/folders\/|\/Volumes\/|\/mnt\/|\b[A-Za-z]:(?:\\{1,2}|\/)Users(?:\\{1,2}|\/)/g;
+  /\/Users\/|\/home\/|\/root\/|\/private\/var\/|\/var\/folders\/|\/Volumes\/|\/mnt\/|(?<![A-Za-z0-9])[A-Za-z]:(?:\\{1,2}|\/)(?=[A-Za-z0-9_$~.-])|(?<![\\\w])\\{2}(?:\\{2})?[A-Za-z0-9_$.-]+\\{1,2}[A-Za-z0-9_$.-]/g;
 
 /** Header of a PEM or OpenPGP private key. */
 export const PRIVATE_KEY_RE = /-----BEGIN[A-Z0-9 ]*PRIVATE KEY(?: BLOCK)?-----/g;

@@ -15,6 +15,11 @@ const email = (/** @type {string} */ local, /** @type {string} */ domain) => `${
 const path = (/** @type {string[]} */ ...parts) => `/${parts.join('/')}`;
 const KEY_HEADER = (/** @type {string} */ kind) => `-----BEGIN ${kind}PRI${'VATE'} KEY-----`;
 const ip = (/** @type {number[]} */ ...octets) => octets.join('.');
+/** A Windows path from a drive root, with the given separator. */
+const win = (/** @type {string} */ drive, /** @type {string} */ sep, /** @type {string[]} */ ...parts) =>
+  `${drive}:${sep}${parts.join(sep)}`;
+/** A UNC path, with the given separator (one backslash, or two as in JS source). */
+const unc = (/** @type {string} */ sep, /** @type {string[]} */ ...parts) => `${sep}${sep}${parts.join(sep)}`;
 
 const SCRIPT = resolve(import.meta.dirname, 'check-dist.mjs');
 const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src data:; base-uri 'none'; form-action 'none'";
@@ -148,6 +153,10 @@ describe('check-dist', () => {
       ['local-path', `"${path('root', 'project', 'x')}"`],
       ['local-path', `"${path('mnt', 'c', 'work', 'x')}"`],
       ['local-path', `"C:${'\\\\'}Users${'\\\\'}someone"`],
+      ['local-path', `"${win('D', '/', 'dev', 'Alice', 'wat-word-ik')}"`],
+      ['local-path', `"${win('D', '\\\\', 'dev', 'Alice')}"`],
+      ['local-path', `"file:///${win('C', '/', 'x')}"`],
+      ['local-path', `"${unc('\\\\', 'nas', 'share', 'site')}"`],
       ['local-host', '"127.0.0.1"'],
       ['local-host', '"LOCALHOST"'],
       ['private-host', `"${ip(10, 0, 0, 5)}"`],
@@ -167,6 +176,13 @@ describe('check-dist', () => {
     });
 
     it.each([
+      '"http://www.w3.org/1999/xhtml"',
+      '".a:hover{color:red}"',
+      '"12:30"',
+      '"|:---|:---:|"',
+      '"data:image/svg+xml,x"',
+      'c?e:/[a-z]/.test(s)',
+      '"a\\nb"',
       '"172.32.0.1"',
       '"10.0.0"',
       '"1.10.0.0"',
