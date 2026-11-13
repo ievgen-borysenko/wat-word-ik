@@ -58,6 +58,21 @@ keys, private network addresses or local host names in any tracked file. Keep
 personal settings, notes and scratch files out of the repository; your global
 git ignore file is the place for their patterns.
 
+## Check before every push
+
+Rewriting a branch does not take back what you have already pushed. CI checks
+the commits that a pull request holds when its run starts, so a version of
+your branch that you pushed and then force-pushed away is never checked: one
+pushed before you opened the pull request (CI does not run on pushes to
+branches other than `main`), or one whose run your next push cancelled. Its
+commits can stay on GitHub all the same, reachable by their hash. So run the
+history checks yourself before every push:
+
+```sh
+npm run check:tree -- --range origin/main HEAD
+npm run check:commits -- origin/main HEAD
+```
+
 ## Re-record the animation
 
 `docs/demo.gif`, the animation at the top of the README, is recorded from the
@@ -86,8 +101,9 @@ hidden on purpose in them, in the colour table or in the format's free
 fields. Look at the new file before you commit it, and update the description
 of the animation in the README if the scenario changed. In a pull request
 every version of the file that a commit writes is parsed as well, so if one
-fails, rewrite the branch rather than committing a fix on top. Ctrl-C stops
-the script and removes its screenshots.
+fails, rewrite the branch rather than committing a fix on top, and run the
+check before you push (see "Check before every push"). Ctrl-C stops the
+script and removes its screenshots.
 
 ## Add a profession
 

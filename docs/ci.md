@@ -91,6 +91,14 @@ checks read the files as they are now. A personal address added in one commit
 and removed in the next stays in that pull request's history unless it looks
 like a secret.
 
+A known limit of the history checks: a run reads the commits that the pull
+request holds when the run starts. A version of a branch that was pushed and
+then force-pushed away is never checked: one pushed before the pull request
+was opened (CI does not run on pushes to branches other than `main`), or one
+whose run a newer push cancelled. GitHub can keep such commits reachable by
+their hash all the same, so contributors run the checks before every push
+("Check before every push" in [contributing.md](contributing.md)).
+
 A known limit of `check:commits`: an author or committer is judged by the
 form of the address. An account without the `[bot]` suffix passes as a person,
 whatever it is used for; who may author commits is decided in review.
