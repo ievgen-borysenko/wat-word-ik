@@ -3,7 +3,16 @@ import { mkdirSync, mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSyn
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { DEMO_GIF_MAX_BYTES, DEMO_GIF_MAX_SIDE, DEMO_GIF_MIN_DELAY_CS, checkTree, onList, parseGif } from './check-tree.mjs';
+import {
+  DEMO_GIF_MAX_BYTES,
+  DEMO_GIF_MAX_DURATION_CS,
+  DEMO_GIF_MAX_FRAMES,
+  DEMO_GIF_MAX_SIDE,
+  DEMO_GIF_MIN_DELAY_CS,
+  checkTree,
+  onList,
+  parseGif,
+} from './check-tree.mjs';
 
 /*
  * The strings this check refuses (e-mail addresses, home folders, key headers,
@@ -346,6 +355,20 @@ describe('check-tree', () => {
       expect(parseGif(gif)).toEqual({ width: side, height: side, frames: 2, durationCs: DEMO_GIF_MIN_DELAY_CS + 10 });
     });
 
+    it('passes the other fields it leaves free: background colour, colour resolution and sort flag, a transparent index without transparency, a disposal method, a frame smaller than the screen and data in sub-blocks of one byte', () => {
+      const head = bytes('GIF89a', ...le16(2), ...le16(2), 0xf8, 1, 0, [0, 0, 0, 255, 255, 255], LOOP);
+      const control = bytes(0x21, 0xf9, 4, 0x08, ...le16(10), 1, 0);
+      const small = bytes(0x2c, ...le16(1), ...le16(1), ...le16(1), ...le16(1), 0, 2, ...[...lzw([1])].flatMap((b) => [1, b]), 0);
+      expect(parseGif(bytes(head, control, small, TRAILER))).toEqual({ width: 2, height: 2, frames: 1, durationCs: 10 });
+    });
+
+    it('passes the most frames and the longest running time', () => {
+      const last = DEMO_GIF_MAX_DURATION_CS - (DEMO_GIF_MAX_FRAMES - 1) * 10;
+      expect(last).toBeGreaterThanOrEqual(DEMO_GIF_MIN_DELAY_CS);
+      const gif = bytes(start(), ...Array.from({ length: DEMO_GIF_MAX_FRAMES - 1 }, () => frame()), gce(last), image(), TRAILER);
+      expect(parseGif(gif)).toEqual({ width: 2, height: 2, frames: DEMO_GIF_MAX_FRAMES, durationCs: DEMO_GIF_MAX_DURATION_CS });
+    });
+
     it('decodes a long run of codes past the full table of 4096 entries', () => {
       const side = 128;
       const pixels = Array.from({ length: side * side }, (_, i) => (i >> 3) % 2);
@@ -430,6 +453,17 @@ describe('check-tree', () => {
         'pixel aspect ratio',
       ],
       ['a file over the size cap', big, `more than the cap of ${DEMO_GIF_MAX_BYTES}`],
+      // Many tiny frames: within the size cap without these two caps.
+      [
+        'more frames than the cap',
+        () => bytes(start(), ...Array.from({ length: DEMO_GIF_MAX_FRAMES + 1 }, () => frame()), TRAILER),
+        `more than ${DEMO_GIF_MAX_FRAMES} frames`,
+      ],
+      [
+        'frame delays that add up to more than the cap',
+        () => bytes(start(), gce(DEMO_GIF_MAX_DURATION_CS - 1), image(), gce(DEMO_GIF_MIN_DELAY_CS), image(), TRAILER),
+        `more than ${DEMO_GIF_MAX_DURATION_CS} hundredths of a second`,
+      ],
     ])('refuses %s', (_what, make, message) => {
       const found = gifViolations(make());
       expect(found.map((v) => `${v.path} ${v.rule}`)).toEqual(['docs/demo.gif gif']);
@@ -646,6 +680,29 @@ describe('check-tree', () => {
         expect(inHistory(r, base)).toEqual(['docs/demo.gif/frame.md history', 'docs/demo.gif history-gif']);
         expect(gifFindings(r, base)[0]).toContain(`commit ${folder.slice(0, 12)} "Make it a folder" writes is not a GIF`);
         expect(gifFindings(r, base)[0]).toContain('it is a tree, not a file');
+      });
+
+      // git cat-file reports a submodule whose commit is not in the repository
+      // as "<object> submodule", without a type or size.
+      it.each([
+        ['whose commit is not in the repository', 'submodule'],
+        ['that points to a commit of the repository', 'commit'],
+      ])('refuses a submodule at the path %s, and the command line exits 1', (_what, type) => {
+        const r = repo({ 'docs/demo.gif': GIF });
+        const base = r.commit('Add the animation');
+        r.git(['rm', '--quiet', '--cached', 'docs/demo.gif']);
+        r.git(['update-index', '--add', '--cacheinfo', `160000,${type === 'commit' ? base : 'a'.repeat(40)},docs/demo.gif`]);
+        const submodule = r.commit('Make it a submodule');
+        r.git(['rm', '--quiet', '--cached', 'docs/demo.gif']);
+        r.write('docs/demo.gif', GIF);
+        r.commit('Put the recorded animation back');
+        expect(rules(r)).toEqual([]);
+        expect(inHistory(r, base)).toEqual(['docs/demo.gif history-gif']);
+        expect(gifFindings(r, base)[0]).toContain(`commit ${submodule.slice(0, 12)} "Make it a submodule" writes is not a GIF`);
+        expect(gifFindings(r, base)[0]).toContain(`it is a ${type}, not a file`);
+        const res = spawnSync(process.execPath, [SCRIPT, '--range', base, 'HEAD', r.dir], { env: r.env, encoding: 'utf8' });
+        expect(res.status).toBe(1);
+        expect(res.stderr).toContain(`docs/demo.gif: [history-gif] the version that commit ${submodule.slice(0, 12)}`);
       });
     });
   });

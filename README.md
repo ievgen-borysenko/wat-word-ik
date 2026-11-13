@@ -47,9 +47,9 @@ ship the page and nothing else:
   explicit list; every tracked file is text without an e-mail address, a path
   from a developer's computer, a private key or a private network address,
   except the animation above. That one must be a looping GIF in one fixed
-  form, at most 2 MiB and 880x880 pixels, in every commit that changes it:
-  without the metadata that tools write (comments, XMP, colour profiles) and
-  with nothing appended. The check cannot see data hidden on purpose in its
+  form, at most 2 MiB, 880x880 pixels, 400 frames and 60 s, in every commit
+  that changes it: without the metadata that tools write (comments, XMP,
+  colour profiles) and with nothing appended. The check cannot see data hidden on purpose in its
   pixels, its colour table or the fields the format leaves free; the reviewer
   looks at the animation;
 - secret scan of the whole git history and of the built site;
