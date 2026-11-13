@@ -682,12 +682,12 @@ describe('check-tree', () => {
         expect(gifFindings(r, base)[0]).toContain('it is a tree, not a file');
       });
 
-      // git cat-file reports a submodule whose commit is not in the repository
-      // as "<object> submodule", without a type or size.
-      it.each([
-        ['whose commit is not in the repository', 'submodule'],
-        ['that points to a commit of the repository', 'commit'],
-      ])('refuses a submodule at the path %s, and the command line exits 1', (_what, type) => {
+      /**
+       * A history in which one commit puts a submodule at docs/demo.gif and the
+       * next one puts the animation back.
+       * @param {'submodule' | 'commit'} type submodule: its commit is not in the repository; commit: it is
+       */
+      const submoduleHistory = (type) => {
         const r = repo({ 'docs/demo.gif': GIF });
         const base = r.commit('Add the animation');
         r.git(['rm', '--quiet', '--cached', 'docs/demo.gif']);
@@ -696,6 +696,16 @@ describe('check-tree', () => {
         r.git(['rm', '--quiet', '--cached', 'docs/demo.gif']);
         r.write('docs/demo.gif', GIF);
         r.commit('Put the recorded animation back');
+        return { r, base, submodule };
+      };
+
+      // git cat-file reports a submodule whose commit is not in the repository
+      // as "<object> submodule", without a type or size.
+      it.each(/** @type {const} */ ([
+        ['whose commit is not in the repository', 'submodule'],
+        ['that points to a commit of the repository', 'commit'],
+      ]))('refuses a submodule at the path %s, and the command line exits 1', (_what, type) => {
+        const { r, base, submodule } = submoduleHistory(type);
         expect(rules(r)).toEqual([]);
         expect(inHistory(r, base)).toEqual(['docs/demo.gif history-gif']);
         expect(gifFindings(r, base)[0]).toContain(`commit ${submodule.slice(0, 12)} "Make it a submodule" writes is not a GIF`);
@@ -703,6 +713,52 @@ describe('check-tree', () => {
         const res = spawnSync(process.execPath, [SCRIPT, '--range', base, 'HEAD', r.dir], { env: r.env, encoding: 'utf8' });
         expect(res.status).toBe(1);
         expect(res.stderr).toContain(`docs/demo.gif: [history-gif] the version that commit ${submodule.slice(0, 12)}`);
+      });
+
+      /**
+       * The environment of `r` with a stand-in for git first on PATH: it runs
+       * the real git, but turns each "<object> submodule" line that
+       * `git cat-file --batch-check` gives into `instead`, a shell word in which
+       * $name is the name that was asked for.
+       * @param {ReturnType<typeof repo>} r
+       * @param {string} instead
+       */
+      const gitAnswering = (r, instead) => {
+        const bin = join(dirname(r.dir), 'stand-in');
+        mkdirSync(bin);
+        const script = [
+          '#!/bin/sh',
+          '[ "$1" = cat-file ] && [ "$2" = --batch-check ] || exec "$REAL_GIT" "$@"',
+          'while IFS= read -r name; do',
+          '  answer=$(printf \'%s\\n\' "$name" | "$REAL_GIT" cat-file --batch-check) || exit $?',
+          `  case "$answer" in *' submodule') echo ${instead} ;; *) printf '%s\\n' "$answer" ;; esac`,
+          'done',
+          '',
+        ].join('\n');
+        writeFileSync(join(bin, 'git'), script, { mode: 0o755 });
+        const realGit = execFileSync('sh', ['-c', 'command -v git'], { env: r.env, encoding: 'utf8' }).trim();
+        return { ...r.env, PATH: `${bin}:${r.env.PATH}`, REAL_GIT: realGit };
+      };
+
+      // Older git prints "<commit>:<path> missing" for such a submodule, the
+      // same line as for a path that is not there; the stand-in answers so.
+      it('refuses a submodule at the path also where git cat-file reports it missing', () => {
+        const { r, base, submodule } = submoduleHistory('submodule');
+        const env = gitAnswering(r, '"$name missing"');
+        const asked = `${submodule}:docs/demo.gif\n${base}:docs/demo.gif\n`;
+        const answer = execFileSync('git', ['cat-file', '--batch-check'], { cwd: r.dir, env, input: asked, encoding: 'utf8' }).split('\n');
+        expect(answer[0]).toBe(`${submodule}:docs/demo.gif missing`);
+        expect(answer[1]).toMatch(/^[0-9a-f]{40} blob \d+$/);
+        const found = checkTree(r.dir, env, { base, head: 'HEAD' }).violations;
+        expect(found.map((v) => `${v.path} ${v.rule}`)).toEqual(['docs/demo.gif history-gif']);
+        expect(found[0]?.message).toContain(`commit ${submodule.slice(0, 12)} "Make it a submodule" writes is not a GIF`);
+        expect(found[0]?.message).toContain('it is a submodule, not a file');
+      });
+
+      it('stops on a "missing" line for another name than the one asked', () => {
+        const { r, base } = submoduleHistory('submodule');
+        const env = gitAnswering(r, '"HEAD:docs/demo.gif missing"');
+        expect(() => checkTree(r.dir, env, { base, head: 'HEAD' })).toThrow(/unexpected line .*: HEAD:docs\/demo\.gif missing$/);
       });
     });
   });

@@ -491,6 +491,26 @@ function lzwProblem(data, minCodeSize, pixels, colours) {
 }
 
 /**
+ * What `git ls-tree` lists at DEMO_GIF in a commit for which git cat-file
+ * reports the path missing: nothing (null), or a submodule entry (mode 160000).
+ * Any other entry means its object is not in the repository, and the check
+ * cannot read it.
+ * @param {string} root
+ * @param {string} sha
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {{ object: string, type: string, size: number } | null}
+ */
+function submoduleEntry(root, sha, env) {
+  const records = git(['ls-tree', '-z', sha, '--', DEMO_GIF], root, env)
+    .split('\0')
+    .filter((r) => r !== '');
+  if (records.length === 0) return null;
+  const m = /^(\d{6}) (\S+) ([0-9a-f]{40,64})\t(.*)$/s.exec(records[0] ?? '');
+  if (records.length === 1 && m && m[4] === DEMO_GIF && m[1] === '160000') return { object: m[3] ?? '', type: 'submodule', size: 0 };
+  throw new Error(`git cat-file reports ${sha}:${DEMO_GIF} missing, but git ls-tree lists: ${records.join(' | ')}`);
+}
+
+/**
  * Every version of DEMO_GIF that a commit in base..head writes: the object at
  * that path in the commit's tree when none of the commit's parents has the same
  * object there. That is a commit that adds, changes, copies or renames a file
@@ -516,8 +536,9 @@ export function demoGifVersionsInHistory(root, range, env) {
   const shas = [...new Set(commits.flatMap((c) => [c.sha, ...c.parents]))];
   if (shas.length === 0) return [];
   // One line per `<commit>:<path>`: "<object> <type> <size>"; "<object> submodule" for a submodule
-  // entry whose commit is not in this repository (it has no type or size here); or "<name> missing"
-  // when the path is not there.
+  // entry whose commit is not in this repository (it has no type or size here); or "<commit>:<path>
+  // missing". Older git prints "missing" for such a submodule entry too, so a "missing" is confirmed
+  // with git ls-tree, which lists the entry with its mode on every git version.
   const lines = git(['cat-file', '--batch-check'], root, env, shas.map((sha) => `${sha}:${DEMO_GIF}\n`).join('')).split('\n');
   /** @type {Map<string, { object: string, type: string, size: number } | null>} */
   const at = new Map();
@@ -525,10 +546,10 @@ export function demoGifVersionsInHistory(root, range, env) {
     const line = lines[i] ?? '';
     const m = /^([0-9a-f]{40,64}) (\S+) (\d+)$/.exec(line);
     const submodule = /^([0-9a-f]{40,64}) submodule$/.exec(line);
-    if (!m && !submodule && !line.endsWith(' missing')) throw new Error(`git cat-file gave an unexpected line for ${sha}:${DEMO_GIF}: ${line}`);
     if (m) at.set(sha, { object: m[1] ?? '', type: m[2] ?? '', size: Number(m[3]) });
     else if (submodule) at.set(sha, { object: submodule[1] ?? '', type: 'submodule', size: 0 });
-    else at.set(sha, null);
+    else if (line === `${sha}:${DEMO_GIF} missing`) at.set(sha, submoduleEntry(root, sha, env));
+    else throw new Error(`git cat-file gave an unexpected line for ${sha}:${DEMO_GIF}: ${line}`);
   });
   /** @type {Set<string>} */
   const seen = new Set();
