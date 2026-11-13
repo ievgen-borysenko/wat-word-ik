@@ -8,6 +8,9 @@
 //     from a short allow-list of permissive licences. Runtime means every entry
 //     without `dev`: an entry with `devOptional` (a dev dependency that is also
 //     an optional dependency of a runtime package) counts as runtime too.
+// The same set of runtime packages (runtimePackages below) decides which
+// licence notices the built script carries: the build writes them, and
+// scripts/check-dist.mjs requires one for each package.
 //
 // Usage: node scripts/check-lockfile.mjs [package-lock.json]
 // Exit codes: 0 clean, 1 violations found (all listed), 2 the file could not be read.
@@ -78,6 +81,37 @@ export function licenseAllowed(expression, allowed) {
 }
 
 /**
+ * Package name of a lockfile key (`node_modules/a/node_modules/@s/b` is `@s/b`).
+ * @param {string} key
+ */
+const packageName = (key) => key.replace(/^(?:.*\/)?node_modules\//, '') || key;
+
+/**
+ * A runtime package can end up in the shipped page: every entry without `dev`.
+ * An entry with `devOptional` (a dev dependency that is also an optional
+ * dependency of a runtime package) counts as runtime too.
+ * @param {LockEntry} entry
+ */
+const isRuntime = (entry) => !entry.dev;
+
+/**
+ * The runtime packages of the lockfile, as the licence check above sees them:
+ * the build writes a licence notice for each of them into the built script, and
+ * check:dist requires one for each. `path` is the lockfile key, the folder the
+ * package is installed in.
+ * @param {Lockfile} lock
+ * @returns {{ path: string, name: string, version: string, license: string }[]}
+ */
+export function runtimePackages(lock) {
+  if (typeof lock !== 'object' || lock === null || (lock.lockfileVersion ?? 0) < 2 || typeof lock.packages !== 'object') {
+    throw new Error('expected lockfileVersion 2 or 3 with a "packages" map');
+  }
+  return Object.entries(lock.packages ?? {})
+    .filter(([key, entry]) => key !== '' && isRuntime(entry))
+    .map(([key, entry]) => ({ path: key, name: packageName(key), version: entry.version ?? '', license: entry.license ?? '' }));
+}
+
+/**
  * @param {Lockfile} lock
  * @returns {{ violations: Violation[], checked: number, runtime: { pkg: string, license: string }[] }}
  */
@@ -94,7 +128,7 @@ export function auditLockfile(lock) {
   for (const [key, entry] of Object.entries(lock.packages ?? {})) {
     if (key === '') continue; // the project itself
     checked++;
-    const pkg = key.replace(/^(?:.*\/)?node_modules\//, '') || key;
+    const pkg = packageName(key);
     /** @param {string} rule @param {string} message */
     const add = (rule, message) => violations.push({ pkg: key, rule, message });
 
@@ -113,7 +147,7 @@ export function auditLockfile(lock) {
         add('integrity', `has no sha512 integrity hash (${entry.integrity.slice(0, 12)}...)`);
       }
     }
-    if (!entry.dev) {
+    if (isRuntime(entry)) {
       const license = entry.license;
       if (typeof license !== 'string' || license === '') add('license', `runtime package ${pkg} declares no licence`);
       else if (!licenseAllowed(license, RUNTIME_LICENSES)) {

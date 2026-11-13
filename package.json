@@ -11,7 +11,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "typecheck": "tsc --noEmit && tsc --noEmit -p tsconfig.node.json",
-    "check:dist": "node scripts/check-dist.mjs dist",
+    "check:dist": "node scripts/check-dist.mjs dist package-lock.json",
     "check:lock": "node scripts/check-lockfile.mjs package-lock.json",
     "check:commits": "node scripts/check-commits.mjs",
     "check:links": "node scripts/check-links.mjs",

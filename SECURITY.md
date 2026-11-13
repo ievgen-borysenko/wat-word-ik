@@ -1,5 +1,13 @@
 # Security
 
+## Supported versions
+
+Only the current version is supported: the page deployed on GitHub Pages and
+the `main` branch it is built from. There are no releases and no older
+versions to patch; a fix lands on `main` and is deployed from there.
+
+Known advisories: none.
+
 ## Reporting a problem
 
 Please report a security or privacy problem privately, through a GitHub

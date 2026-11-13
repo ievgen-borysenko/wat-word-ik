@@ -1,8 +1,9 @@
 # How it works
 
 > **Status: M0 demo.** Every number on the page (requirements, levels, pay) was
-> written by hand to make the picture readable. It is approximate demo data,
-> not real admission rules and not career advice.
+> made up for this prototype to make the picture readable; no source has been
+> used yet. It is approximate demo data, not real admission rules and not
+> career advice.
 
 ## What the page shows
 

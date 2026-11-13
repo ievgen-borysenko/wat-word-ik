@@ -52,10 +52,42 @@ in the same pull request, so the reviewer sees it. In a pull request the check
 also reads every commit: a file that is not on the list must not appear in any
 of them, even if a later commit deletes it, so rewrite the branch rather than
 deleting such a file afterwards. The same check refuses symlinks, submodules,
-executable files, files that are not UTF-8 text, and e-mail addresses, paths
-from your computer, private keys, private network addresses or local host
-names in any tracked file. Keep personal settings, notes and scratch files out
-of the repository; your global git ignore file is the place for their patterns.
+executable files, files that are not UTF-8 text (the one exception is the
+animation, see below), and e-mail addresses, paths from your computer, private
+keys, private network addresses or local host names in any tracked file. Keep
+personal settings, notes and scratch files out of the repository; your global
+git ignore file is the place for their patterns.
+
+## Re-record the animation
+
+`docs/demo.gif`, the animation at the top of the README, is recorded from the
+built site by `scripts/record-demo.mjs`. Record it again after a change that
+shows on the page:
+
+```sh
+npm run build
+npx playwright install chromium   # once
+node scripts/record-demo.mjs      # writes docs/demo.gif
+```
+
+The script also needs ffmpeg on your PATH (install it with your package
+manager). It plays a fixed scenario in English at 1280x800 (Maths up, Dutch
+down, then the card of the primary school teacher), takes one screenshot per
+step and writes a GIF 880 pixels wide, without metadata. It fails with a
+message, and leaves the old file as it was, when something it needs is
+missing, when the page reports an error, when the scenario no longer shows
+what it is meant to (more professions open after Maths, fewer after Dutch, a
+gap for Dutch on the card; after a data change, adjust the grades and the
+profession at the top of the script), or when the result does not pass the
+parse of `npm run check:tree`. That parse keeps out the metadata that tools
+write and anything appended, and caps the file at 2 MiB and 880x880 pixels;
+it does not see what the pixels show, nor data hidden on purpose in them, in
+the colour table or in the format's free fields. Look at the new file before
+you commit it, and update the description of the animation in the README if
+the scenario changed. In a pull request every version of the file that a
+commit writes is parsed as well, so if one fails, rewrite the branch rather
+than committing a fix on top. Ctrl-C stops the script and removes its
+screenshots.
 
 ## Add a profession
 

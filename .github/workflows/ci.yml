@@ -5,13 +5,17 @@ on:
   pull_request:
   push:
     branches: [main]
+  # Started by hand (Actions, CI, Run workflow). It runs every job of a push run
+  # and deploys under the same conditions: see the deploy job and docs/ci.md.
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 concurrency:
   group: ci-${{ github.ref }}
-  # Cancel superseded runs of a pull request; never cancel a run on main (it may deploy).
+  # Cancel superseded runs of a pull request; never cancel a push run or a run
+  # started by hand (on main, either may deploy).
   cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 defaults:
@@ -33,6 +37,17 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     steps:
+      # Prints the values the deploy job's condition reads, before any
+      # dependency is installed, so every run shows why it deploys or not.
+      - name: Show what decides the deploy (event, ref, visibility)
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          VISIBILITY: ${{ github.event.repository.visibility }}
+        run: |
+          echo "event: $EVENT; ref: $REF; repository visibility: ${VISIBILITY:-(not in the event)}" | tee -a "$GITHUB_STEP_SUMMARY"
+          echo "Deploys only for a push or a run started by hand, on refs/heads/main, with visibility public."
+
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -97,14 +112,18 @@ jobs:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          PUSH_HEAD: ${{ github.sha }}
+          RUN_SHA: ${{ github.sha }}
         run: |
-          if [ "$EVENT" = pull_request ]; then
-            npm run check:tree -- --range "$PR_BASE" "$PR_HEAD"
-          else
-            # Every path any commit reachable from the pushed head ever added.
-            npm run check:tree -- --range 0000000000000000000000000000000000000000 "$PUSH_HEAD"
-          fi
+          case "$EVENT" in
+            pull_request)
+              npm run check:tree -- --range "$PR_BASE" "$PR_HEAD" ;;
+            push | workflow_dispatch)
+              # Every path any commit reachable from the run's commit ever added.
+              # A run started by hand has no pushed range; it checks the same.
+              npm run check:tree -- --range 0000000000000000000000000000000000000000 "$RUN_SHA" ;;
+            *)
+              echo "::error::no history range is defined for the event $EVENT"; exit 1 ;;
+          esac
 
       - name: Install gitleaks (pinned release, sha256 checked)
         run: |
@@ -129,7 +148,10 @@ jobs:
           for f in .gitleaks.toml .gitleaksignore; do
             if [ -e "$f" ]; then echo "::error file=$f::$f changes the secret scan; review it and update this step"; exit 1; fi
           done
-          gitleaks git --no-banner --redact --ignore-gitleaks-allow --log-opts="--all --full-history" .
+          # git log -p shows no diff for a merge commit unless asked; with
+          # --diff-merges=first-parent it shows the merge's changes against its
+          # first parent, so what a merge resolution added is scanned too.
+          gitleaks git --no-banner --redact --ignore-gitleaks-allow --log-opts="--all --full-history --diff-merges=first-parent" .
           gitleaks dir --no-banner --redact --ignore-gitleaks-allow .
 
       - name: Lockfile - registry, integrity, runtime licences
@@ -151,20 +173,23 @@ jobs:
             console.log(`npm audit, all dependencies: ${v.total} total (critical ${v.critical}, high ${v.high}, moderate ${v.moderate}, low ${v.low}, info ${v.info})`);
           ' "$RUNNER_TEMP/audit.json" | tee -a "$GITHUB_STEP_SUMMARY"
 
-      - name: Commit addresses and trailers (pull request range; on a push, all of history)
+      - name: Commit addresses and trailers (pull request range; otherwise all of history)
         env:
           EVENT: ${{ github.event_name }}
           PR_BASE: ${{ github.event.pull_request.base.sha }}
           PR_HEAD: ${{ github.event.pull_request.head.sha }}
-          PUSH_HEAD: ${{ github.sha }}
+          RUN_SHA: ${{ github.sha }}
         run: |
-          if [ "$EVENT" = pull_request ]; then
-            npm run check:commits -- "$PR_BASE" "$PR_HEAD"
-          else
-            # Every commit reachable from the pushed head, not only before..after:
-            # a cancelled or failed earlier run must not leave commits unchecked.
-            npm run check:commits -- 0000000000000000000000000000000000000000 "$PUSH_HEAD"
-          fi
+          case "$EVENT" in
+            pull_request)
+              npm run check:commits -- "$PR_BASE" "$PR_HEAD" ;;
+            push | workflow_dispatch)
+              # Every commit reachable from the run's commit, not only before..after:
+              # a cancelled or failed earlier run must not leave commits unchecked.
+              npm run check:commits -- 0000000000000000000000000000000000000000 "$RUN_SHA" ;;
+            *)
+              echo "::error::no commit range is defined for the event $EVENT"; exit 1 ;;
+          esac
 
       - name: Links in README and docs
         run: npm run check:links
@@ -181,7 +206,8 @@ jobs:
       - name: Audit the built site
         run: |
           if [ -e node_modules ]; then echo "::error::node_modules appeared"; exit 1; fi
-          node scripts/check-dist.mjs "$RUNNER_TEMP/site"
+          # The lockfile of this checkout decides which licence notices the site must carry.
+          node scripts/check-dist.mjs "$RUNNER_TEMP/site" package-lock.json
 
       - name: Secret scan - built site
         run: gitleaks dir --no-banner --redact --ignore-gitleaks-allow "$RUNNER_TEMP/site"
@@ -250,8 +276,12 @@ jobs:
   deploy:
     name: Deploy to GitHub Pages
     needs: [audit, e2e]
-    # Only a push to main of a public repository deploys; pull requests never do.
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main' && github.event.repository.private == false
+    # Only a push to main, or a run started by hand on main, of a public
+    # repository deploys; pull requests and other refs never do. Visibility is
+    # compared with 'public' because an expression counts a missing value as
+    # equal to false. Strings are compared without regard to case, so the
+    # first step below checks the ref exactly.
+    if: (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && github.ref == 'refs/heads/main' && github.event.repository.visibility == 'public'
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     permissions:
@@ -265,6 +295,14 @@ jobs:
       group: pages
       cancel-in-progress: false
     steps:
+      # The condition above lets refs/heads/Main through as well; the shell compares exactly.
+      - name: Check that this run is for refs/heads/main exactly
+        run: |
+          if [ "$GITHUB_REF" != refs/heads/main ]; then
+            echo "::error::this run is for $GITHUB_REF, not refs/heads/main; not deploying"
+            exit 1
+          fi
+
       # deploy-pages picks the artifact by name. Another job of this run could, if
       # compromised, upload a second one or replace it under the same name; either
       # way the ids no longer match. Deploy only the artifact the audit job uploaded.

@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
-import { RUNTIME_LICENSES, auditLockfile, licenseAllowed } from './check-lockfile.mjs';
+import { RUNTIME_LICENSES, auditLockfile, licenseAllowed, runtimePackages } from './check-lockfile.mjs';
 
 const SCRIPT = resolve(import.meta.dirname, 'check-lockfile.mjs');
 const INTEGRITY = `sha512-${'A'.repeat(86)}==`;
@@ -101,6 +101,22 @@ describe('check-lockfile', () => {
 
   it('rejects an old lockfile format', () => {
     expect(auditLockfile({ lockfileVersion: 1 }).violations.map((v) => v.rule)).toEqual(['format']);
+  });
+
+  it('lists the runtime packages that need a licence notice in the built site', () => {
+    const l = lock({
+      'node_modules/@s/b': pkg('@s/b', { version: '2.0.0' }),
+      'node_modules/@s/b/node_modules/c': pkg('c', { devOptional: true, license: 'ISC' }),
+      'node_modules/d': pkg('d', { dev: true, optional: true }),
+    });
+    expect(runtimePackages(l)).toEqual([
+      { path: 'node_modules/preact', name: 'preact', version: '1.0.0', license: 'MIT' },
+      { path: 'node_modules/@s/b', name: '@s/b', version: '2.0.0', license: 'MIT' },
+      { path: 'node_modules/@s/b/node_modules/c', name: 'c', version: '1.0.0', license: 'ISC' },
+    ]);
+    // The same set as the licence check reports.
+    expect(auditLockfile(l).runtime.map((r) => r.pkg)).toEqual(['preact@1.0.0', '@s/b@2.0.0', 'c@1.0.0']);
+    expect(() => runtimePackages({ lockfileVersion: 1 })).toThrow(/lockfileVersion 2 or 3/);
   });
 
   it.each([
