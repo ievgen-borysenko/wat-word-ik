@@ -410,8 +410,13 @@ function encode(dir, frames) {
   const list = frames.map((f) => `file '${f.file}'\noption framerate 100\nduration ${(f.cs / 100).toFixed(2)}\n`).join('');
   writeFileSync(join(dir, 'frames.txt'), list);
   const out = join(dir, 'demo.gif');
+  // setsar=0 unsets the sample (pixel) aspect ratio. A screenshot with a pHYs
+  // chunk has one, which scale keeps, and ffmpeg's GIF encoder writes the ratio
+  // it is given into the screen descriptor, 1:1 included (as the byte 49), so
+  // setsar=1 would not do. parseGif accepts only 0 there, "no ratio given",
+  // which viewers show as square pixels.
   const filter = [
-    `[0:v]scale=${OUT_WIDTH}:-2:flags=lanczos,split[a][b]`,
+    `[0:v]scale=${OUT_WIDTH}:-2:flags=lanczos,setsar=0,split[a][b]`,
     '[a]palettegen=max_colors=256:stats_mode=full[p]',
     '[b][p]paletteuse=dither=none:diff_mode=rectangle',
   ].join(';');
