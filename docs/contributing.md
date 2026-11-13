@@ -61,10 +61,12 @@ git ignore file is the place for their patterns.
 ## Check before every push
 
 Rewriting a branch does not take back what you have already pushed. CI checks
-the commits that a pull request holds when its run starts, so a version of
-your branch that you pushed and then force-pushed away is never checked: one
-pushed before you opened the pull request (CI does not run on pushes to
-branches other than `main`), or one whose run your next push cancelled. Its
+the commits that a pull request holds when its run starts. A version of your
+branch that no CI run got to check, and that you then force-pushed away, is
+never checked: for example one pushed before you opened the pull request (CI
+does not run on pushes to branches other than `main`), one pushed while the
+pull request had a merge conflict (GitHub runs no `pull_request` workflow
+then), or one whose run your next push cancelled before the checks. Its
 commits can stay on GitHub all the same, reachable by their hash. So run the
 history checks yourself before every push:
 

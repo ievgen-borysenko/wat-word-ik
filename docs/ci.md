@@ -59,7 +59,7 @@ What this does not cover:
 |------|--------------------------|
 | Show what decides the deploy | A deploy decision nobody can see: before anything is installed, the step prints the event, the ref and the repository's visibility, the three values the deploy job's condition reads (Job 4). |
 | `npm ci --ignore-scripts` | Dependencies that differ from the reviewed lockfile, and install scripts running code on the build machine. |
-| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script, and `scripts/check-workflow.test.mjs` reads this workflow and pins: when the deploy job runs; that only the deploy job may write, every other job gets only `contents: read` from the top-level `permissions`, and no job may start a run; that nothing cancels a run on `main`; which history range each event checks; that the secret scan reads merge commits; that no step continues on error, no condition runs a step after a failure or skips a check, no line swallows a failure with `\|\| true`, `\|\| :`, `\|\| exit 0` or `set +e`, and the audit of the built site fails when `check-dist.mjs` fails; and that the id of the audited artifact goes from the audit job's upload to the end-to-end job, which downloads the artifact by that id, and to the deploy job's check, while deploy-pages gets no inputs, so it deploys the `github-pages` artifact that the check compared. A step that hides a failure in any other way is left to review. |
+| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script, and `scripts/check-workflow.test.mjs` reads this workflow and pins: when the deploy job runs; that only the deploy job may write, every other job gets only `contents: read` from the top-level `permissions`, and no job may start a run; that nothing cancels a run on `main`; which history range each event checks; that the secret scan reads merge commits; that no step continues on error except the report-only audit of all dependencies (`continue-on-error: true`), that no condition runs a step after a failure except the one on the step that keeps the Playwright report of a failed run (`if: failure()`), and that no condition skips a check; that no line swallows a failure with `\|\| true`, `\|\| :`, `\|\| exit 0` or `set +e`, and the audit of the built site fails when `check-dist.mjs` fails; and that the id of the audited artifact goes from the audit job's upload to the end-to-end job, which downloads the artifact by that id, and to the deploy job's check, while deploy-pages gets no inputs, so it deploys the `github-pages` artifact that the check compared. A step that hides a failure in any other way is left to review. |
 | `npm run build` | |
 | Upload as `site-candidate` | Hands the built site, hidden files included, to the audit job. |
 
@@ -92,12 +92,16 @@ and removed in the next stays in that pull request's history unless it looks
 like a secret.
 
 A known limit of the history checks: a run reads the commits that the pull
-request holds when the run starts. A version of a branch that was pushed and
-then force-pushed away is never checked: one pushed before the pull request
-was opened (CI does not run on pushes to branches other than `main`), or one
-whose run a newer push cancelled. GitHub can keep such commits reachable by
-their hash all the same, so contributors run the checks before every push
-("Check before every push" in [contributing.md](contributing.md)).
+request holds when the run starts, so a version of a branch is checked only
+when a run on it gets to these checks. A version that no run got to, and that
+a force-push then took out of the pull request, is never checked. That
+happens, for example, to a version pushed before the pull request was opened
+(CI does not run on pushes to branches other than `main`), to one pushed
+while the pull request had a merge conflict (GitHub runs no `pull_request`
+workflow then) and to one whose run a newer push cancelled before the checks.
+GitHub can keep such commits reachable by their hash all the same, so
+contributors run the checks before every push ("Check before every push" in
+[contributing.md](contributing.md)).
 
 A known limit of `check:commits`: an author or committer is judged by the
 form of the address. An account without the `[bot]` suffix passes as a person,

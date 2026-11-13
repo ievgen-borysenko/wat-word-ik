@@ -423,9 +423,29 @@ describe('a failing check stops the deploy', () => {
 
   // `|| true` and its like turn a failed command into a passing step.
   it('no script swallows a failure', () => {
-    const swallows = /\|\|\s*(?:true|:|exit\s+0)\s*(?:$|[;#)}])|\bset\s+\+[a-z]*e|\bset\s+\+o\s+errexit\b/;
-    for (const sample of ['x || true', 'x ||:', 'x || exit 0 # done', '{ x || true; }', 'set +e', 'set +eo pipefail', 'set +o errexit']) {
-      expect(sample, sample).toMatch(swallows);
+    // The word must end where the shell ends it: at a blank, the end of the line, or an operator.
+    const swallows = /\|\|\s*(?:true|:|exit\s+0)(?=\s|$|[;&|)}#\\])|\bset\s+\+[a-z]*e|\bset\s+\+o\s+errexit\b/;
+    const caught = [
+      'x || true',
+      'x ||true',
+      'x ||:',
+      'x || :',
+      'x || exit 0',
+      'x || exit 0 # done',
+      '{ x || true; }',
+      'x || true && y',
+      'x || true | tee log',
+      'x ||true|tee log',
+      'x || true &',
+      'x || true \\',
+      'x || true\\',
+      'set +e',
+      'set +eo pipefail',
+      'set +o errexit',
+    ];
+    for (const sample of caught) expect(sample, sample).toMatch(swallows);
+    for (const sample of ['x || trueish', 'x || exit 1', 'x || exit 01', 'x || rc=$?', 'x || { echo failed; exit 1; }', 'set -e', 'set +x']) {
+      expect(sample, sample).not.toMatch(swallows);
     }
     expect(LINES.filter((l) => swallows.test(l))).toEqual([]);
   });
