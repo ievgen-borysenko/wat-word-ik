@@ -423,8 +423,8 @@ describe('a failing check stops the deploy', () => {
 
   // `|| true` and its like turn a failed command into a passing step.
   it('no script swallows a failure', () => {
-    // The word must end where the shell ends it: at a blank, the end of the line, or an operator.
-    const swallows = /\|\|\s*(?:true|:|exit\s+0)(?=\s|$|[;&|)}#\\])|\bset\s+\+[a-z]*e|\bset\s+\+o\s+errexit\b/;
+    // The word must end where the shell ends it: at a blank, the end of the line, an operator or a redirection.
+    const swallows = /\|\|\s*(?:true|:|exit\s+0)(?=\s|$|[;&|)}#\\<>])|\bset\s+\+[a-z]*e|\bset\s+\+o\s+errexit\b/;
     const caught = [
       'x || true',
       'x ||true',
@@ -439,6 +439,10 @@ describe('a failing check stops the deploy', () => {
       'x || true &',
       'x || true \\',
       'x || true\\',
+      'x || true>failed.log',
+      'x || true<input',
+      'x ||:>failed.log',
+      'x || exit 0>failed.log',
       'set +e',
       'set +eo pipefail',
       'set +o errexit',
