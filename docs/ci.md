@@ -121,8 +121,13 @@ whatever it is used for; who may author commits is decided in review.
 - **Size budget:** JavaScript up to 180 kB, CSS up to 40 kB, the whole site up
   to 400 kB. The measured sizes are printed on every run. The JavaScript
   budget counts all bundles together, and the texts of every page in all
-  three languages sit in one shared bundle; it was raised from 150 kB to
-  180 kB with the fourth page, whose texts alone add about 17 kB.
+  three languages sit in one shared bundle. It was raised from 150 kB to
+  180 kB with the fourth page, which took all JavaScript from 142.5 kB to
+  168.6 kB (+26.1 kB): the main shared bundle +17.2 kB (the new texts in
+  three languages, 15.7 kB as minified JSON, plus the typed admission rules
+  and the shared engine code), the bovenbouw entry 5.6 kB, the onderbouw
+  view's components, moved from its entry into a bundle that both school
+  views share, +3.2 kB, and the other bundles +0.1 kB.
 - **Nothing private inside:** no paths from a developer's computer (home
   folders on macOS and Linux, Windows drive and network-share paths), no local
   or private network addresses or host names, no private keys, no source map
