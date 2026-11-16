@@ -26,11 +26,13 @@ Which havo or vwo profile admits to each hbo and wo profession directly or
 with one extra exam subject was checked against the
 [Regeling aanmelding en toelating hoger onderwijs](https://wetten.overheid.nl/BWBR0035059/2026-09-01/0)
 (Ratho, BWBR0035059), version in force from 1 September 2026. Bijlage A holds
-the extra requirements of wo programmes for vwo profiles, Bijlage B those of
-hbo programmes; the hbo rows come from Bijlage B, section 3 "Bachelorinstroom
-met havo-diploma", table Techniek. A programme without a row in its bijlage
-has no extra requirements, so every profile admits (article 2.1: an
-institution can only ask for the requirements in the bijlage).
+the extra requirements of wo programmes for vwo profiles. Bijlage B holds
+those of hbo programmes, in a table for havo pupils (section 3
+"Bachelorinstroom met havo-diploma") and one for vwo pupils (section 4
+"Bachelorinstroom met vwo-diploma"); the hbo rows come from table Techniek of
+each. A programme without a row in its table has no extra requirements, so
+every profile admits (article 2.1: an institution can only ask for the
+requirements in the bijlage).
 
 The legend of both bijlagen (item 2) defines two symbols: `*` "dit profiel
 geeft toelatingsrecht tot de betreffende opleiding", and `#` no right to
@@ -45,13 +47,20 @@ subject in the exam. The data holds one extra subject per profile, so:
 - a cell with two or more subjects (`nat + wisB`) is more than one step,
   and `#` is no admission: the data closes that profile (the stricter
   reading);
-- the engine applies the hbo row for havo pupils to vwo pupils too.
+- an hbo profession has two rules, one per table: `admission` for havo
+  pupils (and at the vmbo levels, whose routes pass havo 4) and
+  `admission.vwo` for vwo pupils, each with its own source.
 
 Each row was read twice, with differently worded questions, and accepted
 only when both readings agreed; a row that did not settle would stay marked
 `verified: false` with the stricter reading. Every row below settled. Each
 profession keeps its row in `admission.source` (bijlage, table, programme
-as written, the four cells, version, `verified`).
+as written, the four cells, version, intake, `verified`). The unit tests
+check that every `*` is direct, that a cell with one subject or a choice
+is a bridge to one of its subjects, and that a cell with `+` or `#` is
+closed.
+
+### wo (Bijlage A) and hbo for havo pupils (Bijlage B, section 3)
 
 | Profession (`id`) | Programme | Bijlage | NT | NG | EM | CM | Verified |
 |---|---|---|---|---|---|---|---|
@@ -72,6 +81,22 @@ as written, the four cells, version, `verified`).
 | `apotheker` | Farmacie | A | * | nat | nat + schk | nat + schk + (wisA of wisB) | yes |
 | `dierenarts` | Diergeneeskunde | A | biol | nat | # | # | yes |
 
+### hbo for vwo pupils (Bijlage B, section 4, table Techniek)
+
+| Profession (`id`) | Programme | NT | NG | EM | CM | Verified |
+|---|---|---|---|---|---|---|
+| `elektrotechnisch-ingenieur` | Elektrotechniek | * | * | * | wisA of wisB | yes |
+| `mechatronica-engineer` | Mechatronica | * | nat of nlt of o&o | nat of nlt of o&o | (wisA of wisB) + (nat of nlt of o&o) | yes |
+| `leraar-basisonderwijs` | Opleiding tot leraar basisonderwijs | no row | | | | yes |
+| `software-engineer` | Technische Informatica | no row | | | | yes |
+| `journalist` | Journalistiek | no row | | | | yes |
+| `bouwkundig-ingenieur` | Built Environment | * | * | * | wisA of wisB | yes |
+| `game-designer` | Creative Media and Game Technologies | no row | | | | yes |
+| `archeoloog` | Archeologie | no row | | | | yes |
+
+So from vwo, Technische Informatica and Creative Media and Game Technologies
+admit every profile, while from havo C&M needs wiskunde A or B.
+
 What the rows say that the profile data does not show:
 
 - Geneeskunde and Diergeneeskunde admit no profile without an extra
@@ -83,7 +108,9 @@ What the rows say that the profile data does not show:
   exam subjects or else shown in a test. That is not a profile rule.
 - Bijlage A, table Techniek (Electrical Engineering, Bouwkunde), footnote 1:
   the institution may let an N&G pupil meet `nat` and `wisB` by the end of
-  the first year.
+  the first year. The door stays closed for N&G (the stricter reading), and
+  the card says it in its own line ("With N&G some universities let you
+  catch up physics and maths B in the first year"), from `source.catchUp`.
 
 When real data arrives, each number and rule on the pages should be
 traceable to one of these sources, and this file will describe how it was

@@ -8,6 +8,11 @@ export function orList(items: readonly string[], l: Lang): string {
   return new Intl.ListFormat(HTML_LANG[l], { type: 'disjunction' }).format(items);
 }
 
+/** "a, b and c" in the page language. */
+export function andList(items: readonly string[], l: Lang): string {
+  return new Intl.ListFormat(HTML_LANG[l], { type: 'conjunction' }).format(items);
+}
+
 export function profileShort(p: HavoVwoProfile, l: Lang): string {
   return PROFILE_NAMES[p].short[l];
 }

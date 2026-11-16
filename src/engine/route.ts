@@ -4,7 +4,7 @@ import {
   VMBO_DIRECTIONS,
   type ExamSubject,
   type HavoVwoProfile,
-  type ProfileAdmission,
+  type ProfileRule,
   type Profession,
   type SchoolLevel,
   type SchoolProfile,
@@ -25,8 +25,9 @@ import {
  *   2 (mbo 4)                   open from vmbo-gl/tl, havo and vwo. From vmbo-bb/kb
  *                               a detour: the page reads bb/kb as bb, the stricter
  *                               half, so mbo 2 comes first (with kb it is direct);
- *   3 (hbo)                     from havo and vwo by profile (`admission`): direct,
- *                               one extra subject, or another profile. From vmbo-gl/tl
+ *   3 (hbo)                     from havo and vwo by profile (`admission`, and
+ *                               `admission.vwo` for vwo pupils): direct, one extra
+ *                               subject, or another profile. From vmbo-gl/tl
  *                               a detour via mbo 4 (where profile rules do not apply)
  *                               or havo 4. From vmbo-bb/kb closed: from vmbo-gl/tl up;
  *   4 (wo)                      from vwo by profile, as hbo. From havo with a direct
@@ -106,20 +107,29 @@ function isHavoVwoProfile(profile: SchoolProfile | null): profile is HavoVwoProf
 }
 
 /** Every profile direct: the fallback for a profession without admission data (the data test forbids that). */
-const ANY_PROFILE: ProfileAdmission = { direct: HAVO_VWO_PROFILES, bridge: {} };
+const ANY_PROFILE: ProfileRule = { direct: HAVO_VWO_PROFILES, bridge: {} };
 
-function admissionOf(p: Profession): ProfileAdmission {
+function admissionOf(p: Profession): ProfileRule {
   return p.admission ?? ANY_PROFILE;
 }
 
+/**
+ * The admission rule that holds at a school level: for hbo at vwo the vwo rule
+ * (`admission.vwo`), else the rule of `admission` (the havo rule for hbo, the vwo rule
+ * for wo). Without a vwo rule, hbo at vwo uses the havo rule.
+ */
+export function admissionAt(p: Profession, level: SchoolLevel): ProfileRule {
+  if (p.level === 3 && level === 'vwo' && p.admission?.vwo !== undefined) return p.admission.vwo;
+  return admissionOf(p);
+}
+
 /** The profiles a closed door names: the direct ones, or, when none is direct, those with one extra subject. */
-export function admittingProfiles(a: ProfileAdmission): readonly HavoVwoProfile[] {
+export function admittingProfiles(a: ProfileRule): readonly HavoVwoProfile[] {
   return a.direct.length > 0 ? a.direct : HAVO_VWO_PROFILES.filter((pr) => a.bridge[pr] !== undefined);
 }
 
-/** hbo from havo or vwo, and wo from vwo: by the profile. */
-function byAdmission(p: Profession, profile: HavoVwoProfile): RouteView {
-  const a = admissionOf(p);
+/** hbo from havo or vwo, and wo from vwo: by the profile, with the rule of that level. */
+function byAdmission(a: ProfileRule, profile: HavoVwoProfile): RouteView {
   if (a.direct.includes(profile)) return OPEN;
   const subject = a.bridge[profile];
   if (subject !== undefined) return { state: 'detour', steps: [{ kind: 'subject', subject }], profiles: null };
@@ -175,13 +185,13 @@ export function routeOf(p: Profession, level: SchoolLevel, profile: SchoolProfil
     case 3:
       if (level === 'bbkb') return { state: 'closed', need: { kind: 'level', from: 'gltl' } };
       if (level === 'gltl') return { state: 'detour', steps: [{ kind: 'mbo4' }, { kind: 'havo4' }], profiles: null };
-      return pick((pr) => byAdmission(p, pr));
+      return pick((pr) => byAdmission(admissionAt(p, level), pr));
     case 4:
       if (isVmbo(level)) {
         return { state: 'closed', need: { kind: 'level', from: admissionOf(p).direct.length > 0 ? 'havo' : 'vwo' } };
       }
       if (level === 'havo') return pick((pr) => woFromHavo(p, pr));
-      return pick((pr) => byAdmission(p, pr));
+      return pick((pr) => byAdmission(admissionAt(p, level), pr));
   }
 }
 

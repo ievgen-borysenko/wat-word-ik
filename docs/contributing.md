@@ -126,7 +126,7 @@ inside a floor is the order of the tiles on screen.
 | `rung`   | position on the ladder, counting from 1 |
 | `field`  | field of work, the group of its door in the doors view (`deuren.html`): `care`, `technology`, `making`, `nature` or `people` (`FIELDS` in `src/engine/types.ts`) |
 | `vmbo`   | mbo professions (levels 1 and 2) only: the vmbo direction that fits best in the onderbouw view: `techniek`, `zorg`, `economie` or `groen`. A fit, never a requirement |
-| `admission` | hbo and wo professions (levels 3 and 4) only: `{ direct, bridge }`, the havo/vwo profiles (`nt`, `ng`, `em`, `cm`) that admit directly, and per other profile the one extra exam subject that closes the gap (`wiskunde-a`, `wiskunde-b`, `natuurkunde`, `scheikunde`, `biologie`). A profile in neither list needs another profile. `direct` is empty only when every admitting profile needs an extra subject. `source` names the Ratho row the rule follows (see [sources.md](sources.md)); when a row does not settle, write the stricter reading and `verified: false` |
+| `admission` | hbo and wo professions (levels 3 and 4) only: `{ direct, bridge }`, the havo/vwo profiles (`nt`, `ng`, `em`, `cm`) that admit directly, and per other profile the one extra exam subject that closes the gap (`wiskunde-a`, `wiskunde-b`, `natuurkunde`, `scheikunde`, `biologie`). A profile in neither list needs another profile. `direct` is empty only when every admitting profile needs an extra subject. `source` names the Ratho row the rule follows, with its intake (`havo` or `vwo`) and, where a footnote lets profiles catch up subjects in the first year, `catchUp` (see [sources.md](sources.md)); when a row does not settle, write the stricter reading and `verified: false`. hbo professions also have `vwo`, the rule for vwo pupils (`{ direct, bridge, source }` from section 4 of Bijlage B); wo professions have none |
 
 Rules the tests check (`src/data/data.test.ts`):
 
@@ -149,12 +149,15 @@ Rules the tests check (`src/data/data.test.ts`):
 - **Onderbouw data.** Every mbo profession names a vmbo direction and every
   hbo and wo profession has admission data with at least one profile that
   admits, directly or with one extra subject; nothing else has either. Every
-  profile and subject named exists, and no profile is both direct and
-  bridged. Every admission row has a source with the Ratho version; a
-  verified row names its bijlage (A for wo, B for hbo) and programme, and the
-  data agrees with its cells (`*` is direct, `#` is closed, no row means
-  every profile). The test pins the counts on the profile buttons: a change
-  in the data changes them, so update them on purpose.
+  hbo profession has a rule for vwo pupils too, and no wo profession has one.
+  Every profile and subject named exists, and no profile is both direct and
+  bridged. Every rule has a source with the Ratho version and its intake; a
+  verified rule names its bijlage (A for wo, B for hbo) and programme, and
+  the data agrees with its cells: `*` is direct, a cell with one subject or
+  a choice is a bridge to one of those subjects, a cell with `+` or `#` is
+  closed, and no row means every profile. The test pins the counts on the
+  profile buttons: a change in the data changes them, so update them on
+  purpose.
 
 The states (open, nearly there, locked) and the minimum average per floor are
 described in [methodology.md](methodology.md). They are engine rules: change

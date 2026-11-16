@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
 import {
+  admissionAt,
   admittingProfiles,
   fitOf,
   isVmbo,
@@ -125,6 +126,22 @@ describe('routeOf', () => {
     }
   });
 
+  it('hbo at vwo uses the vwo rule; at havo and below the havo rule', () => {
+    const twoRules = prof(3, {
+      admission: { direct: ['nt'], bridge: {}, vwo: { direct: ['nt', 'ng'], bridge: { cm: 'wiskunde-a' } } },
+    });
+    expect(routeOf(twoRules, 'havo', 'ng')).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt'] } });
+    expect(routeOf(twoRules, 'vwo', 'ng')).toEqual({ state: 'open' });
+    expect(routeOf(twoRules, 'vwo', 'cm')).toEqual({ state: 'detour', steps: [{ kind: 'subject', subject: 'wiskunde-a' }], profiles: null });
+    expect(routeOf(twoRules, 'vwo', 'em')).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt', 'ng'] } });
+    expect(admissionAt(twoRules, 'gltl')).toBe(twoRules.admission);
+    // Without a vwo rule, vwo uses the havo rule; wo never reads one.
+    expect(admissionAt(HBO, 'vwo')).toBe(HBO.admission);
+    // The data: Technische Informatica has no row for vwo pupils, so C&M is open from vwo only.
+    expect(routeOf(byId('software-engineer'), 'havo', 'cm').state).toBe('detour');
+    expect(routeOf(byId('software-engineer'), 'vwo', 'cm').state).toBe('open');
+  });
+
   it('wo without a direct profile: one subject from vwo, closed from vwo up below it, other profiles name the bridged ones', () => {
     expect(routeOf(WO_NO_DIRECT, 'vwo', 'nt')).toEqual({ state: 'detour', steps: [{ kind: 'subject', subject: 'biologie' }], profiles: null });
     expect(routeOf(WO_NO_DIRECT, 'vwo', 'ng')).toEqual({ state: 'detour', steps: [{ kind: 'subject', subject: 'natuurkunde' }], profiles: null });
@@ -199,11 +216,14 @@ describe('routeOf', () => {
       for (const profile of HAVO_VWO_PROFILES) {
         if (admits(p, profile)) continue;
         for (const level of ['havo', 'vwo'] as const) {
+          // hbo at vwo uses its vwo rule, which may admit this profile.
+          const rule = admissionAt(p, level);
+          if (rule.direct.includes(profile) || rule.bridge[profile] !== undefined) continue;
           // wo without a direct profile is two steps from havo for every profile: it names vwo.
           const need =
-            p.level === 4 && level === 'havo' && p.admission!.direct.length === 0
+            p.level === 4 && level === 'havo' && rule.direct.length === 0
               ? { kind: 'level', from: 'vwo' }
-              : { kind: 'profile', profiles: admittingProfiles(p.admission!) };
+              : { kind: 'profile', profiles: admittingProfiles(rule) };
           expect(routeOf(p, level, profile), `${p.id} ${level} ${profile}`).toEqual({ state: 'closed', need });
         }
         if (p.level === 3) {

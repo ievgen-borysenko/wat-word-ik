@@ -44,8 +44,10 @@ test('the level and profile buttons change the doors, and the hash follows', asy
   await profile(page, 'cm').click();
   await expectDoor(page, 'arts', 'closed', 'met N&T of N&G');
   await expectDoor(page, 'advocaat', 'open');
-  await expectDoor(page, 'software-engineer', 'ajar', 'extra vak wiskunde A');
-  await expect(page.locator('.route-chosen')).toHaveText('Met C&M zijn 24 van de 36 deuren open.');
+  // hbo at vwo follows the table for vwo pupils: Technische Informatica has no row there.
+  await expectDoor(page, 'software-engineer', 'open');
+  await expectDoor(page, 'elektrotechnisch-ingenieur', 'ajar', 'extra vak wiskunde A');
+  await expect(page.locator('.route-chosen')).toHaveText('Met C&M zijn 26 van de 36 deuren open.');
   await expect.poll(() => hash(page)).toBe('#n=vwo&p=cm&l=nl');
 
   await profile(page, 'ng').click();
@@ -320,8 +322,53 @@ test('a wo card says the vwo rule, and at havo that vwo 5 or an hbo first year c
   await expect(card.locator('.admission-lines li').first()).toHaveText('Directly with N&T.');
   await page.keyboard.press('Escape');
   await door(page, 'journalist').click();
-  await expect(card.getByRole('heading', { level: 3, name: 'Admission from havo and vwo' })).toBeVisible();
+  await expect(card.getByRole('heading', { level: 3, name: 'Admission from vwo' })).toBeVisible();
   await expect(card.locator('.admission-lines li').last()).toHaveText(
     'Checked against the Dutch admission regulation (Ratho) of 1 September 2026: it has no extra profile rules for Journalistiek.',
   );
+});
+
+test('with no direct profile, a wo card at havo does not promise one step: Geneeskunde', async ({ page }) => {
+  await openRoute(page, '#n=havo&p=ng&l=en');
+  await expectDoor(page, 'arts', 'closed', 'from vwo up');
+  await door(page, 'arts').click();
+  const card = page.getByRole('dialog');
+  await expect(card.locator('.admission-lines li').first()).toHaveText('No profile gets you in without an extra subject.');
+  await expect(card.locator('.admission-lines')).not.toContainText('From havo');
+});
+
+test('an hbo card shows the havo rule at havo and the vwo rule at vwo, each with its own row', async ({ page }) => {
+  await openRoute(page, '#n=havo&p=cm&l=en');
+  await expectDoor(page, 'software-engineer', 'ajar', 'extra subject: maths A (wiskunde A)');
+  await door(page, 'software-engineer').click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByRole('heading', { level: 3, name: 'Admission from havo' })).toBeVisible();
+  await expect(card.locator('.admission-lines li')).toHaveText([
+    'Directly with N&T, N&G or E&M.',
+    'With C&M: extra subject maths A (wiskunde A).',
+    'Checked against the Dutch admission regulation (Ratho) of 1 September 2026, programme Technische Informatica.',
+  ]);
+  await page.keyboard.press('Escape');
+
+  await level(page, 'vwo').click();
+  await expectDoor(page, 'software-engineer', 'open');
+  await door(page, 'software-engineer').click();
+  await expect(card.getByRole('heading', { level: 3, name: 'Admission from vwo' })).toBeVisible();
+  await expect(card.locator('.admission-lines li')).toHaveText([
+    'Every profile gets you in directly.',
+    'Checked against the Dutch admission regulation (Ratho) of 1 September 2026: it has no extra profile rules for Technische Informatica.',
+  ]);
+});
+
+test('a footnote that lets N&G catch up in the first year is on the card; the door stays closed', async ({ page }) => {
+  await openRoute(page, '#n=vwo&p=ng&l=en');
+  await expectDoor(page, 'electrical-engineer', 'closed', 'with N&T');
+  await door(page, 'electrical-engineer').click();
+  const card = page.getByRole('dialog');
+  await expect(card.locator('.admission-lines li')).toHaveText([
+    'Directly with N&T.',
+    'With N&G, E&M or C&M: another profile is needed.',
+    'With N&G some universities let you catch up physics and maths B (wiskunde B) in the first year.',
+    'Checked against the Dutch admission regulation (Ratho) of 1 September 2026, programme Electrical Engineering.',
+  ]);
 });

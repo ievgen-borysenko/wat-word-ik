@@ -2,7 +2,7 @@ import { useRef } from 'preact/hooks';
 import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
 import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from '../data/secondary';
 import { groupByField } from '../engine/doors';
-import { fitOf, isVmbo, type RouteView } from '../engine/route';
+import { admissionAt, fitOf, isVmbo, type RouteView } from '../engine/route';
 import {
   HAVO_VWO_PROFILES,
   LEVELS,
@@ -18,7 +18,7 @@ import { Header } from './Header';
 import { openedBy, useModalDialog } from './modal';
 import { PageLink } from './OtherViewLink';
 import { counts, level, linkFragment, profile, routeViews, selected, setLevel, setProfile, totals } from './routeStore';
-import { doorLine, fitText, profileList, profileShort, stateClass, stateText, stepsText } from './routeText';
+import { andList, doorLine, fitText, profileList, profileShort, stateClass, stateText, stepsText } from './routeText';
 import { aboutOpen, lang } from './store';
 
 /*
@@ -274,17 +274,21 @@ function routeLines(p: Profession, view: RouteView, l: (typeof lang)['value']): 
 }
 
 /**
- * The admission data of an hbo or wo profession, by profile: the rule from havo and
- * vwo for hbo, from vwo for wo, and the regulation row it was checked against. At havo a wo card first says that vwo 5 or an hbo
- * first year comes before it, so the card and the door say the same. The mbo 4 route,
- * where the profile rules do not apply, is named at vmbo levels only: for a havo or
- * vwo pupil it is not one extra step (see engine/route.ts).
+ * The admission rule of an hbo or wo profession at this school level, by profile (the
+ * same rule the door uses, engine/route.ts admissionAt): for hbo the havo rule, at vwo
+ * the vwo rule; for wo the vwo rule. Then a footnote that lets a profile catch up in
+ * the first year, if the row has one, and the regulation row it was checked against.
+ * At havo a wo card with a direct profile first says that vwo 5 or an hbo first year
+ * comes before it, so the card and the door say the same; with no direct profile the
+ * door is closed "from vwo up" and that line is left out. The mbo 4 route, where the
+ * profile rules do not apply, is named at vmbo levels only: for a havo or vwo pupil it
+ * is not one extra step.
  */
 function admissionLines(p: Profession, lv: SchoolLevel, l: (typeof lang)['value']): string[] {
-  const a = p.admission;
-  if (!a) return [];
+  if (!p.admission) return [];
+  const a = admissionAt(p, lv);
   const lines: string[] = [];
-  if (p.level === 4 && lv === 'havo') lines.push(t(l, 'route.card.woFromHavo'));
+  if (p.level === 4 && lv === 'havo' && a.direct.length > 0) lines.push(t(l, 'route.card.woFromHavo'));
   if (a.direct.length === HAVO_VWO_PROFILES.length) lines.push(t(l, 'route.card.directAll'));
   else if (a.direct.length === 0) lines.push(t(l, 'route.card.directNone'));
   else lines.push(t(l, 'route.card.direct', { list: profileList(a.direct, l) }));
@@ -295,6 +299,14 @@ function admissionLines(p: Profession, lv: SchoolLevel, l: (typeof lang)['value'
   const other = HAVO_VWO_PROFILES.filter((pr) => !a.direct.includes(pr) && a.bridge[pr] === undefined);
   if (other.length > 0) lines.push(t(l, 'route.card.otherProfile', { list: profileList(other, l) }));
   const src = a.source;
+  const catchUp = src?.catchUp;
+  if (catchUp) {
+    const subjects = andList(
+      catchUp.subjects.map((s) => EXAM_SUBJECT_NAMES[s][l]),
+      l,
+    );
+    for (const pr of catchUp.profiles) lines.push(t(l, 'route.card.catchUp', { profile: profileShort(pr, l), subjects }));
+  }
   if (src?.verified) {
     const key = src.cells === null ? 'route.card.admissionNoRow' : 'route.card.admissionChecked';
     lines.push(t(l, key, { programme: src.programme }));
@@ -347,7 +359,7 @@ function RouteCardBody({ p, view }: { p: Profession; view: RouteView }) {
 
       {admission.length > 0 && (
         <section class="card-section">
-          <h3>{t(l, p.level === 4 ? 'route.card.admissionWo' : 'route.card.admission')}</h3>
+          <h3>{t(l, p.level === 4 || level.value === 'vwo' ? 'route.card.admissionWo' : 'route.card.admission')}</h3>
           <ul class="focus-list admission-lines">
             {admission.map((s) => (
               <li key={s}>{s}</li>

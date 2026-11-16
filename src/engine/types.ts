@@ -115,11 +115,8 @@ export type SchoolProfile = HavoVwoProfile | VmboDirection;
 export const EXAM_SUBJECTS = ['wiskunde-a', 'wiskunde-b', 'natuurkunde', 'scheikunde', 'biologie'] as const;
 export type ExamSubject = (typeof EXAM_SUBJECTS)[number];
 
-/**
- * Admission to an hbo or wo programme from havo or vwo, by profile. The same rule
- * holds for havo and vwo; for wo, havo is one step short anyway.
- */
-export interface ProfileAdmission {
+/** One admission rule by profile: which profiles admit directly, which with one extra subject. */
+export interface ProfileRule {
   /**
    * Profiles that give direct admission. Empty only when every profile that admits
    * needs an extra subject (wo Geneeskunde: N&T with biology, N&G with physics).
@@ -132,6 +129,16 @@ export interface ProfileAdmission {
   readonly bridge: Readonly<Partial<Record<HavoVwoProfile, ExamSubject>>>;
   /** Where the rule comes from. The engine does not read it; the data test requires it. */
   readonly source?: AdmissionSource;
+}
+
+/**
+ * Admission to an hbo or wo programme by havo or vwo profile. For wo the rule is the
+ * vwo rule; from havo, wo is one step short anyway. For hbo the rule is the one for
+ * havo pupils, and `vwo` the one for vwo pupils: the regulation has a table for each.
+ */
+export interface ProfileAdmission extends ProfileRule {
+  /** hbo only: the rule for vwo pupils, with its own source. The data test requires it for hbo. */
+  readonly vwo?: ProfileRule;
 }
 
 /**
@@ -153,6 +160,14 @@ export interface AdmissionSource {
   readonly version: string;
   /** True when the row (or its absence) was read twice and both readings agreed. */
   readonly verified: boolean;
+  /** The diploma the row is for: hbo rows come from a havo table or a vwo table; wo rows are for vwo. */
+  readonly intake: 'havo' | 'vwo';
+  /**
+   * A footnote that lets the institution give these profiles until the end of the first
+   * year to catch up these subjects. The door stays closed (the stricter reading); the
+   * card says it.
+   */
+  readonly catchUp?: { readonly profiles: readonly HavoVwoProfile[]; readonly subjects: readonly ExamSubject[] };
   /** What the row says that the data cannot hold, such as a footnote. */
   readonly note?: string;
 }

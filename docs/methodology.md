@@ -128,7 +128,7 @@ The profession's floor stays the source of its diploma level:
 |-------|-----------------|-----------------|-----------|----------|
 | 0, 1 (no diploma, mbo 2-3) | open | open | open | open |
 | 2 (mbo 4) | one step: mbo 2 first | open | open | open |
-| 3 (hbo) | closed: from vmbo-gl/tl up | one step: via mbo 4 or havo 4 | by profile | by profile |
+| 3 (hbo) | closed: from vmbo-gl/tl up | one step: via mbo 4 or havo 4 | by profile (havo rule) | by profile (vwo rule) |
 | 4 (wo) | closed: from havo up | closed: from havo up | direct profile: one step via vwo 5 or an hbo first year (propedeuse); else closed | by profile |
 
 A wo programme where no profile admits without an extra subject
@@ -144,8 +144,10 @@ profiles. On the vmbo-gl/tl route via mbo 4 the profile rules do not apply;
 at havo and vwo that route is not shown as a step (see the order of the
 levels below). From havo to wo with a profile that would also need an extra
 subject is two steps, so closed. The card's admission section follows the
-profession: "from havo and vwo" for hbo, "from vwo" for wo, and at havo a wo
-card adds that vwo 5 or an hbo first year comes first.
+profession and the level: "from havo" for hbo below vwo, "from vwo" for hbo
+at vwo and for wo; at havo a wo card with a direct profile adds that vwo 5 or
+an hbo first year comes first (with no direct profile the door is closed
+"from vwo up" and the card leaves that line out).
 
 Two simplifications, both the stricter reading:
 
@@ -174,6 +176,13 @@ mbo 4 is the normal next school; for a havo or vwo pupil it is a route of
 several years, not one extra step, and showing it would erase what the
 profile choice changes. Every closed door names a level or profile that does
 reach it. Unit tests check all of this for every profession.
+
+An hbo programme has two rules, because the regulation has a table for
+havo pupils and one for vwo pupils: at havo (and on the card at the vmbo
+levels) the door follows the havo rule, at vwo the vwo rule. The card's
+admission section says which ("from havo", "from vwo"). Where a wo row has a
+footnote that lets a profile catch up subjects in the first year, the door
+stays closed for that profile and the card adds a line about it.
 
 The data per profession is in `src/data/professions.ts`. `vmbo` is
 hand-written demo data like the rest of the file. `admission` follows the

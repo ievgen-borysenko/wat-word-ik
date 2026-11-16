@@ -9,7 +9,10 @@ import {
   SCHOOL_LEVELS,
   SUBJECT_IDS,
   VMBO_DIRECTIONS,
+  type ExamSubject,
   type Localized,
+  type Profession,
+  type ProfileRule,
 } from '../engine/types';
 import { PROFESSIONS, RATHO_VERSION } from './professions';
 import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from './secondary';
@@ -22,6 +25,32 @@ function expectLocalized(l: Localized | undefined, where: string): void {
     expect(typeof v, `${where}.${lang}`).toBe('string');
     expect(v.trim().length, `${where}.${lang}`).toBeGreaterThan(0);
   }
+}
+
+/** The admission rules of a profession: its own (havo for hbo, vwo for wo) and, for hbo, the vwo rule. */
+function rulesOf(p: Profession): { rule: ProfileRule; intake: 'havo' | 'vwo'; where: string }[] {
+  const a = p.admission;
+  if (!a) return [];
+  const own = { rule: a, intake: p.level === 3 ? ('havo' as const) : ('vwo' as const), where: p.id };
+  return a.vwo === undefined ? [own] : [own, { rule: a.vwo, intake: 'vwo' as const, where: `${p.id}.vwo` }];
+}
+
+/** The regulation's subject abbreviations (Bijlage A and B, item 1) that are exam subjects in the data. */
+const ABBREVIATIONS: Readonly<Record<string, ExamSubject>> = {
+  nat: 'natuurkunde',
+  biol: 'biologie',
+  schk: 'scheikunde',
+  wisA: 'wiskunde-a',
+  wisB: 'wiskunde-b',
+};
+
+/** The exam subjects a cell offers: "nat", or a choice like "nat of nlt of o&o" or "(wisA of wisB)". */
+function cellOptions(cell: string): ExamSubject[] {
+  return cell
+    .replace(/[()]/g, '')
+    .split(/\s+of\s+/)
+    .map((x) => (Object.hasOwn(ABBREVIATIONS, x.trim()) ? ABBREVIATIONS[x.trim()] : undefined))
+    .filter((x): x is ExamSubject => x !== undefined);
 }
 
 describe('subjects', () => {
@@ -186,11 +215,20 @@ describe('onderbouw data (school levels, profiles, vmbo directions)', () => {
     for (const p of PROFESSIONS) {
       if (p.level === 3 || p.level === 4) {
         expect(p.admission, p.id).toBeDefined();
-        const admitting = p.admission!.direct.length + Object.keys(p.admission!.bridge).length;
-        expect(admitting, `${p.id} has no profile that admits`).toBeGreaterThan(0);
+        for (const { rule, where } of rulesOf(p)) {
+          const admitting = rule.direct.length + Object.keys(rule.bridge).length;
+          expect(admitting, `${where} has no profile that admits`).toBeGreaterThan(0);
+        }
       } else {
         expect(p.admission, `${p.id} is not hbo or wo`).toBeUndefined();
       }
+    }
+  });
+
+  it('every hbo profession has a rule for vwo pupils; no wo profession has one', () => {
+    for (const p of PROFESSIONS) {
+      if (p.level === 3) expect(p.admission?.vwo, `${p.id} has no vwo rule`).toBeDefined();
+      if (p.level === 4) expect(p.admission?.vwo, `${p.id} is wo: its rule is the vwo rule`).toBeUndefined();
     }
   });
 
@@ -198,49 +236,81 @@ describe('onderbouw data (school levels, profiles, vmbo directions)', () => {
     const profiles = new Set<string>(HAVO_VWO_PROFILES);
     const subjects = new Set<string>(EXAM_SUBJECTS);
     for (const p of PROFESSIONS) {
-      const a = p.admission;
-      if (!a) continue;
-      expect(new Set(a.direct).size, `${p.id} lists a direct profile twice`).toBe(a.direct.length);
-      for (const d of a.direct) expect(profiles.has(d), `${p.id}.direct ${d}`).toBe(true);
-      for (const [profile, subject] of Object.entries(a.bridge)) {
-        expect(profiles.has(profile), `${p.id}.bridge ${profile}`).toBe(true);
-        expect(subjects.has(subject), `${p.id}.bridge ${profile} -> ${subject}`).toBe(true);
-        expect((a.direct as readonly string[]).includes(profile), `${p.id}: ${profile} is direct and bridged`).toBe(false);
+      for (const { rule: a, where } of rulesOf(p)) {
+        expect(new Set(a.direct).size, `${where} lists a direct profile twice`).toBe(a.direct.length);
+        for (const d of a.direct) expect(profiles.has(d), `${where}.direct ${d}`).toBe(true);
+        for (const [profile, subject] of Object.entries(a.bridge)) {
+          expect(profiles.has(profile), `${where}.bridge ${profile}`).toBe(true);
+          expect(subjects.has(subject), `${where}.bridge ${profile} -> ${subject}`).toBe(true);
+          expect((a.direct as readonly string[]).includes(profile), `${where}: ${profile} is direct and bridged`).toBe(false);
+        }
       }
     }
   });
 
-  it('every admission row has a source: a Ratho bijlage, a programme and the version read', () => {
+  it('every admission rule has a source: a Ratho bijlage, the intake, a programme and the version read', () => {
     for (const p of PROFESSIONS) {
-      const a = p.admission;
-      if (!a) continue;
-      const src = a.source;
-      expect(src, `${p.id} has no source`).toBeDefined();
-      expect(src!.version, p.id).toBe(RATHO_VERSION);
-      if (src!.verified) {
-        // Bijlage A is wo, Bijlage B is hbo.
-        expect(src!.bijlage, p.id).toBe(p.level === 4 ? 'A' : 'B');
-        expect(src!.programme.trim().length, `${p.id} names no programme`).toBeGreaterThan(0);
+      for (const { rule, intake, where } of rulesOf(p)) {
+        const src = rule.source;
+        expect(src, `${where} has no source`).toBeDefined();
+        expect(src!.version, where).toBe(RATHO_VERSION);
+        expect(src!.intake, where).toBe(intake);
+        if (src!.verified) {
+          // Bijlage A is wo, Bijlage B is hbo, with a section for havo (3) and one for vwo (4) intake.
+          expect(src!.bijlage, where).toBe(p.level === 4 ? 'A' : 'B');
+          expect(src!.programme.trim().length, `${where} names no programme`).toBeGreaterThan(0);
+          if (p.level === 3 && src!.table !== null) expect(src!.table.startsWith(intake === 'havo' ? '3. ' : '4. '), where).toBe(true);
+        }
       }
     }
   });
 
-  it('the data agrees with the cells it cites: * is direct, # is closed; no row means every profile', () => {
+  it('the data agrees with the cells it cites: * is direct; one subject or a choice is a bridge to one of them; + and # close', () => {
     for (const p of PROFESSIONS) {
-      const a = p.admission;
-      const cells = a?.source?.cells;
-      if (!a || cells === undefined) continue;
-      if (cells === null) {
-        expect(a.direct, `${p.id} has no row, so every profile admits`).toEqual([...HAVO_VWO_PROFILES]);
-        expect(a.source!.table, p.id).toBeNull();
-        continue;
+      for (const { rule: a, where } of rulesOf(p)) {
+        const cells = a.source?.cells;
+        if (cells === undefined) continue;
+        if (cells === null) {
+          expect(a.direct, `${where} has no row, so every profile admits`).toEqual([...HAVO_VWO_PROFILES]);
+          expect(a.bridge, where).toEqual({});
+          expect(a.source!.table, where).toBeNull();
+          continue;
+        }
+        expect(a.source!.table, where).not.toBeNull();
+        for (const profile of HAVO_VWO_PROFILES) {
+          const cell = cells[profile];
+          const at = `${where} ${profile} "${cell}"`;
+          const bridge = a.bridge[profile];
+          if (cell === '*') {
+            expect(a.direct.includes(profile), at).toBe(true);
+            expect(bridge, at).toBeUndefined();
+            continue;
+          }
+          expect(a.direct.includes(profile), at).toBe(false);
+          if (cell.includes('+') || cell.includes('#')) {
+            expect(bridge, `${at}: more than one step, or no admission`).toBeUndefined();
+          } else {
+            const options = cellOptions(cell);
+            expect(options.length, `${at} names no exam subject the data knows`).toBeGreaterThan(0);
+            expect(bridge, `${at} should be a bridge`).toBeDefined();
+            expect(options, `${at} does not offer ${String(bridge)}`).toContain(bridge);
+          }
+        }
       }
-      expect(a.source!.table, p.id).not.toBeNull();
-      for (const profile of HAVO_VWO_PROFILES) {
-        const cell = cells[profile];
-        const where = `${p.id} ${profile} "${cell}"`;
-        expect(a.direct.includes(profile), where).toBe(cell === '*');
-        if (cell === '#') expect(a.bridge[profile], where).toBeUndefined();
+    }
+  });
+
+  it('a catch-up footnote names profiles that the cells keep closed', () => {
+    for (const p of PROFESSIONS) {
+      for (const { rule, where } of rulesOf(p)) {
+        const catchUp = rule.source?.catchUp;
+        if (!catchUp) continue;
+        expect(catchUp.profiles.length, where).toBeGreaterThan(0);
+        expect(catchUp.subjects.length, where).toBeGreaterThan(0);
+        for (const pr of catchUp.profiles) {
+          expect(rule.direct.includes(pr), `${where} ${pr}`).toBe(false);
+          expect(rule.bridge[pr], `${where} ${pr}`).toBeUndefined();
+        }
       }
     }
   });
@@ -255,7 +325,7 @@ describe('onderbouw data (school levels, profiles, vmbo directions)', () => {
     const counts = (level: (typeof SCHOOL_LEVELS)[number]) =>
       Object.fromEntries(profileCounts(PROFESSIONS, level).map((c) => [c.profile, c.count]));
     expect(counts('havo')).toEqual({ nt: 28, ng: 27, em: 27, cm: 23 });
-    expect(counts('vwo')).toEqual({ nt: 33, ng: 28, em: 28, cm: 24 });
+    expect(counts('vwo')).toEqual({ nt: 33, ng: 28, em: 28, cm: 26 });
     expect(counts('gltl')).toEqual({ techniek: 9, zorg: 4, economie: 1, groen: 1 });
     expect(counts('bbkb')).toEqual(counts('gltl'));
   });
