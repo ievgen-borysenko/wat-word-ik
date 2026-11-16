@@ -1,17 +1,17 @@
 #!/usr/bin/env node
 // Records docs/demo.gif, the animation at the top of the README, from the
-// built site. CI does not run it: run it by hand after a visible change to the
+// built site. CI does not run it: run it by hand after a visible change to a
 // page and look at the result before committing it.
 //
-// It serves dist/ on 127.0.0.1 (a port the system picks), opens the page in
-// Chromium through Playwright at the desktop size of the end-to-end tests
-// (1280x800), in English, and plays a fixed scenario with the mouse (see
+// It serves dist/ on 127.0.0.1 (a port the system picks), opens the four pages
+// in turn in Chromium through Playwright at the desktop size of the end-to-end
+// tests (1280x800), in English, and plays a fixed scenario with the mouse (see
 // `scenario` below). After every step it waits until the page's animations
 // have finished and takes a screenshot, and every screenshot is shown for a
 // fixed time, so the same build gives the same frames. Headless Chromium draws
-// no mouse pointer, so an arrow is added to the page that follows the mouse.
-// It is styled through the CSSOM (element.style), which the page's
-// Content-Security-Policy allows: the page runs unchanged, under its own
+// no mouse pointer, so an arrow is added to each page that follows the mouse.
+// It is styled through the CSSOM (element.style), which the pages'
+// Content-Security-Policy allows: each page runs unchanged, under its own
 // policy, and any console error, page error or unexpected request fails the
 // recording. ffmpeg then scales the frames down to 880 pixels wide (the README
 // column on github.com), builds one palette of 256 colours for the whole
@@ -54,14 +54,25 @@ const OUT_WIDTH = 880;
 /** How long one frame of movement shows, in hundredths of a second (about 11 frames per second). */
 const STEP_CS = 9;
 
+/** Steps of the mouse on its way to what it presses next. */
+const APPROACH = 5;
+
 /** Grades at the start: middling, with Maths weak. Every other subject is 7. */
 const START_MATHS = 4;
 const START_OTHERS = 7;
-/** Maths goes up to this grade, then Dutch goes down to this one. */
+/** Maths goes up to this grade in the building, then Dutch goes down to this one among the doors. */
 const MATHS_TO = 8;
 const DUTCH_TO = 4;
-/** The profession whose card closes the animation: it needs Dutch 7. */
-const PROFESSION = 'leraar-basisonderwijs';
+/** The choices on the onderbouw page: school level and profile. */
+const ONDERBOUW_LEVEL = 'vwo';
+const ONDERBOUW_PROFILE = 'ng';
+/** The choices on the bovenbouw page: school level, profile and one exam subject on top of it. */
+const BOVENBOUW_LEVEL = 'vwo';
+const BOVENBOUW_PROFILE = 'cm';
+const BOVENBOUW_SUBJECT = 'wiskunde-a';
+
+/** The four pages, as dist/ holds them. */
+const PAGES = ['index.html', 'deuren.html', 'onderbouw.html', 'bovenbouw.html'];
 
 /** Something the recording needs is missing: exit 2. */
 class Prerequisite extends Error {}
@@ -72,8 +83,8 @@ function run(command, args, cwd = ROOT) {
 }
 
 function preflight() {
-  if (!existsSync(join(DIST, 'index.html'))) {
-    throw new Prerequisite('dist/index.html not found: build the site first (npm run build)');
+  for (const name of PAGES) {
+    if (!existsSync(join(DIST, name))) throw new Prerequisite(`dist/${name} not found: build the site first (npm run build)`);
   }
   const assets = join(DIST, 'assets');
   if (!existsSync(assets) || readdirSync(assets).length === 0) {
@@ -97,9 +108,9 @@ function preflight() {
 async function serveDist() {
   /** @type {Map<string, { type: string, body: Buffer }>} */
   const files = new Map();
-  const index = { type: 'text/html; charset=utf-8', body: readFileSync(join(DIST, 'index.html')) };
-  files.set('/', index);
-  files.set('/index.html', index);
+  for (const name of PAGES) files.set(`/${name}`, { type: 'text/html; charset=utf-8', body: readFileSync(join(DIST, name)) });
+  const index = files.get('/index.html');
+  if (index) files.set('/', index);
   for (const name of readdirSync(join(DIST, 'assets'))) {
     const type = { '.js': 'text/javascript; charset=utf-8', '.css': 'text/css; charset=utf-8' }[extname(name)];
     if (type) files.set(`/assets/${name}`, { type, body: readFileSync(join(DIST, 'assets', name)) });
@@ -139,12 +150,12 @@ async function settle(/** @type {Page} */ page) {
 }
 
 /**
- * Adds the drawn mouse pointer: an arrow that follows the mouse and a ring
- * around its tip while the button is down. It is a manual popover, so it can be
- * put back on top of a modal dialog (raisePointer). Styled through the CSSOM only.
+ * Adds the drawn mouse pointer at `at`: an arrow that follows the mouse and a
+ * ring around its tip while the button is down. It is a manual popover, so it
+ * stays on top of the page. Styled through the CSSOM only.
  */
-async function addPointer(/** @type {Page} */ page) {
-  await page.evaluate(() => {
+async function addPointer(/** @type {Page} */ page, /** @type {Point} */ at) {
+  await page.evaluate((at) => {
     const svgNs = 'http://www.w3.org/2000/svg';
     const box = document.createElement('div');
     box.setAttribute('popover', 'manual');
@@ -162,7 +173,7 @@ async function addPointer(/** @type {Page} */ page) {
       background: 'transparent',
       overflow: 'visible',
       pointerEvents: 'none',
-      transform: 'translate(-100px, -100px)',
+      transform: `translate(${at.x}px, ${at.y}px)`,
     });
     const ring = document.createElement('div');
     Object.assign(ring.style, {
@@ -212,29 +223,49 @@ async function addPointer(/** @type {Page} */ page) {
       },
       true,
     );
-  });
+  }, at);
 }
 
-/** Puts the pointer back on top: a modal dialog opened later covers it otherwise. */
-async function raisePointer(/** @type {Page} */ page) {
-  await page.evaluate(() => {
-    const box = document.querySelector('[data-demo-pointer]');
-    if (!(box instanceof HTMLElement)) throw new Error('the drawn pointer is gone');
-    box.hidePopover();
-    box.showPopover();
-  });
-}
-
-/** Number of open tiles, as the page counts them. */
-const openTiles = (/** @type {Page} */ page) => page.locator('.tile.is-open').count();
+/** Number of open tiles or doors, as the page marks them. */
+const openCount = (/** @type {Page} */ page) => page.locator('.tile.is-open, .door.is-open').count();
 
 /**
- * The scenario. Each `shoot(cs)` adds one frame shown for `cs` hundredths of a
- * second; a screenshot equal to the one before only extends that frame.
+ * Opens a page, waits until all 36 professions are drawn, checks that it is in
+ * English and adds the drawn pointer at `at`.
+ * @param {Page} page @param {string} url @param {string} selector @param {Point} at
+ */
+async function openPage(page, url, selector, at) {
+  await page.goto(url);
+  await page.locator(selector).nth(35).waitFor();
+  const lang = await page.evaluate(() => document.documentElement.lang);
+  if (!lang.startsWith('en')) throw new Error(`${url} opened in "${lang}", not in English`);
+  await addPointer(page, at);
+  await page.mouse.move(at.x, at.y);
+}
+
+/** The address of the page's own link to another page (a link below the fold is followed without scrolling). */
+async function linkTo(/** @type {Page} */ page, /** @type {string} */ selector) {
+  const link = page.locator(selector);
+  if ((await link.count()) !== 1) throw new Error(`no single link ${selector} on ${page.url()}`);
+  const href = await link.getAttribute('href');
+  if (!href) throw new Error(`the link ${selector} has no address`);
+  return new URL(href, page.url()).href;
+}
+
+/**
+ * The scenario: a short tour of the four pages, one cut between them. Each
+ * `shoot(cs)` adds one frame shown for `cs` hundredths of a second; a
+ * screenshot equal to the one before only extends that frame.
  * @param {Page} page
  * @param {(cs: number) => Promise<void>} shoot
+ * @param {string} origin
  */
-async function scenario(page, shoot) {
+async function scenario(page, shoot, origin) {
+  // The pointer starts in the empty corner of the side panel, next to its title, and stays there across the cuts.
+  /** @type {Point} */
+  let at = { x: 310, y: 100 };
+  await openPage(page, `${origin}/`, '.tile', at);
+
   // Set the start grades with the keyboard, before anything is recorded.
   const slider = (/** @type {string} */ id) => page.locator(`#slider-${id}`);
   const ids = await page.locator('.slider-list input[type="range"]').evaluateAll((all) => all.map((el) => el.id.replace(/^slider-/, '')));
@@ -252,7 +283,7 @@ async function scenario(page, shoot) {
     if (document.activeElement instanceof HTMLElement) document.activeElement.blur();
   });
   await settle(page);
-  const openAtStart = await openTiles(page);
+  const openAtStart = await openCount(page);
 
   const thumbSize = await slider('wiskunde').evaluate((el) => parseFloat(getComputedStyle(el).getPropertyValue('--thumb')));
   if (!(thumbSize > 0)) throw new Error('cannot read the slider thumb size (--thumb)');
@@ -270,10 +301,6 @@ async function scenario(page, shoot) {
     return { x: box.x + box.width / 2, y: box.y + box.height / 2 };
   };
 
-  // The pointer starts in the empty corner of the slider panel, next to its title.
-  /** @type {Point} */
-  let at = { x: 310, y: 100 };
-  await page.mouse.move(at.x, at.y);
   /** Moves the mouse along an eased line, one frame per step. @param {Point} to @param {number} steps */
   const glide = async (to, steps) => {
     const from = at;
@@ -287,48 +314,65 @@ async function scenario(page, shoot) {
   };
   /** Drags a slider from one grade to another; fails if the grade did not follow. */
   const drag = async (/** @type {string} */ id, /** @type {number} */ from, /** @type {number} */ to, /** @type {number} */ steps) => {
-    await glide(await thumb(id, from), 8);
+    await glide(await thumb(id, from), APPROACH);
     await page.mouse.down();
     if (Number(await slider(id).inputValue()) !== from) throw new Error(`pressing the ${id} thumb moved it: the thumb position is off`);
-    await shoot(20);
+    await shoot(15);
     await glide(await thumb(id, to), steps);
     await page.mouse.up();
     if (Number(await slider(id).inputValue()) !== to) throw new Error(`the ${id} slider ended at ${await slider(id).inputValue()}, not ${to}`);
-    await shoot(160);
+    await shoot(130);
   };
+  /** Presses a choice (a button or a box) with the mouse; fails if it is not chosen afterwards. */
+  const choose = async (/** @type {Locator} */ choice, /** @type {number} */ hold) => {
+    await glide(await centre(choice), APPROACH);
+    await page.mouse.down();
+    await shoot(10);
+    await page.mouse.up();
+    const chosen = await choice.evaluate((el) => (el instanceof HTMLInputElement ? el.checked : el.getAttribute('aria-checked') === 'true'));
+    if (!chosen) throw new Error(`pressing ${choice} did not choose it`);
+    await shoot(hold);
+  };
+  const summary = () => page.locator('.route-summary .summary-counts').innerText();
 
-  // 1. The start: middling grades, Maths weak.
-  await shoot(200);
-  // 2. Maths up: a whole floor and more lights up.
-  await drag('wiskunde', START_MATHS, MATHS_TO, 18);
-  const openAfterMaths = await openTiles(page);
-  // 3. Dutch down: some professions go dark again.
-  await drag('nederlands', START_OTHERS, DUTCH_TO, 14);
-  const openAfterDutch = await openTiles(page);
-  // 4. Open the card of a profession that Dutch closed: it shows what it needs.
-  const tile = page.locator(`.tile[data-id="${PROFESSION}"]`);
-  if (await tile.evaluate((el) => el.classList.contains('is-open'))) throw new Error(`${PROFESSION} is still open; the card would show no gap`);
-  await glide(await centre(tile), 9);
-  await shoot(25);
-  await page.mouse.down();
-  await shoot(15);
-  await page.mouse.up();
-  await page.locator('.card-dialog[open] #card-title').waitFor();
-  await settle(page);
-  await raisePointer(page);
-  await shoot(90);
-  // 5. Point at the Dutch requirement and hold the last frame.
-  const dutchRow = page.locator('.card-dialog .need-row').filter({ hasText: 'Dutch' });
-  const gap = dutchRow.locator('.need-gap');
-  if ((await gap.count()) !== 1) throw new Error('the card shows no gap for Dutch');
-  const target = await centre(gap);
-  await glide({ x: target.x, y: target.y + 2 }, 7);
-  await shoot(400);
+  // 1. The building: middling grades, Maths weak; Maths up lights a whole floor and more.
+  await shoot(150);
+  await drag('wiskunde', START_MATHS, MATHS_TO, 10);
+  const openAfterMaths = await openCount(page);
 
+  // 2. The same grades as doors, through the page's own link; Dutch down closes some of them again.
+  await openPage(page, await linkTo(page, 'a.other-view'), '.door', at);
+  if ((await openCount(page)) !== openAfterMaths) throw new Error(`the doors view opened with ${await openCount(page)} open, the building had ${openAfterMaths}`);
+  await shoot(120);
+  await drag('nederlands', START_OTHERS, DUTCH_TO, 8);
+  const openAfterDutch = await openCount(page);
+
+  // 3. The onderbouw page: school level and profile instead of grades.
+  await openPage(page, await linkTo(page, 'a.other-page[href^="onderbouw.html"]'), '.door', at);
+  await shoot(120);
+  const onderbouwAtStart = await summary();
+  await choose(page.locator(`.choice-level [role="radio"][data-key="${ONDERBOUW_LEVEL}"]`), 90);
+  await choose(page.locator(`.choice-profile [role="radio"][data-key="${ONDERBOUW_PROFILE}"]`), 130);
+  const onderbouwAfter = await summary();
+
+  // 4. The bovenbouw page: level, profile and an exam subject on top of it; the subject opens more doors.
+  await openPage(page, await linkTo(page, 'a.other-page[href^="bovenbouw.html"]'), '.door', at);
+  await shoot(120);
+  await choose(page.locator(`.choice-level [role="radio"][data-key="${BOVENBOUW_LEVEL}"]`), 80);
+  await choose(page.locator(`.choice-profile [role="radio"][data-key="${BOVENBOUW_PROFILE}"]`), 80);
+  const openBeforeSubject = await openCount(page);
+  await choose(page.locator(`.choice-extras input[type="checkbox"][data-key="${BOVENBOUW_SUBJECT}"]`), 250);
+  const openAfterSubject = await openCount(page);
+
+  /** @type {string[]} */
+  const flat = [];
   if (!(openAtStart < openAfterMaths && openAfterDutch < openAfterMaths)) {
-    throw new Error(`the scenario shows no change: ${openAtStart} open at the start, ${openAfterMaths} after Maths, ${openAfterDutch} after Dutch`);
+    flat.push(`${openAtStart} open at the start, ${openAfterMaths} after Maths, ${openAfterDutch} after Dutch`);
   }
-  return { openAtStart, openAfterMaths, openAfterDutch };
+  if (onderbouwAfter === onderbouwAtStart) flat.push(`the onderbouw summary stayed "${onderbouwAtStart}"`);
+  if (!(openBeforeSubject < openAfterSubject)) flat.push(`bovenbouw: ${openBeforeSubject} doors open before ${BOVENBOUW_SUBJECT}, ${openAfterSubject} after`);
+  if (flat.length > 0) throw new Error(`the scenario shows no change: ${flat.join('; ')}`);
+  return { openAtStart, openAfterMaths, openAfterDutch, onderbouwAtStart, onderbouwAfter, openBeforeSubject, openAfterSubject };
 }
 
 /**
@@ -364,12 +408,6 @@ async function record(dir) {
     page.on('pageerror', (err) => problems.push(`page error: ${err.message}`));
     page.on('requestfailed', (req) => problems.push(`request failed: ${req.url()}`));
 
-    await page.goto(`${server.origin}/`);
-    await page.locator('.tile').nth(35).waitFor();
-    const lang = await page.evaluate(() => document.documentElement.lang);
-    if (!lang.startsWith('en')) throw new Error(`the page opened in "${lang}", not in English`);
-    await addPointer(page);
-
     /** @param {number} cs */
     const shoot = async (cs) => {
       await settle(page);
@@ -383,7 +421,7 @@ async function record(dir) {
       writeFileSync(join(dir, file), png);
       frames.push({ file, cs, png });
     };
-    const counts = await scenario(page, shoot);
+    const counts = await scenario(page, shoot, server.origin);
     await context.close();
     problems.push(...server.unexpected.map((r) => `unexpected request: ${r}`));
     if (problems.length > 0) throw new Error(`the page reported problems during the recording:\n  ${problems.join('\n  ')}`);
@@ -516,7 +554,7 @@ async function main(argv) {
     const gif = verify(encode(dir, frames), frames);
     copyFileSync(join(dir, 'demo.gif'), out);
     console.log(
-      `record-demo: wrote ${out}: ${gif.size} bytes, ${gif.width}x${gif.height}, ${gif.frames} frames, ${(gif.durationCs / 100).toFixed(2)} s, looping; open tiles ${counts.openAtStart} -> ${counts.openAfterMaths} (Maths up) -> ${counts.openAfterDutch} (Dutch down)`,
+      `record-demo: wrote ${out}: ${gif.size} bytes, ${gif.width}x${gif.height}, ${gif.frames} frames, ${(gif.durationCs / 100).toFixed(2)} s, looping; open ${counts.openAtStart} -> ${counts.openAfterMaths} (Maths up) -> ${counts.openAfterDutch} (Dutch down, doors); onderbouw "${counts.onderbouwAtStart}" -> "${counts.onderbouwAfter}"; bovenbouw doors open ${counts.openBeforeSubject} -> ${counts.openAfterSubject} (${BOVENBOUW_SUBJECT})`,
     );
     return 0;
   } catch (err) {

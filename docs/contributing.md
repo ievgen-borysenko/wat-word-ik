@@ -88,15 +88,18 @@ node scripts/record-demo.mjs      # writes docs/demo.gif
 ```
 
 The script also needs ffmpeg on your PATH (install it with your package
-manager). It plays a fixed scenario in English at 1280x800 (Maths up, Dutch
-down, then the card of the primary school teacher), takes one screenshot per
-step and writes a GIF 880 pixels wide, without metadata. It fails with a
+manager). It plays a fixed scenario in English at 1280x800, a short tour of
+the four pages (Maths up in the building, Dutch down among the doors, then a
+school level and a profile on the onderbouw page, and a level, a profile and
+an exam subject on the bovenbouw page), takes one screenshot per step and
+writes a GIF 880 pixels wide, without metadata. It fails with a
 message, and leaves the old file as it was, when something it needs is
-missing, when the page reports an error, when the scenario no longer shows
-what it is meant to (more professions open after Maths, fewer after Dutch, a
-gap for Dutch on the card; after a data change, adjust the grades and the
-profession at the top of the script), or when the result does not pass the
-parse of `npm run check:tree`. That parse keeps out the metadata that tools
+missing, when a page reports an error, when the scenario no longer shows
+what it is meant to (more professions open after Maths, fewer doors after
+Dutch, other counts on the onderbouw page after the choices, more doors open
+on the bovenbouw page after the exam subject; after a data change, adjust the
+grades and the choices at the top of the script), or when the result does not
+pass the parse of `npm run check:tree`. That parse keeps out the metadata that tools
 write and anything appended, and caps the file at 2 MiB, 880x880 pixels, 400
 frames and 60 s for one pass; it does not see what the pixels show, nor data
 hidden on purpose in them, in the colour table or in the format's free
