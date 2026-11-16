@@ -52,7 +52,7 @@ export type Pay = 1 | 2 | 3 | 4 | 5;
  * Field of work, for the doors view: neutral groups by kind of work, never by
  * level or pay. The order here is the order of the groups on screen.
  */
-export const FIELDS = ['care', 'technology', 'making', 'nature', 'people', 'on-the-move'] as const;
+export const FIELDS = ['care', 'technology', 'making', 'nature', 'people'] as const;
 export type Field = (typeof FIELDS)[number];
 
 export interface Profession {

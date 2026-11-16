@@ -124,7 +124,7 @@ inside a floor is the order of the tiles on screen.
 | `pay`    | 1 to 5, demo scale shown as euro signs |
 | `family` | ladder name; a profession that is not on a ladder uses its own id |
 | `rung`   | position on the ladder, counting from 1 |
-| `field`  | field of work, the group of its door in the doors view (`deuren.html`): `care`, `technology`, `making`, `nature`, `people` or `on-the-move` (`FIELDS` in `src/engine/types.ts`) |
+| `field`  | field of work, the group of its door in the doors view (`deuren.html`): `care`, `technology`, `making`, `nature` or `people` (`FIELDS` in `src/engine/types.ts`) |
 
 Rules the tests check (`src/data/data.test.ts`):
 

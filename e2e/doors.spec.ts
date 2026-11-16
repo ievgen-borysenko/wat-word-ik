@@ -22,8 +22,8 @@ test('lowest sliders: the no-diploma doors are open and there is a next step', a
   await expect(doors(page, 'open')).toHaveCount(5);
   await expect(counter(page)).toHaveText('5 deuren open, 0 bijna open');
   await expect(stepLine(page)).toHaveText(/^Volgende deur: .+, nog \d+ punten erbij\.$/);
-  // Six groups by field, never floors.
-  await expect(page.locator('.block')).toHaveCount(6);
+  // Five groups by field, never floors.
+  await expect(page.locator('.block')).toHaveCount(5);
   await expect(page.locator('.floor')).toHaveCount(0);
 });
 

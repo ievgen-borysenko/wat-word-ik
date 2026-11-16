@@ -74,9 +74,9 @@ electrical engineer (wo). Each rung asks a bit more.
 
 `deuren.html` shows the same sliders, data and engine as a street of doors
 instead of a building, to compare the two framings. There are no floors: the
-doors stand in six groups by field of work (care and health, technology and
-computers, making and design, nature and research, people and society, on the
-move), alphabetically inside a group, never ordered by level or pay. Level and
+doors stand in five groups by field of work (care and health, technology and
+computers, making and design, nature and research, people and society),
+alphabetically inside a group, never ordered by level or pay. Level and
 pay stay on the profession card. Each field spans at least three floors.
 
 - **open**: the profession is open (as above);
