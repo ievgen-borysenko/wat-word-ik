@@ -3,7 +3,15 @@ import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
 import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from '../data/secondary';
 import { groupByField } from '../engine/doors';
 import { fitOf, isVmbo, type RouteView } from '../engine/route';
-import { HAVO_VWO_PROFILES, LEVELS, SCHOOL_LEVELS, type HavoVwoProfile, type Profession, type SchoolProfile } from '../engine/types';
+import {
+  HAVO_VWO_PROFILES,
+  LEVELS,
+  SCHOOL_LEVELS,
+  type HavoVwoProfile,
+  type Profession,
+  type SchoolLevel,
+  type SchoolProfile,
+} from '../engine/types';
 import { HTML_LANG, t } from '../i18n';
 import { euros, floorAbout, floorLabel, shortName } from './format';
 import { Header } from './Header';
@@ -265,11 +273,18 @@ function routeLines(p: Profession, view: RouteView, l: (typeof lang)['value']): 
   return lines;
 }
 
-/** The admission data of an hbo or wo profession, by profile. */
-function admissionLines(p: Profession, l: (typeof lang)['value']): string[] {
+/**
+ * The admission data of an hbo or wo profession, by profile: the rule from havo and
+ * vwo for hbo, from vwo for wo. At havo a wo card first says that vwo 5 or an hbo
+ * first year comes before it, so the card and the door say the same. The mbo 4 route,
+ * where the profile rules do not apply, is named at vmbo levels only: for a havo or
+ * vwo pupil it is not one extra step (see engine/route.ts).
+ */
+function admissionLines(p: Profession, lv: SchoolLevel, l: (typeof lang)['value']): string[] {
   const a = p.admission;
   if (!a) return [];
   const lines: string[] = [];
+  if (p.level === 4 && lv === 'havo') lines.push(t(l, 'route.card.woFromHavo'));
   if (a.direct.length === HAVO_VWO_PROFILES.length) lines.push(t(l, 'route.card.directAll'));
   else lines.push(t(l, 'route.card.direct', { list: profileList(a.direct, l) }));
   for (const pr of HAVO_VWO_PROFILES) {
@@ -278,14 +293,14 @@ function admissionLines(p: Profession, l: (typeof lang)['value']): string[] {
   }
   const other = HAVO_VWO_PROFILES.filter((pr) => !a.direct.includes(pr) && a.bridge[pr] === undefined);
   if (other.length > 0) lines.push(t(l, 'route.card.otherProfile', { list: profileList(other, l) }));
-  if (p.level === 3) lines.push(t(l, 'route.card.viaMbo'));
+  if (p.level === 3 && isVmbo(lv)) lines.push(t(l, 'route.card.viaMbo'));
   return lines;
 }
 
 function RouteCardBody({ p, view }: { p: Profession; view: RouteView }) {
   const l = lang.value;
   const fit = fitOf(p, level.value, profile.value);
-  const admission = admissionLines(p, l);
+  const admission = admissionLines(p, level.value, l);
   return (
     <div class="card route-card">
       <header class="card-head">
@@ -324,7 +339,7 @@ function RouteCardBody({ p, view }: { p: Profession; view: RouteView }) {
 
       {admission.length > 0 && (
         <section class="card-section">
-          <h3>{t(l, 'route.card.admission')}</h3>
+          <h3>{t(l, p.level === 4 ? 'route.card.admissionWo' : 'route.card.admission')}</h3>
           <ul class="focus-list admission-lines">
             {admission.map((s) => (
               <li key={s}>{s}</li>

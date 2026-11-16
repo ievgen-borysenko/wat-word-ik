@@ -72,6 +72,44 @@ describe('onderbouw store', () => {
     expect(loc.hash).toBe('#n=bbkb');
   });
 
+  it('remembers the last profile of each family in memory, so passing the other family loses nothing', async () => {
+    const { route, store, loc } = await load('#n=vwo&p=nt');
+    // Arrowing through the level row: vwo -> bb/kb -> gl/tl -> havo.
+    route.setLevel('bbkb');
+    expect(route.profile.value).toBeNull();
+    route.setLevel('gltl');
+    expect(route.profile.value).toBeNull();
+    route.setLevel('havo');
+    expect(route.profile.value).toBe('nt');
+    // The vmbo direction is remembered as well, and "not chosen yet" is a choice too.
+    route.setLevel('gltl');
+    route.setProfile('zorg');
+    route.setLevel('vwo');
+    expect(route.profile.value).toBe('nt');
+    route.setProfile(null);
+    route.setLevel('bbkb');
+    expect(route.profile.value).toBe('zorg');
+    route.setLevel('havo');
+    expect(route.profile.value).toBeNull();
+    // A hash change counts as a choice; nothing of the memory goes into the hash.
+    route.setProfile('em');
+    vi.advanceTimersByTime(store.HASH_DELAY_MS);
+    expect(loc.hash).toBe('#n=havo&p=em');
+    expect(route.lastProfile.value).toEqual({ vmbo: 'zorg', havovwo: 'em' });
+  });
+
+  it('a profile that came with the link is remembered for its family', async () => {
+    const { route, navigate } = await load('#n=gltl&p=groen');
+    route.setLevel('vwo');
+    expect(route.profile.value).toBeNull();
+    route.setLevel('bbkb');
+    expect(route.profile.value).toBe('groen');
+    navigate('#n=havo&p=cm');
+    route.setLevel('gltl');
+    route.setLevel('vwo');
+    expect(route.profile.value).toBe('cm');
+  });
+
   it('the doors and counts follow the choice', async () => {
     const { route } = await load('#n=vwo');
     expect(route.totals.value.total).toBe(36);

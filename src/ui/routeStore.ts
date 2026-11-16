@@ -1,7 +1,7 @@
 import { batch, computed, effect, signal } from '@preact/signals';
 import { PROFESSIONS } from '../data/professions';
 import { decodeRouteHash, encodeRouteHash, langFragment } from '../engine/hash';
-import { profileCounts, routeCounts, routeOf, validProfile, type ProfileCount, type RouteCounts, type RouteView } from '../engine/route';
+import { isVmbo, profileCounts, routeCounts, routeOf, validProfile, type ProfileCount, type RouteCounts, type RouteView } from '../engine/route';
 import type { SchoolLevel, SchoolProfile } from '../engine/types';
 import { HTML_LANG } from '../i18n';
 import { HASH_DELAY_MS, lang, langChosen, pageTitle } from './store';
@@ -27,16 +27,43 @@ export const totals = computed<RouteCounts>(() => routeCounts(routeViews.value.v
 /** The count on each profile button of the current level. */
 export const counts = computed<readonly ProfileCount[]>(() => profileCounts(PROFESSIONS, level.value));
 
-/** A new level keeps the profile only when it belongs to that level too (havo <-> vwo, bb/kb <-> gl/tl). */
+/** The two families of levels that share their profiles: vmbo (bb/kb, gl/tl) and havo/vwo. */
+type Family = 'vmbo' | 'havovwo';
+
+const familyOf = (l: SchoolLevel): Family => (isVmbo(l) ? 'vmbo' : 'havovwo');
+
+/**
+ * The last profile chosen in each family, in memory only (not in the hash, not in
+ * storage), so that moving through the level row with the arrow keys, which changes
+ * the level on every step, does not lose a havo/vwo profile while it passes vmbo.
+ */
+export const lastProfile = signal<Readonly<Record<Family, SchoolProfile | null>>>({
+  vmbo: null,
+  havovwo: null,
+  [familyOf(initial.level)]: initial.profile,
+});
+
+function remember(l: SchoolLevel, p: SchoolProfile | null): void {
+  lastProfile.value = { ...lastProfile.value, [familyOf(l)]: p };
+}
+
+/**
+ * A new level of the same family keeps the profile (havo <-> vwo, bb/kb <-> gl/tl);
+ * a level of the other family brings back the last profile chosen there, or none.
+ */
 export function setLevel(next: SchoolLevel): void {
   batch(() => {
+    const same = familyOf(next) === familyOf(level.value);
     level.value = next;
-    profile.value = validProfile(next, profile.value);
+    profile.value = validProfile(next, same ? profile.value : lastProfile.value[familyOf(next)]);
   });
 }
 
 export function setProfile(next: SchoolProfile | null): void {
-  profile.value = validProfile(level.value, next);
+  batch(() => {
+    profile.value = validProfile(level.value, next);
+    remember(level.value, profile.value);
+  });
 }
 
 /** The hash this page writes for its state. */
@@ -78,6 +105,7 @@ export function startRouteSync(): void {
     batch(() => {
       level.value = d.level;
       profile.value = d.profile;
+      remember(d.level, d.profile);
       if (d.lang) {
         lang.value = d.lang;
         langChosen.value = true;

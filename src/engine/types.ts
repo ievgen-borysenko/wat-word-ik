@@ -89,7 +89,12 @@ export type State = 'open' | 'near' | 'far';
  * profile choice. The input is the school level and the profile, not grades.
  */
 
-/** School levels, low to high: vmbo-bb/kb, vmbo-gl/tl, havo, vwo. The order is used: a higher level never opens less. */
+/**
+ * School levels, low to high: vmbo-bb/kb, vmbo-gl/tl, havo, vwo. The order is used for
+ * "from havo up": without a profile, and with a profile that admits to the programme, a
+ * higher level never opens less. A havo or vwo profile without admission closes an hbo
+ * or wo door that vmbo-gl/tl shows one step away, via mbo 4 (see engine/route.ts).
+ */
 export const SCHOOL_LEVELS = ['bbkb', 'gltl', 'havo', 'vwo'] as const;
 export type SchoolLevel = (typeof SCHOOL_LEVELS)[number];
 

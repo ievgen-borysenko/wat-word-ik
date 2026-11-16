@@ -133,8 +133,12 @@ The profession's floor stays the source of its diploma level:
 profiles that admit directly are **open**; a profile that one extra exam
 subject brings up to the rule is **one step more**, and the door names the
 subject; any other profile is **closed**, and the door names the direct
-profiles. Via mbo 4 the profile rules do not apply. From havo to wo with a
-profile that would also need an extra subject is two steps, so closed.
+profiles. On the vmbo-gl/tl route via mbo 4 the profile rules do not apply;
+at havo and vwo that route is not shown as a step (see the order of the
+levels below). From havo to wo with a profile that would also need an extra
+subject is two steps, so closed. The card's admission section follows the
+profession: "from havo and vwo" for hbo, "from vwo" for wo, and at havo a wo
+card adds that vwo 5 or an hbo first year comes first.
 
 Two simplifications, both the stricter reading:
 
@@ -151,9 +155,17 @@ Without a profile, havo and vwo show what the level alone decides: open when
 every profile opens it, else one step more "with N&T or N&G" (and the step,
 if any). Each profile button counts how many doors that profile opens ("opens
 28 of 36"); a vmbo direction counts the mbo jobs that fit it ("fits 4 of 15
-mbo jobs"), because it opens and closes nothing. A higher level never shows a
-door as less open, and every closed door names a level or profile that does
-reach it; unit tests check both for every profession.
+mbo jobs"), because it opens and closes nothing.
+
+Without a profile, and with a profile that admits to the programme (directly
+or with one extra subject), a higher level never shows a door as less open.
+A havo or vwo profile without admission is the one exception, on purpose: it
+closes an hbo or wo door and names the profiles that do admit, while
+vmbo-gl/tl shows the same hbo door one step away via mbo 4. From vmbo-gl/tl,
+mbo 4 is the normal next school; for a havo or vwo pupil it is a route of
+several years, not one extra step, and showing it would erase what the
+profile choice changes. Every closed door names a level or profile that does
+reach it. Unit tests check all of this for every profession.
 
 The data per profession (`vmbo`, `admission` in `src/data/professions.ts`)
 is hand-written demo data like the rest of the file; see

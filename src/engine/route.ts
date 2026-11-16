@@ -40,6 +40,14 @@ import {
  * Without a chosen profile, havo and vwo show what the level alone decides: open
  * when every profile opens it, otherwise the best any profile reaches, with the
  * profiles that reach it.
+ *
+ * Order of the levels. Without a profile, and with a profile that admits to the
+ * programme (direct or with one extra subject), a higher level never shows a door
+ * as less open. A havo or vwo profile without admission is the one exception: it
+ * closes an hbo or wo door, with the profiles that do admit, while vmbo-gl/tl shows
+ * the same hbo door one step away via mbo 4. That is deliberate: from vmbo-gl/tl
+ * mbo 4 is the normal next school; for a havo or vwo pupil it is a route of several
+ * years, not one extra step, and showing it would erase what the profile changes.
  */
 
 export type RouteState = 'open' | 'detour' | 'closed';

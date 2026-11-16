@@ -248,3 +248,63 @@ test('phones with a wide system font: the onderbouw view fits too', async ({ pag
   await expectWideFont(page);
   await checkRouteFit(page, false, 'wide font');
 });
+
+test('arrowing through the levels keeps the havo/vwo profile while it passes vmbo', async ({ page }) => {
+  await openRoute(page, '#n=vwo&p=nt&l=en');
+  await level(page, 'vwo').focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(level(page, 'bbkb')).toHaveAttribute('aria-checked', 'true');
+  await expect(profile(page, 'none')).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('ArrowRight');
+  await expect(level(page, 'gltl')).toHaveAttribute('aria-checked', 'true');
+  await page.keyboard.press('ArrowRight');
+  await expect(level(page, 'havo')).toHaveAttribute('aria-checked', 'true');
+  await expect(profile(page, 'nt')).toHaveAttribute('aria-checked', 'true');
+  await expect.poll(() => hash(page)).toBe('#n=havo&p=nt&l=en');
+
+  // The vmbo direction comes back the same way.
+  await level(page, 'gltl').click();
+  await profile(page, 'groen').click();
+  await level(page, 'vwo').click();
+  await expect(profile(page, 'nt')).toHaveAttribute('aria-checked', 'true');
+  await level(page, 'bbkb').click();
+  await expect(profile(page, 'groen')).toHaveAttribute('aria-checked', 'true');
+});
+
+test('a havo or vwo profile without admission closes an hbo door; only vmbo cards name the mbo 4 route', async ({ page }) => {
+  await openRoute(page, '#n=havo&p=em&l=en');
+  await expectDoor(page, 'elektrotechnisch-ingenieur', 'closed', 'with N&T');
+  await door(page, 'elektrotechnisch-ingenieur').click();
+  const card = page.getByRole('dialog');
+  await expect(card.locator('.admission-lines li')).toHaveText([
+    'Directly with N&T.',
+    'With N&G: extra subject physics.',
+    'With E&M or C&M: another profile is needed.',
+  ]);
+  await expect(card).not.toContainText('Via mbo 4');
+  await page.keyboard.press('Escape');
+
+  await level(page, 'gltl').click();
+  await expectDoor(page, 'elektrotechnisch-ingenieur', 'ajar', 'via mbo 4 or via havo 4');
+  await door(page, 'elektrotechnisch-ingenieur').click();
+  await expect(card.locator('.admission-lines li').last()).toHaveText('Via mbo 4 the profile rules do not apply.');
+});
+
+test('a wo card says the vwo rule, and at havo that vwo 5 or an hbo first year comes first', async ({ page }) => {
+  await openRoute(page, '#n=havo&p=ng&l=en');
+  await expectDoor(page, 'arts', 'ajar', 'via vwo 5 or via hbo year 1');
+  await door(page, 'arts').click();
+  const card = page.getByRole('dialog');
+  await expect(card.getByRole('heading', { level: 3, name: 'Admission from vwo (demo)' })).toBeVisible();
+  await expect(card.locator('.admission-lines li').first()).toHaveText(
+    'From havo, vwo 5 or a first year of hbo comes first; then this rule applies.',
+  );
+  await page.keyboard.press('Escape');
+
+  await level(page, 'vwo').click();
+  await door(page, 'arts').click();
+  await expect(card.locator('.admission-lines li').first()).toHaveText('Directly with N&G.');
+  await page.keyboard.press('Escape');
+  await door(page, 'journalist').click();
+  await expect(card.getByRole('heading', { level: 3, name: 'Admission from havo and vwo (demo)' })).toBeVisible();
+});

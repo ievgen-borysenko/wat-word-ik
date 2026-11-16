@@ -140,7 +140,11 @@ describe('routeOf', () => {
     expect(routeOf(HBO, 'havo', 'zorg')).toEqual(routeOf(HBO, 'havo', null));
   });
 
-  it('a higher level never shows a door as less open, with or without a profile', () => {
+  /** True when the havo/vwo profile admits to the profession: no admission rule, direct, or one extra subject. */
+  const admits = (p: Profession, profile: (typeof HAVO_VWO_PROFILES)[number]) =>
+    p.admission === undefined || p.admission.direct.includes(profile) || p.admission.bridge[profile] !== undefined;
+
+  it('without a profile, a higher level never shows a door as less open', () => {
     for (const p of PROFESSIONS) {
       for (let i = 1; i < SCHOOL_LEVELS.length; i++) {
         const lower = SCHOOL_LEVELS[i - 1]!;
@@ -149,12 +153,58 @@ describe('routeOf', () => {
           RANK[routeOf(p, lower, null).state],
         );
       }
+    }
+  });
+
+  it('with a profile that admits, a higher level never shows a door as less open: vmbo-gl/tl, havo, vwo', () => {
+    for (const p of PROFESSIONS) {
       for (const profile of HAVO_VWO_PROFILES) {
-        expect(RANK[routeOf(p, 'vwo', profile).state], `${p.id} ${profile}`).toBeGreaterThanOrEqual(
-          RANK[routeOf(p, 'havo', profile).state],
-        );
+        const vwo = RANK[routeOf(p, 'vwo', profile).state];
+        const havo = RANK[routeOf(p, 'havo', profile).state];
+        expect(vwo, `${p.id} ${profile} havo -> vwo`).toBeGreaterThanOrEqual(havo);
+        if (!admits(p, profile)) continue;
+        for (const direction of [null, ...VMBO_DIRECTIONS]) {
+          expect(havo, `${p.id} ${profile} gltl -> havo`).toBeGreaterThanOrEqual(RANK[routeOf(p, 'gltl', direction).state]);
+        }
       }
     }
+  });
+
+  it('a havo or vwo profile without admission closes hbo and wo doors, with the profiles that admit; vmbo-gl/tl shows hbo via mbo 4', () => {
+    let pinned = 0;
+    for (const p of PROFESSIONS) {
+      for (const profile of HAVO_VWO_PROFILES) {
+        if (admits(p, profile)) continue;
+        for (const level of ['havo', 'vwo'] as const) {
+          expect(routeOf(p, level, profile), `${p.id} ${level} ${profile}`).toEqual({
+            state: 'closed',
+            need: { kind: 'profile', profiles: p.admission!.direct },
+          });
+        }
+        if (p.level === 3) {
+          expect(routeOf(p, 'gltl', null).state, p.id).toBe('detour');
+          pinned++;
+        }
+      }
+    }
+    expect(pinned).toBeGreaterThan(0);
+  });
+
+  it('the exception, pinned: havo with E&M on an N&T-only hbo programme is closed with the profile; vmbo-gl/tl is one step via mbo 4', () => {
+    const ntOnly = prof(3, { admission: { direct: ['nt'], bridge: {} } });
+    expect(routeOf(ntOnly, 'havo', 'em')).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt'] } });
+    expect(routeOf(ntOnly, 'vwo', 'em')).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt'] } });
+    expect(routeOf(ntOnly, 'gltl', 'economie')).toEqual({
+      state: 'detour',
+      steps: [{ kind: 'mbo4' }, { kind: 'havo4' }],
+      profiles: null,
+    });
+    // The same in the demo data.
+    expect(routeOf(byId('elektrotechnisch-ingenieur'), 'havo', 'em')).toEqual({
+      state: 'closed',
+      need: { kind: 'profile', profiles: ['nt'] },
+    });
+    expect(routeOf(byId('elektrotechnisch-ingenieur'), 'gltl', null).state).toBe('detour');
   });
 
   it('"not chosen yet" is open only when every profile opens it, else the best a profile reaches, as a step', () => {
