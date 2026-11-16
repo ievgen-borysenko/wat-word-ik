@@ -2,8 +2,9 @@
 
 ## Supported versions
 
-Only the current version is supported: the site deployed on GitHub Pages (two
-pages, `index.html` and `deuren.html`) and the `main` branch it is built from.
+Only the current version is supported: the site deployed on GitHub Pages (three
+pages, `index.html`, `deuren.html` and `onderbouw.html`) and the `main` branch
+it is built from.
 There are no releases and no older versions to patch; a fix lands on `main`
 and is deployed from there.
 
@@ -32,6 +33,7 @@ private vulnerability reporting is enabled in the repository settings; see
 
 ## Scope
 
-This is a static site of two pages that show the same data in two views. It
-has no backend, no accounts and no data collection.
+This is a static site of three pages: two show the same grades in two views,
+the third shows the same professions by school level and profile. It has no
+backend, no accounts and no data collection.
 What CI checks on every change is described in [docs/ci.md](docs/ci.md).

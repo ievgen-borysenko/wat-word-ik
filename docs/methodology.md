@@ -1,15 +1,18 @@
 # How it works
 
-> **Status: M0 demo.** Every number on the page (requirements, levels, pay) was
+> **Status: M0 demo.** Every number and rule on the pages (requirements,
+> levels, pay, and the admission by school profile on the onderbouw page) was
 > made up for this prototype to make the picture readable; no source has been
 > used yet. It is approximate demo data, not real admission rules and not
 > career advice.
 
-## What the page shows
+## What the pages show
 
-The page answers one question: *with grades like these, which professions are
-open to you?* It shows what is **open**, never what you *will become*, and it
-never shows probabilities.
+The site has three pages. The first two, for groep 6-8 of primary school,
+answer one question: *with grades like these, which professions are open to
+you?* The third, for klas 1-3 of secondary school, asks the same of a school
+level and a profile (see "Third page: onderbouw" below). Each shows what is
+**open**, never what you *will become*, and none shows probabilities.
 
 ## Inputs
 
@@ -92,9 +95,73 @@ in slider order); if no single +1 opens a door, the door with the smallest
 sentence. The two views link to each other with the same address after `#`;
 each link is named after where it goes ("View as doors", "View as building").
 
+## Third page: onderbouw
+
+`onderbouw.html` is for klas 1-3 of secondary school (age 12-15), the years
+before the profile choice. A child of that age has no use for ten
+primary-school grades; what decides the route is the school level and the
+profile. The input is two rows of buttons:
+
+- **school level:** vmbo-bb/kb, vmbo-gl/tl, havo, vwo (default havo);
+- **profile:** for havo and vwo the four profiles, Natuur & Techniek (N&T),
+  Natuur & Gezondheid (N&G), Economie & Maatschappij (E&M) and Cultuur &
+  Maatschappij (C&M); for vmbo four broad directions, Techniek, Zorg en
+  welzijn, Economie and Groen. The real vmbo-bb/kb/gl has ten profiles; the
+  page groups them into four for simplicity and says so in "How it works".
+  Default: "not chosen yet".
+
+The professions are the same 36 doors as on `deuren.html`, grouped by field,
+each in one of three states (`src/engine/route.ts`):
+
+- **open:** this level and profile lead there directly;
+- **one step more** (detour): one extra step leads there, and the door names
+  it;
+- **not on this route** (closed for now): it needs another level or profile,
+  and the door says which ("from havo up", "with N&G"). Nothing is shown as
+  closed for good.
+
+The profession's floor stays the source of its diploma level:
+
+| Floor | From vmbo-bb/kb | From vmbo-gl/tl | From havo | From vwo |
+|-------|-----------------|-----------------|-----------|----------|
+| 0, 1 (no diploma, mbo 2-3) | open | open | open | open |
+| 2 (mbo 4) | one step: mbo 2 first | open | open | open |
+| 3 (hbo) | closed: from vmbo-gl/tl up | one step: via mbo 4 or havo 4 | by profile | by profile |
+| 4 (wo) | closed: from havo up | closed: from havo up | direct profile: one step via vwo 5 or an hbo first year (propedeuse); else closed | by profile |
+
+"By profile" uses the admission data of each hbo and wo profession: the
+profiles that admit directly are **open**; a profile that one extra exam
+subject brings up to the rule is **one step more**, and the door names the
+subject; any other profile is **closed**, and the door names the direct
+profiles. Via mbo 4 the profile rules do not apply. From havo to wo with a
+profile that would also need an extra subject is two steps, so closed.
+
+Two simplifications, both the stricter reading:
+
+- vmbo-bb/kb is one button, and the page follows bb, the stricter half:
+  with bb, mbo 4 comes after mbo 2 and hbo is two steps away. With kb, mbo 4
+  is direct and hbo is one step via mbo 4; "How it works" says so.
+- Where an admission rule was not certain, the data holds the stricter one.
+
+A vmbo direction never closes a door: a vmbo diploma of any direction admits
+to mbo. For mbo professions the direction is only a **fit**: the door says
+"fits your direction" or "fits best with Zorg en welzijn".
+
+Without a profile, havo and vwo show what the level alone decides: open when
+every profile opens it, else one step more "with N&T or N&G" (and the step,
+if any). Each profile button counts how many doors that profile opens ("opens
+28 of 36"); a vmbo direction counts the mbo jobs that fit it ("fits 4 of 15
+mbo jobs"), because it opens and closes nothing. A higher level never shows a
+door as less open, and every closed door names a level or profile that does
+reach it; unit tests check both for every profession.
+
+The data per profession (`vmbo`, `admission` in `src/data/professions.ts`)
+is hand-written demo data like the rest of the file; see
+[sources.md](sources.md).
+
 ## Privacy
 
-The page itself stores nothing and sends nothing: no accounts, no cookies, no
+Each page itself stores nothing and sends nothing: no accounts, no cookies, no
 local storage, no analytics, no network requests. Everything runs in the
 browser.
 
@@ -105,8 +172,15 @@ otherwise each visitor gets their own browser language. The link to the other
 view adds `&v=1`, the view-switch marker, when the grades are the user's own;
 it carries no data, and the page it opens drops it from the address.
 
+The onderbouw page keeps its state the same way (`#n=havo&p=nt`): `n` is the
+school level, `p` the profile, left out until one is chosen, and `l` the
+language as above. Each page reads only its own keys and drops the others
+from the address on its first write. The links between the onderbouw page
+and the other two carry only the chosen language (`#l=nl`), never grades, a
+goal, a level or a profile.
+
 The hosting provider serves the files and sees an ordinary page request, like
-for any web page, but never the grades or the goal: browsers do not send the
+for any web page, but never the grades, the goal, the level or the profile: browsers do not send the
 part after `#`. The address, with that part, stays in the browser history like
 any other page.
 
@@ -127,7 +201,8 @@ the other view does not show it.
   show the page as it is.
 - **Crafted links.** A link can only choose among known values: ten grades
   from 1 to 10, one goal from the list of professions and one of the three
-  languages. Anything else falls back to the defaults
+  languages; on the onderbouw page one of the four levels, one profile of
+  that level and a language. Anything else falls back to the defaults
   (`src/engine/hash.ts` and its tests). A link cannot put text or code on the
   page. A link that carries the view-switch marker by hand hides the "came
   from a link" line for that visit; it changes nothing else.
