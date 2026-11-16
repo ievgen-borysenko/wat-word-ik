@@ -469,6 +469,33 @@ describe('check-dist', () => {
     });
   });
 
+  describe('deuren.html (the second page)', () => {
+    /** The second page, linked from the script as the real build links it. @param {string} page */
+    const withDoors = (page) =>
+      tree({ 'deuren.html': page, 'assets/index-abc123.js': `${CLEAN_JS}let d="deuren.html";` });
+
+    it('is shipped when the script links to it, with the same checks as index.html', () => {
+      expect(rules(withDoors(html()))).toEqual([]);
+    });
+
+    it('requires its own CSP meta', () => {
+      expect(rules(withDoors(html({ csp: '' })))).toEqual(['deuren.html csp']);
+    });
+
+    it('rejects an inline script and a remote stylesheet', () => {
+      const head = '<script>go()</script><link rel="stylesheet" href="https://cdn.example.com/x.css">';
+      expect(rules(withDoors(html({ head }))).sort()).toEqual(['deuren.html html', 'deuren.html html', 'deuren.html url'].sort());
+    });
+
+    it('is refused when nothing links to it', () => {
+      expect(rules(tree({ 'deuren.html': html() }))).toEqual(['deuren.html unreferenced']);
+    });
+
+    it('refuses any other page', () => {
+      expect(rules(tree({ 'other.html': html() }))).toContain('other.html path');
+    });
+  });
+
   it('lists every violation, not only the first', () => {
     const dir = tree({ '.DS_Store': 'x', 'assets/index-abc123.js': 'fetch("https://api.example.com/");' });
     const report = auditDist(dir);
@@ -627,14 +654,19 @@ describe('check-dist', () => {
     describe('the real build', async () => {
       const { build } = await import('vite');
       const result = await build({ root: ROOT, configFile: join(ROOT, 'vite.config.ts'), logLevel: 'silent', build: { write: false } });
-      /** @type {{ type: string, code?: string, isEntry?: boolean }[]} */
+      /** @type {{ type: string, code?: string, isEntry?: boolean, moduleIds?: string[] }[]} */
       const outputs = (Array.isArray(result) ? result : [result]).flatMap((o) => ('output' in o ? o.output : []));
       const chunks = outputs.filter((o) => o.type === 'chunk');
       const runtime = runtimePackages(JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8')));
+      /** @param {{ moduleIds?: string[] }} c */
+      const hasPackageCode = (c) => (c.moduleIds ?? []).some((id) => id.replaceAll('\\', '/').includes('/node_modules/'));
 
-      it('opens the entry script with the notice of every runtime package of the lockfile', () => {
+      it('opens the script that bundles package code with the notice of every runtime package of the lockfile', () => {
         expect(runtime.map((p) => p.name)).toContain('preact');
-        expect(chunks.filter((c) => c.isEntry).map((c) => c.code?.startsWith(`${NOTICE_HEAD}\n`))).toEqual([true]);
+        // Two pages share one chunk with the package code; it carries the notice, the page scripts do not.
+        expect(chunks.filter((c) => c.isEntry).length).toBe(2);
+        expect(chunks.filter(hasPackageCode).map((c) => c.code?.startsWith(`${NOTICE_HEAD}\n`))).toEqual([true]);
+        expect(chunks.filter((c) => !hasPackageCode(c)).map((c) => c.code?.includes(NOTICE_HEAD))).toEqual([false, false]);
         expect(noticeProblems(chunks.map((c) => c.code ?? ''), runtime)).toEqual([]);
       });
     });

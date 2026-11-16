@@ -1,0 +1,362 @@
+/*
+ * The doors view (deuren.html). Loaded after styles.css, which it shares with the
+ * floors view. A flat street of doors grouped by field: no floors, no top or bottom.
+ * Calm colours only: a door that is not open yet is painted, not greyed out or red.
+ */
+
+.doors-app {
+  /* Light that falls through an open door. */
+  --inside: #fff3c4;
+  --ajar-ink: #1a46a8;
+  --ajar-soft: #e4ecff;
+  --ajar-line: #9db4e8;
+}
+
+/* One calm hue per field; none is red, orange or yellow. */
+.field-care {
+  --hue: #0b7f86;
+}
+.field-technology {
+  --hue: #2557c7;
+}
+.field-making {
+  --hue: #6a46d0;
+}
+.field-nature {
+  --hue: #2f7d32;
+}
+.field-people {
+  --hue: #9a3f86;
+}
+.field-on-the-move {
+  --hue: #476178;
+}
+
+/* ── summary ───────────────────────────────────────────────────────────── */
+
+.door-step {
+  color: var(--ajar-ink);
+  font-weight: 600;
+}
+
+/* ── street ────────────────────────────────────────────────────────────── */
+
+.street {
+  display: grid;
+  gap: 10px;
+}
+
+.block {
+  --leaf: color-mix(in srgb, var(--hue) 20%, #ffffff);
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-top: 4px solid var(--hue);
+  border-radius: var(--radius);
+  padding: 5px 8px 6px;
+}
+
+.block-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.block-head h3 {
+  min-width: 0;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  color: color-mix(in srgb, var(--hue) 80%, #000000);
+}
+
+.block-count {
+  flex: none;
+  font-size: 0.74rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.doors {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  align-content: start;
+  gap: 2px 6px;
+  margin-top: 4px;
+}
+
+/* ── one door ──────────────────────────────────────────────────────────── */
+
+.door {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 0;
+  padding: 3px 1px 2px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  text-align: center;
+  cursor: pointer;
+}
+
+.door-frame {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: min(100%, 50px);
+  height: 54px;
+  border: 2px solid var(--hue);
+  border-radius: 22px 22px 4px 4px;
+  background: var(--inside);
+  overflow: hidden;
+  perspective: 140px;
+  transition:
+    box-shadow 0.35s ease,
+    transform 0.2s ease;
+}
+
+.door:hover .door-frame {
+  transform: translateY(-2px);
+}
+
+/* The door leaf swings open on its left hinge: closed, ajar, open. */
+.door-leaf {
+  position: absolute;
+  inset: 0;
+  border-radius: 20px 20px 2px 2px;
+  background: var(--leaf);
+  transform-origin: left center;
+  transform: rotateY(0deg);
+  transition: transform 0.45s ease;
+}
+
+.door-leaf::after {
+  content: '';
+  position: absolute;
+  right: 4px;
+  top: 56%;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--hue) 75%, #000000);
+}
+
+.door.is-ajar .door-leaf {
+  transform: rotateY(-50deg);
+}
+
+.door.is-open .door-leaf {
+  transform: rotateY(-70deg);
+}
+
+.door.is-open .door-frame {
+  box-shadow: 0 2px 10px color-mix(in srgb, var(--hue) 35%, transparent);
+}
+
+.door-emoji {
+  position: relative;
+  z-index: 1;
+  font-size: 1.45rem;
+  line-height: 1;
+}
+
+.door-name {
+  max-width: 100%;
+  font-size: 0.72rem;
+  font-weight: 650;
+  line-height: 1.15;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
+  hyphens: auto;
+}
+
+.door-state {
+  max-width: 100%;
+  font-size: 0.66rem;
+  line-height: 1.15;
+  color: var(--muted);
+}
+
+.door.is-open .door-state {
+  color: var(--ok);
+  font-weight: 700;
+}
+
+.door.is-ajar .door-state {
+  color: var(--ajar-ink);
+  font-weight: 700;
+}
+
+.door-key {
+  display: block;
+  overflow-wrap: anywhere;
+}
+
+/* The phone badge: "+1" and the subject's emoji, on the door itself. */
+.door-badge {
+  display: none;
+}
+
+.door-goal {
+  position: absolute;
+  z-index: 2;
+  top: 1px;
+  left: 3px;
+  font-size: 0.8rem;
+  color: var(--goal);
+}
+
+.door.is-goal .door-frame {
+  box-shadow: 0 0 0 3px var(--goal);
+}
+
+/* ── card and ladder in door words ─────────────────────────────────────── */
+
+.state-pill.is-ajar,
+.ladder-chip.is-ajar {
+  background: var(--ajar-soft);
+  color: var(--ajar-ink);
+  border-color: var(--ajar-line);
+}
+
+.state-pill.is-closed {
+  background: #f3f5f8;
+  color: var(--ink);
+  border-color: var(--line);
+}
+
+/* ── desktop: three blocks in a row, the street fills the column ──────── */
+
+@media (min-width: 900px) {
+  .street {
+    flex: 1 1 auto;
+    min-height: 0;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    grid-auto-rows: minmax(0, 1fr);
+    align-content: start;
+  }
+}
+
+/* ── narrow: one block per line, emoji-only doors, like the floors view ─ */
+
+@media (max-width: 899.98px) {
+  .street {
+    gap: 3px;
+  }
+  .block {
+    border-top-width: 3px;
+    border-radius: 9px;
+    padding: 1px 4px 3px;
+  }
+  .block-head {
+    height: 17px;
+    align-items: center;
+  }
+  .block-head h3 {
+    font-size: 0.8rem;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .block-count {
+    font-size: 0.68rem;
+  }
+  .doors {
+    grid-template-columns: repeat(8, minmax(0, 56px));
+    justify-content: start;
+    gap: 3px;
+    margin-top: 1px;
+  }
+  .door {
+    padding: 0;
+    border-radius: 8px;
+  }
+  .door-frame {
+    width: 100%;
+    height: auto;
+    aspect-ratio: 1;
+    min-height: 40px;
+    border-radius: 16px 16px 3px 3px;
+  }
+  @media (max-width: 340px) {
+    .door-frame {
+      aspect-ratio: auto;
+      height: 40px;
+    }
+  }
+  .door:hover .door-frame {
+    transform: none;
+  }
+  .door-emoji {
+    font-size: 1.25rem;
+  }
+  .door-name,
+  .door-state {
+    display: none;
+  }
+  .door-badge {
+    display: block;
+    position: absolute;
+    z-index: 2;
+    top: 1px;
+    right: 1px;
+    padding: 0 3px;
+    border-radius: 999px;
+    border: 1px solid var(--ajar-line);
+    background: var(--ajar-soft);
+    color: var(--ajar-ink);
+    font-size: 0.56rem;
+    font-weight: 800;
+    line-height: 1.3;
+  }
+  .door-goal {
+    top: -1px;
+    left: 2px;
+    font-size: 0.7rem;
+  }
+  .door.is-goal .door-frame {
+    box-shadow: 0 0 0 2px var(--goal);
+  }
+  /*
+   * Short phones (375x667, 360x640, 320x568): slimmer blocks and doors 32px high, so
+   * the whole street stays above the slider panel, as the building does in the floors view.
+   */
+  @media (max-height: 760px) {
+    .street {
+      gap: 2px;
+    }
+    .block {
+      border-top-width: 2px;
+      padding: 0 4px 2px;
+    }
+    .block-head {
+      height: 14px;
+    }
+    .block-head h3 {
+      font-size: 0.72rem;
+    }
+    .block-count {
+      font-size: 0.64rem;
+    }
+    .door-frame {
+      aspect-ratio: auto;
+      min-height: 0;
+      height: 32px;
+      border-radius: 12px 12px 3px 3px;
+    }
+    .door-emoji {
+      font-size: 1.05rem;
+    }
+  }
+}

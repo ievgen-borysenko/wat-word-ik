@@ -5,11 +5,11 @@
 // no network requests at run time. This script checks that the files we are
 // about to ship keep that promise and carry nothing else:
 //
-//   1. paths    every shipped file is on an allow-list (index.html and the JS and
-//               CSS bundles; no source maps, hidden files, JSON dumps, docs,
-//               tests, images) and is a regular file;
+//   1. paths    every shipped file is on an allow-list (the pages index.html and
+//               deuren.html and the JS and CSS bundles; no source maps, hidden
+//               files, JSON dumps, docs, tests, images) and is a regular file;
 //   2. refs     every file except index.html is referenced by another shipped
-//               file, and every local reference in index.html exists;
+//               file, and every local reference in a page exists;
 //   3. size     JS, CSS and the whole tree stay within a budget;
 //   4. content  no absolute local paths, local or private hosts, private keys,
 //               source map comments, e-mail addresses (none at all), URLs outside
@@ -18,7 +18,7 @@
 //               data or starts a worker, and no way to send data to the page's
 //               own host without one (an image request, a navigation, a URL
 //               written into an element, a string that starts a query string);
-//   6. html     index.html carries a Content-Security-Policy meta that lets the
+//   6. html     each page carries a Content-Security-Policy meta that lets the
 //               page load its own script and stylesheet and nothing else
 //               (default-src 'none'); it loads nothing from another host, has
 //               no inline scripts or event handlers and no local URL with a
@@ -40,7 +40,18 @@ import { runtimePackages } from './check-lockfile.mjs';
 export const REPO_URL = 'https://github.com/ievgen-borysenko/wat-word-ik';
 
 /** Paths (relative to dist, `/`-separated) that may be shipped. Nothing else. */
-export const SHIPPED_PATHS = [/^index\.html$/, /^assets\/[A-Za-z0-9_-]+\.js$/, /^assets\/[A-Za-z0-9_-]+\.css$/];
+export const SHIPPED_PATHS = [
+  /^index\.html$/,
+  /^deuren\.html$/,
+  /^assets\/[A-Za-z0-9_-]+\.js$/,
+  /^assets\/[A-Za-z0-9_-]+\.css$/,
+];
+
+/**
+ * The HTML pages: index.html (the floors view, required) and deuren.html (the doors
+ * view). Every page that is shipped gets the checks of checkPage.
+ */
+export const PAGES = ['index.html', 'deuren.html'];
 
 /** Size budget in bytes (1 kB = 1000 bytes, as in Vite's build report). */
 export const BUDGET = { js: 150_000, css: 40_000, total: 400_000 };
@@ -576,7 +587,7 @@ function decodeEntities(s) {
 
 /**
  * Tags of an HTML document with their attributes (names lower-cased, values decoded).
- * Good enough for the small, generated index.html; not a general HTML parser.
+ * Good enough for the small, generated pages; not a general HTML parser.
  * @param {string} html
  */
 function parseTags(html) {
@@ -644,16 +655,17 @@ export function checkCsp(content) {
 }
 
 /**
- * Checks index.html: CSP meta, external references, inline scripts and handlers.
+ * Checks a page: CSP meta, external references, inline scripts and handlers.
+ * @param {string} file the page's path, for the report
  * @param {string} html
  * @param {Set<string>} shipped
  * @returns {Violation[]}
  */
-function checkIndexHtml(html, shipped) {
+function checkPage(file, html, shipped) {
   /** @type {Violation[]} */
   const v = [];
   /** @param {string} rule @param {string} message */
-  const add = (rule, message) => v.push({ file: 'index.html', rule, message });
+  const add = (rule, message) => v.push({ file, rule, message });
   const tags = parseTags(html);
 
   // Content-Security-Policy meta.
@@ -716,7 +728,7 @@ export function auditDist(dir, runtime = []) {
   for (const e of entries) {
     if (e.kind !== 'file') violations.push({ file: e.path, rule: 'path', message: `${e.kind} is not allowed, ship regular files only` });
     else if (!SHIPPED_PATHS.some((re) => re.test(e.path))) {
-      violations.push({ file: e.path, rule: 'path', message: 'not on the list of shipped paths (index.html, assets/*.js, assets/*.css)' });
+      violations.push({ file: e.path, rule: 'path', message: 'not on the list of shipped paths (index.html, deuren.html, assets/*.js, assets/*.css)' });
     }
   }
   if (!files.some((f) => f.path === 'index.html')) {
@@ -774,8 +786,10 @@ export function auditDist(dir, runtime = []) {
   }
 
   // 6. html
-  const html = texts.get('index.html');
-  if (html !== undefined) violations.push(...checkIndexHtml(html, shipped));
+  for (const page of PAGES) {
+    const html = texts.get(page);
+    if (html !== undefined) violations.push(...checkPage(page, html, shipped));
+  }
 
   // 7. notice
   const scripts = [...texts].filter(([path]) => path.endsWith('.js')).map(([, text]) => text);

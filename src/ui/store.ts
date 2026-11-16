@@ -66,6 +66,11 @@ export const band = computed<0 | 1 | 2 | 3>(() => {
   return 3;
 });
 
+/** The hash this page writes for its state; the link to the other view carries it along. */
+export const stateHash = computed(() =>
+  encodeHash({ sliders: sliders.value, goal: goal.value, lang: langChosen.value ? lang.value : null }),
+);
+
 export const plusOneBySubject = computed<Readonly<Record<SubjectId, Profession[]>>>(() => {
   const s = sliders.value;
   return Object.fromEntries(SUBJECT_IDS.map((id) => [id, plusOne(PROFESSIONS, s, id)])) as Record<

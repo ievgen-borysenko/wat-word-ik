@@ -1,10 +1,10 @@
 import { readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vitest/config';
 import { formatNotice, splitLicence } from './scripts/check-dist.mjs';
 import { runtimePackages } from './scripts/check-lockfile.mjs';
 
-// Built page only (the dev server needs its own websocket): the page may load its own
+// Built pages only (the dev server needs its own websocket): a page may load its own
 // script and stylesheet and nothing else. default-src 'none' covers every fetch
 // directive that is not listed (connections, fonts, media, frames, objects, workers,
 // manifests), so the browser blocks even a same-origin image or request. The only
@@ -29,8 +29,8 @@ function contentSecurityPolicy(): Plugin {
   };
 }
 
-// Licence notices of the bundled code, as one legal comment at the top of the entry
-// script, added after minification so that it stays as written. It covers every
+// Licence notices of the bundled code, as one legal comment at the top of each script
+// that bundles package code, added after minification so that it stays as written. It covers every
 // runtime package of the lockfile (the set check:lock checks), with the version,
 // the copyright lines and the licence text read from the installed package. The
 // format and the check of the built site (check:dist) are in scripts/check-dist.mjs.
@@ -67,7 +67,12 @@ function licenceNotice(): Plugin {
       }
     },
     outputOptions(options) {
-      return { ...options, postBanner: (chunk) => (chunk.isEntry ? notice : '') };
+      // On every chunk that holds package code: the entry when there is one page, the
+      // shared chunk when both pages import the same packages.
+      return {
+        ...options,
+        postBanner: (chunk) => (chunk.moduleIds.some((id) => bundledPackage(id) !== null) ? notice : ''),
+      };
     },
     generateBundle(_options, bundle) {
       for (const chunk of Object.values(bundle)) {
@@ -102,6 +107,15 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     modulePreload: { polyfill: false },
+    // Two pages over the same engine, data and components: the floors view and the doors view.
+    rolldownOptions: {
+      input: {
+        index: resolve(import.meta.dirname, 'index.html'),
+        deuren: resolve(import.meta.dirname, 'deuren.html'),
+      },
+      // The code both pages share (Preact, the engine, the data, the components).
+      output: { chunkFileNames: 'assets/shared-[hash].js' },
+    },
   },
   test: {
     include: ['src/**/*.test.ts', 'scripts/**/*.test.mjs'],

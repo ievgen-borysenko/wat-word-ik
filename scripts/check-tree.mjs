@@ -65,6 +65,7 @@ export const ROOT_FILES = [
   'LICENSE',
   'README.md',
   'SECURITY.md',
+  'deuren.html',
   'index.html',
   'package-lock.json',
   'package.json',
@@ -128,7 +129,10 @@ export const DEMO_GIF_MAX_DURATION_CS = 6000;
 
 /** Patterns for the folders that grow with the program. */
 export const PATTERNS = [
-  { what: 'page entry, styles and tests at the top of src/', re: /^src\/(?:main\.tsx|styles\.css|[a-z][a-z0-9-]*\.test\.ts)$/ },
+  {
+    what: 'page entries, styles and tests at the top of src/',
+    re: /^src\/(?:(?:main|doors)\.tsx|(?:styles|doors)\.css|[a-z][a-z0-9-]*\.test\.ts)$/,
+  },
   { what: 'page modules and their tests', re: /^src\/(?:data|engine|i18n|ui)\/[A-Za-z][A-Za-z0-9]*(?:\.test)?\.tsx?$/ },
   { what: 'translations', re: /^src\/i18n\/[a-z]{2}\.json$/ },
   { what: 'CI check scripts and their tests', re: /^scripts\/check-[a-z]+(?:\.test)?\.mjs$/ },

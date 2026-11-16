@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { LANGS, LEVELS, SUBJECT_IDS, type Localized } from '../engine/types';
+import { FIELDS, LANGS, LEVELS, SUBJECT_IDS, type Localized } from '../engine/types';
 import { PROFESSIONS } from './professions';
 import { SUBJECTS } from './subjects';
 
@@ -117,6 +117,23 @@ describe('professions', () => {
       (id) => PROFESSIONS.find((p) => p.id === id)!.needs.find((n) => n.subject === 'natuurkunde')?.min ?? 0,
     );
     for (let i = 1; i < physics.length; i++) expect(physics[i]).toBeGreaterThan(physics[i - 1]!);
+  });
+
+  it('every profession has a known field, and every field holds 4 to 8 (one row of 8 on a phone)', () => {
+    const known = new Set<string>(FIELDS);
+    for (const p of PROFESSIONS) expect(known.has(p.field), `${p.id}.field = ${p.field}`).toBe(true);
+    for (const field of FIELDS) {
+      const count = PROFESSIONS.filter((p) => p.field === field).length;
+      expect(count, `field ${field}`).toBeGreaterThanOrEqual(4);
+      expect(count, `field ${field}`).toBeLessThanOrEqual(8);
+    }
+  });
+
+  it('no field is a level in disguise: every field spans at least three levels', () => {
+    for (const field of FIELDS) {
+      const levels = new Set(PROFESSIONS.filter((p) => p.field === field).map((p) => p.level));
+      expect(levels.size, `field ${field} has levels ${[...levels].join(', ')}`).toBeGreaterThanOrEqual(3);
+    }
   });
 
   it('every subject is a key subject (highest requirement) of at least two professions', () => {

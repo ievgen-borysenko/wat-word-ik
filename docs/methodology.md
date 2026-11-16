@@ -70,6 +70,27 @@ Some professions form a ladder in one field, for example
 electrical installer → electrical technician → electrical engineer (hbo) →
 electrical engineer (wo). Each rung asks a bit more.
 
+## Second view: doors
+
+`deuren.html` shows the same sliders, data and engine as a street of doors
+instead of a building, to compare the two framings. There are no floors: the
+doors stand in six groups by field of work (care and health, technology and
+computers, making and design, nature and research, people and society, on the
+move), alphabetically inside a group, never ordered by level or pay. Level and
+pay stay on the profession card. Each field spans at least three floors.
+
+- **open**: the profession is open (as above);
+- **almost open** (ajar): one +1 on one slider opens it, that is, the "+N"
+  above is exactly 1. The door names the subject, or says "any subject" when
+  only the average is one point short. This is stricter than "nearly there";
+- **not open yet**: everything else.
+
+The counter reads "N doors open, M almost open". The line under it names one
+step: the +1 that opens the most doors, with how many (ties: the first subject
+in slider order); if no single +1 opens a door, the door with the smallest
+"+N" (ties: alphabetical by id) and that number; with every door open, a plain
+sentence. The two views link to each other with the same address after `#`.
+
 ## Privacy
 
 The page itself stores nothing and sends nothing: no accounts, no cookies, no

@@ -109,9 +109,10 @@ whatever it is used for; who may author commits is decided in review.
 
 `check:dist` audits the built site, the exact files that will be published:
 
-- **Only expected files:** `index.html` and the JavaScript and CSS bundles in
-  `assets/`. Source maps, hidden files, documents, JSON dumps, tests and images
-  are refused, and so is any file that nothing links to.
+- **Only expected files:** the two pages, `index.html` (the floors view) and
+  `deuren.html` (the doors view), and the JavaScript and CSS bundles in
+  `assets/`. Source maps, hidden files, documents, JSON dumps, tests, images
+  and any other page are refused, and so is any file that nothing links to.
 - **Size budget:** JavaScript up to 150 kB, CSS up to 40 kB, the whole site up
   to 400 kB. The measured sizes are printed on every run.
 - **Nothing private inside:** no paths from a developer's computer (home
@@ -131,7 +132,7 @@ whatever it is used for; who may author commits is decided in review.
   in the comment above `REQUEST_SINKS` in `scripts/check-dist.mjs`: names
   assembled at run time, aliases of `open` or `location`, a query written with
   `history.replaceState`, a link the user clicks.
-- **Locked-down page:** `index.html` must carry a Content-Security-Policy that
+- **Locked-down pages:** each page must carry a Content-Security-Policy that
   lets the page load its own script and stylesheet and nothing else:
   `default-src 'none'`, `'self'` only in `script-src` and `style-src`, images
   only as `data:` URLs (the icon), `base-uri 'none'` and `form-action 'none'`,
@@ -140,7 +141,8 @@ whatever it is used for; who may author commits is decided in review.
 - **Licence notices:** the built script bundles the code of the runtime
   packages (Preact and Preact Signals, all MIT), whose licences ask that their
   copyright and permission notice go with every copy. The build writes them as
-  one comment at the top of the script, from each installed package's own
+  one comment at the top of the script that holds that code (the chunk both
+  pages share), from each installed package's own
   licence file: name, version, licence and copyright lines of each package,
   then each distinct licence text once. An update of a dependency therefore
   brings its own notice, and the build fails when the bundle holds code from
@@ -171,10 +173,11 @@ does not build again), serves it locally and drives it in Chromium with
 Playwright, at desktop size (1280x800) and phone size (375x812):
 
 - **No traffic, no errors:** during every test, the browser makes only plain
-  GET requests: the page itself as a document, the files in `assets/` as a
-  script or a stylesheet, never with a query string, each answered with the
-  right content type (the local server answers an unknown path with the page,
-  so a status of 200 alone proves nothing). No WebSockets, no console errors,
+  GET requests: the pages (`/`, `index.html`, `deuren.html`) as documents,
+  the files in `assets/` as a script or a stylesheet, never with a query
+  string, each answered with the right content type (the local server
+  answers an unknown path with the page, so a status of 200 alone proves
+  nothing). No WebSockets, no console errors,
   no Content-Security-Policy violations. `e2e/guard.spec.ts` checks the guard
   itself: it makes the page send its grades in an image request, navigate to
   `/?x=1` and load its own file as an image, and expects the guard to report
@@ -187,17 +190,22 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
   9" opens most of the building, the state in the address survives a reload,
   the language goes into the address only after it was chosen on the page, a
   card and the "How it works" dialog (from the header and from the footer)
-  open, carry a heading, close with Escape and give focus back.
+  open, carry a heading, close with Escape and give focus back. The doors view
+  (`e2e/doors.spec.ts`): the door states and the counter at the lowest, mixed
+  and highest grades, the step it names opens what it says, the card opens
+  from a door, a goal marks the sliders, the language switch, and the link to
+  the other view keeps the address after `#`, both ways.
 - **Grades from a link:** the notice appears when a link with grades is opened,
   not after a reload, and goes away when a slider moves; closing it moves focus
   to the first preset.
 - **Accessible:** no serious or critical findings (axe) on the main view, an
   open card, the "How it works" dialog and the link notice, in Dutch, English
-  and Ukrainian.
+  and Ukrainian, on both views.
 - **Fits the screen:** never any sideways scrolling, also with a wide system
   font. On desktop (1280x800 and 1366x768) neither the page nor the slider
   column scrolls. On phones (375x812, 375x667, 360x640, 320x568) the ground
-  floor of the building stays above the slider panel.
+  floor of the building, and the last group of doors, stay above the slider
+  panel.
 
 Data sent to the page's own host (for example the grades in the query string
 of an image request, which the host's logs would keep) is stopped in three
