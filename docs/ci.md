@@ -2,7 +2,7 @@
 
 The site makes a promise to children and parents: no accounts, no ads, no
 analytics, no cookies or storage, and no network requests while any of its
-three pages runs. CI exists to prove, on every change, that we ship the three
+four pages runs. CI exists to prove, on every change, that we ship the four
 pages and nothing else: no
 secrets, no passwords, no personal details, no files that do not belong there.
 
@@ -110,15 +110,19 @@ whatever it is used for; who may author commits is decided in review.
 
 `check:dist` audits the built site, the exact files that will be published:
 
-- **Only expected files:** the three pages, `index.html` (the floors view),
-  `deuren.html` (the doors view) and `onderbouw.html` (the onderbouw view),
-  and the JavaScript and CSS bundles in `assets/`. All three pages must be
-  there: a build without one of them is refused. Source maps, hidden files,
-  documents, JSON dumps, tests, images and any other page are refused, and so
-  is any file that nothing links to (except `index.html`, the entry;
-  `deuren.html` and `onderbouw.html` must be named by a script).
-- **Size budget:** JavaScript up to 150 kB, CSS up to 40 kB, the whole site up
-  to 400 kB. The measured sizes are printed on every run.
+- **Only expected files:** the four pages, `index.html` (the floors view),
+  `deuren.html` (the doors view), `onderbouw.html` (the onderbouw view) and
+  `bovenbouw.html` (the bovenbouw view), and the JavaScript and CSS bundles in
+  `assets/`. All four pages must be there: a build without one of them is
+  refused. Source maps, hidden files, documents, JSON dumps, tests, images and
+  any other page are refused, and so is any file that nothing links to (except
+  `index.html`, the entry; `deuren.html`, `onderbouw.html` and
+  `bovenbouw.html` must be named by a script).
+- **Size budget:** JavaScript up to 180 kB, CSS up to 40 kB, the whole site up
+  to 400 kB. The measured sizes are printed on every run. The JavaScript
+  budget counts all bundles together, and the texts of every page in all
+  three languages sit in one shared bundle; it was raised from 150 kB to
+  180 kB with the fourth page, whose texts alone add about 17 kB.
 - **Nothing private inside:** no paths from a developer's computer (home
   folders on macOS and Linux, Windows drive and network-share paths), no local
   or private network addresses or host names, no private keys, no source map
@@ -136,10 +140,11 @@ whatever it is used for; who may author commits is decided in review.
   `href` in element props is refused too, with one exception: the links
   between the pages, which every footer renders through one component. Each
   must have the exact shape the build writes, a template with the page
-  (`./`, `deuren.html` or `onderbouw.html`), a literal `#` and one name
+  (`./`, `deuren.html`, `onderbouw.html` or `bovenbouw.html`), a literal `#`
+  and one name
   (`` href:`deuren.html#${t}` ``). The page must be on the list
   `VIEW_LINK_PAGES`, whatever the shape check accepts, and the scripts may
-  name each page at most once, so they hold at most three such links; a
+  name each page at most once, so they hold at most four such links; a
   second link is reported with the file and position of both. Everything after a `#`
   is the fragment, which the browser never sends to a host, so that link
   carries nothing off the page, whatever the name holds. The end-to-end request guard (Job 3
@@ -190,7 +195,7 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
 
 - **No traffic, no errors:** during every test, the browser makes only plain
   GET requests: the pages (`/`, `index.html`, `deuren.html`,
-  `onderbouw.html`) as documents,
+  `onderbouw.html`, `bovenbouw.html`) as documents,
   the files in `assets/` as a script or a stylesheet, never with a query
   string, each answered with the right content type (the local server
   answers an unknown path with the page, so a status of 200 alone proves
@@ -202,7 +207,8 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
 - **No storage:** after dragging sliders, using the presets, opening a card,
   pinning a goal, switching languages and opening "How it works", and on the
   onderbouw view after every level and profile button, the keyboard, a card,
-  the dialog and the language switch, there are no cookies, nothing in local
+  the dialog and the language switch, and on the bovenbouw view after the
+  same and every subject box, there are no cookies, nothing in local
   or session storage, no IndexedDB databases, no service workers, no caches
   and nothing in the origin private file system.
 - **It works:** "all 3" opens exactly the five jobs that need no diploma, "all
@@ -218,8 +224,18 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
   and a profile, the level and profile buttons (also with the arrow keys,
   Home and End) change them, a vmbo direction closes no mbo door, the state
   survives a reload and a hash change and drops what is not its own, the card
-  gives focus back to its door, and the links between the three pages carry
-  the chosen language and nothing else.
+  gives focus back to its door, and the links between the pages carry
+  the chosen language and nothing else. The bovenbouw view
+  (`e2e/bovenbouw.spec.ts`): the doors and counts without a profile or
+  subject, the subject boxes change doors, counts and address (with the
+  keyboard too: each box is a tab stop that Space toggles), a `#` cell names
+  the profiles that admit, wo from havo is one step when the subjects meet
+  the vwo rule, a vmbo level hides the boxes and keeps the subjects out of the
+  address, the state survives a reload and a hash change and drops junk and
+  other pages' keys, the card names the programme, the pupil's own line, the
+  rule for every profile and the dates to apply (none for a job without a
+  diploma) and gives focus back, the language switch, and the links to and
+  from the other three pages carry the language only.
 - **Grades from a link:** the notice appears when a link with grades is opened,
   not after a reload, and goes away when a slider moves; closing it moves focus
   to the first preset. Switching views keeps it when the grades came from a
@@ -227,16 +243,18 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
   view-switch marker (`v=1`) is gone from the address once the page has loaded.
 - **Accessible:** no serious or critical findings (axe) on the main view, an
   open card, the "How it works" dialog and the link notice, in Dutch, English
-  and Ukrainian, on all three views.
+  and Ukrainian, on all four views.
 - **Fits the screen:** never any sideways scrolling. On desktop (1280x800
   and 1366x768) neither the page nor the slider column scrolls. On phones
   (375x812, 375x667, 360x640, 320x568) the ground floor of the building, and
-  the last group of doors, stay above the slider panel. The onderbouw view has
-  no slider panel and may scroll down; on desktop, on a tablet (768x1024) and
-  on phones nothing on it reaches past the right edge. The phone checks run on
-  all three views a second time with a wide system font (Verdana or DejaVu
-  Sans); on the onderbouw view the desktop sizes do too, since a wider Linux
-  font once pushed it past the edge at 900px.
+  the last group of doors, stay above the slider panel. The onderbouw and
+  bovenbouw views have no slider panel and may scroll down; on desktop
+  (1280x800, 1366x768, 900x700), on a tablet (768x1024) and on phones nothing
+  on them reaches past the right edge, in all three languages, and an open
+  bovenbouw card does not scroll sideways at 320px. The phone checks run on
+  all four views a second time with a wide system font (Verdana or DejaVu
+  Sans); on the onderbouw and bovenbouw views the desktop sizes do too, since
+  a wider Linux font once pushed the onderbouw view past the edge at 900px.
 
 Data sent to the page's own host (for example the grades in the query string
 of an image request, which the host's logs would keep) is stopped in three
