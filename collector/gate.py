@@ -22,8 +22,9 @@ Rules (the ids that findings and the self-test use):
   field-length  a field longer than its cap
   field-shape   a field outside its pattern or closed list of values
   range         an integer outside its range
-  phrase        generic phrasing of an embedded instruction in a free-text
-                field (see PHRASES)
+  phrase        generic phrasing of an embedded instruction in a field that
+                can carry words: a title, a profession or source id, a
+                version or a licence (see PHRASES)
   duplicate-key two rows (or JSON entries) with the same key
   reference     an extract row that names a profession or element the
                 mappings do not have, or another occupation code than the
@@ -112,11 +113,12 @@ FORBIDDEN = (
 )
 _FORBIDDEN_BYTES = tuple((name, seq.encode('ascii')) for name, seq in FORBIDDEN)
 
-# Generic phrasing of an embedded instruction, looked for in free-text fields.
-# The grammar is the guarantee: it keeps every field to letters, digits and a
-# few marks. What it lets through is words, so this list is a tripwire for the
-# planted controls and for the obvious cases, not a filter that can be relied
-# on. Each entry is words in this order, at most three other words apart; a
+# Generic phrasing of an embedded instruction, looked for in every field that
+# can carry words: titles, and ids, versions and licences, whose words are
+# joined by hyphens or full stops. The grammar is the guarantee: it keeps every
+# field to letters, digits and a few marks. What it lets through is words, so
+# this list is a tripwire for the planted controls and for the obvious cases,
+# not a filter that can be relied on. Each entry is words in this order, at most three other words apart; a
 # word ending in * matches any ending, one ending in (s) an optional s. Each
 # word is split by | so that no phrase stands in this file as text.
 PHRASES = (
@@ -311,7 +313,7 @@ def check_table(data: bytes, shape: shapes.TableShape, file: str) -> Table:
                 if not low <= int(field) <= high:
                     _record(out, Finding('range', file, number, start, f'{where}, {low} to {high}'))
                     good = False
-            if column.free_text and has_phrase(field):
+            if column.words and has_phrase(field):
                 _record(out, Finding('phrase', file, number, start, where))
                 good = False
         if not good:
@@ -376,7 +378,7 @@ def _is_int(value) -> bool:
     return isinstance(value, int) and not isinstance(value, bool)
 
 
-def _text(value, pattern: str, cap: int, file: str, out: list, where: str) -> bool:
+def _text(value, pattern: str, cap: int, file: str, out: list, where: str, words: bool = True) -> bool:
     if not isinstance(value, str):
         _record(out, Finding('json-shape', file, 0, 0, f'{where}: not text'))
         return False
@@ -385,6 +387,9 @@ def _text(value, pattern: str, cap: int, file: str, out: list, where: str) -> bo
         return False
     if not _fullmatch(pattern, value):
         _record(out, Finding('field-shape', file, 0, 0, where))
+        return False
+    if words and has_phrase(value):
+        _record(out, Finding('phrase', file, 0, 0, where))
         return False
     return True
 
@@ -408,7 +413,7 @@ def _sources(value, keys: tuple, file: str, out: list, where: str) -> None:
             if entry['id'] in seen:
                 _record(out, Finding('duplicate-key', file, 0, 0, f'{where}[].id'))
             seen.add(entry['id'])
-        _text(entry['sha256'], shapes.SHA256, 64, file, out, f'{where}[].sha256')
+        _text(entry['sha256'], shapes.SHA256, 64, file, out, f'{where}[].sha256', words=False)
         _text(entry['version'], shapes.VERSION, shapes.VERSION_MAX, file, out, f'{where}[].version')
         if 'licence' in keys:
             _text(entry['licence'], shapes.LICENCE, shapes.LICENCE_MAX, file, out, f'{where}[].licence')

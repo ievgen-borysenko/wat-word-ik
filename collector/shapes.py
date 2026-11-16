@@ -77,8 +77,9 @@ class Column:
     max_len: int
     pattern: str | None = None
     values: tuple[str, ...] | None = None
-    # Free text a person typed: also checked for embedded instructions.
-    free_text: bool = False
+    # Can carry words: a title, or an id of words joined by hyphens. Also
+    # checked for phrasing of an embedded instruction (gate.PHRASES).
+    words: bool = False
     # An integer whose range is SCALE_RANGES of the row's `scale` field.
     scaled: bool = False
 
@@ -105,7 +106,7 @@ class TableShape:
 EXTRACT = TableShape(
     role='extract',
     columns=(
-        Column('profession', 40, pattern=PROFESSION_ID),
+        Column('profession', 40, pattern=PROFESSION_ID, words=True),
         Column('soc', 10, pattern=SOC),
         Column('element', 8, pattern=ELEMENT),
         Column('scale', 2, values=SCALES),
@@ -120,9 +121,9 @@ EXTRACT = TableShape(
 PROFESSIONS = TableShape(
     role='professions',
     columns=(
-        Column('profession', 40, pattern=PROFESSION_ID),
+        Column('profession', 40, pattern=PROFESSION_ID, words=True),
         Column('soc', 10, pattern=SOC),
-        Column('title', 100, pattern=TITLE, free_text=True),
+        Column('title', 100, pattern=TITLE, words=True),
     ),
     key=('profession',),
     max_rows=200,
@@ -133,7 +134,7 @@ SUBJECTS = TableShape(
     role='subjects',
     columns=(
         Column('element', 8, pattern=ELEMENT),
-        Column('title', 100, pattern=TITLE, free_text=True),
+        Column('title', 100, pattern=TITLE, words=True),
         Column('subject', 14, values=SUBJECT_IDS + (NOT_MAPPED,)),
     ),
     key=('element',),

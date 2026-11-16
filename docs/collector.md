@@ -82,7 +82,7 @@ rules:
 | `field-length` | A field longer than its cap |
 | `field-shape` | A field outside its pattern or list of values |
 | `range` | A whole number outside its range |
-| `phrase` | In a title: generic phrasing of an embedded instruction, such as asking the reader to set aside what it was told or to show its hidden setup |
+| `phrase` | In a field that can carry words (a title, a profession or source id, a version, a licence): generic phrasing of an embedded instruction, such as asking the reader to set aside what it was told or to show its hidden setup, also with words joined by hyphens or full stops |
 | `duplicate-key` | Two rows with the same key |
 | `reference` | An extract row naming a profession or element that the mappings lack, or another occupation code than the professions mapping gives; two professions with one occupation code and different titles |
 | `rows` | An extract without exactly one row per profession, element and scale |
@@ -91,18 +91,23 @@ rules:
 | `canonical` | An emitted file that is not in canonical form |
 
 What the gate guarantees: a file that passes holds only what its shape
-allows. In the extract that is codes and whole numbers, so nothing in it can
-be read as an instruction, an address or markup. Titles are the one place for
-words, and there the grammar allows letters, digits, single spaces and the
-marks `, ' ( ) -` only.
+allows, and nowhere an address, markup or a character outside printable
+ASCII. Words can stand in two kinds of field. Titles allow letters, digits,
+single spaces and the marks `, ' ( ) -`. Identifiers allow words joined
+without spaces: a profession or source id (up to 40 characters: lower-case
+letters and digits, joined by single hyphens), a version (letters and digits
+joined by full stops) and a licence (letters and digits joined by full stops
+or hyphens). Every other field is a code or a whole number. The extract
+holds a profession id and otherwise codes and whole numbers.
 
 What it does not guarantee:
 
 - That the numbers are right. A plausible but wrong value passes; pinned
   hashes, range checks and review of the mappings address that, not the gate.
-- That a title holds no instruction. The phrase list is a tripwire for the
-  obvious cases and for the self-test, not a filter to rely on; the titles are
-  typed by a person and reviewed.
+- That a title or an identifier holds no instruction. The phrase list, which
+  every such field gets, is a tripwire for the obvious cases and for the
+  self-test, not a filter to rely on; titles and ids are typed by a person and
+  reviewed.
 - Anything about the raw files: those are the scan stage's (planned).
 
 ## Self-test
@@ -110,8 +115,9 @@ What it does not guarantee:
 `run.py gate` and `run.py emit` run the self-test first. It builds a small
 clean set, which must pass, and from it planted samples of every rule (an
 invisible character, an address, markup, a phrase, a value out of range, a
-missing row, JSON with a fraction, and so on), each of which must be refused
-by its rule in its file. If the clean set is refused, or one sample is not,
+missing row, JSON with a fraction, and so on), and one sample per entry of
+the phrase list with a word put between its words. Each must be refused by its
+rule in its file. If the clean set is refused, or one sample is not,
 the gate refuses everything and the command exits 3.
 
 The samples are put together at run time from fragments and code points, as
