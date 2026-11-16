@@ -31,7 +31,7 @@ test('loads on havo without a profile or subjects: the onderbouw doors, and a bo
   for (const [key, n] of [['nt', 28], ['ng', 27], ['em', 27], ['cm', 23]] as const) {
     await expect(profile(page, key).locator('.choice-note')).toHaveText(`opent ${n} van 36`);
   }
-  await expect(page.getByRole('group', { name: 'Mijn vakken naast het profiel' })).toBeVisible();
+  await expect(page.getByRole('group', { name: 'Mijn examenvakken naast mijn profiel' })).toBeVisible();
   await expect(page.locator('.choice-extras input[type="checkbox"]')).toHaveCount(5);
   for (const key of ['wiskunde-a', 'wiskunde-b', 'natuurkunde', 'scheikunde', 'biologie']) await expect(box(page, key)).not.toBeChecked();
   await expect(page.getByRole('checkbox', { name: 'wiskunde B' })).toBeVisible();
@@ -196,7 +196,7 @@ test('a door opens the card: the programme, your line, the rule in words, the ch
   ]);
   await expect(card.getByRole('heading', { level: 3, name: 'Aanmelden' })).toBeVisible();
   await expect(card.locator('.apply-lines li')).toHaveText([
-    'Voor een bachelor die in september begint, meld je je uiterlijk 1 mei aan via Studielink.',
+    'Voor een bacheloropleiding die in september begint, meld je je uiterlijk 1 mei aan via Studielink.',
     'Sommige opleidingen hebben een beperkt aantal plaatsen en selecteren: daarvoor meld je je uiterlijk 15 januari aan.',
     'Of een opleiding selecteert of een andere datum heeft, staat op de pagina van de opleiding zelf.',
     'Landelijke aanmelddata, gecontroleerd op rijksoverheid.nl in november 2026.',
@@ -214,7 +214,7 @@ test('a door opens the card: the programme, your line, the rule in words, the ch
   await expect(card.locator('.admission-lines')).toHaveCount(0);
   await expect(card.locator('.apply-lines li')).toHaveText([
     'Voor het mbo meld je je uiterlijk 1 april aan bij de mbo-school zelf.',
-    'Sommige opleidingen vragen meer of hebben een beperkt aantal plaatsen: kijk op de site van de school.',
+    'Sommige opleidingen stellen extra eisen of hebben een beperkt aantal plaatsen: kijk op de site van de school.',
     'Landelijke aanmelddata, gecontroleerd op rijksoverheid.nl in november 2026.',
   ]);
   await card.locator('.card-close').click();
@@ -325,7 +325,7 @@ test('the language switch changes the texts, and the address keeps the subjects'
   await expect(box(page, 'natuurkunde').locator('xpath=..')).toHaveText('physics');
   await expect.poll(() => hash(page)).toBe('#n=vwo&p=ng&x=na');
   await page.getByRole('button', { name: 'NL', exact: true }).click();
-  await expect(page.locator('.choice-extras legend')).toHaveText('Mijn vakken naast het profiel');
+  await expect(page.locator('.choice-extras legend')).toHaveText('Mijn examenvakken naast mijn profiel');
   await expect(box(page, 'natuurkunde').locator('xpath=..')).toHaveText('natuurkunde');
   await expect(page.locator('html')).toHaveAttribute('lang', 'nl');
   await expect.poll(() => hash(page)).toBe('#n=vwo&p=ng&x=na&l=nl');
