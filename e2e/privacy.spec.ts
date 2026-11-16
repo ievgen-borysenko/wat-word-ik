@@ -125,3 +125,33 @@ test('nothing is stored on the onderbouw view after using every control', async 
   await expect.poll(() => page.evaluate(() => location.hash)).toBe('#n=havo&l=en');
   await expectNothingStored(page);
 });
+
+// And on the bovenbouw view: the buttons, every subject box on and off, the card, the
+// dialog and the language switch, then nothing stored and only its own hash written.
+test('nothing is stored on the bovenbouw view after using every control', async ({ page }) => {
+  await page.goto('/bovenbouw.html');
+  await expect(page.locator('.door')).toHaveCount(TOTAL_TILES);
+  for (const level of ['gltl', 'havo', 'vwo']) {
+    await page.locator(`.choice-level [data-key="${level}"]`).click();
+    for (const key of await page.locator('.choice-profile [role="radio"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-key')))) {
+      await page.locator(`.choice-profile [data-key="${key}"]`).click();
+    }
+  }
+  const boxes = page.locator('.choice-extras input[type="checkbox"]');
+  await expect(boxes).toHaveCount(5);
+  for (let i = 0; i < 5; i++) await boxes.nth(i).check();
+  await boxes.first().focus();
+  await page.keyboard.press('Space');
+  await expect(boxes.first()).not.toBeChecked();
+
+  await page.locator('.door').nth(3).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.locator('.help-btn').click();
+  await expect(page.locator('.about-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  for (const code of ['NL', 'UA', 'EN']) await page.getByRole('button', { name: code, exact: true }).click();
+
+  await expect.poll(() => page.evaluate(() => location.hash)).toBe('#n=vwo&p=cm&x=wb.na.sk.bi&l=en');
+  await expectNothingStored(page);
+});
