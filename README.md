@@ -62,9 +62,9 @@ ship the pages and nothing else:
   maintainer's co-author line and Dependabot's sign-off, and no generated-by
   footers;
 - the built site is audited in a separate job that installs no dependencies,
-  so no package code can touch the audit: it holds only the two pages
-  (`index.html`, the building, and `deuren.html`, the doors) and their
-  bundles, stays within a size budget, contains no local paths, private
+  so no package code can touch the audit: it holds both pages
+  (`index.html`, the building, and `deuren.html`, the doors), their bundles
+  and nothing else, stays within a size budget, contains no local paths, private
   addresses, e-mail addresses or keys, uses no browser feature that sends or
   stores data and no way to send data to its own host, keeps on each page a
   Content-Security-Policy that lets it load its own scripts and stylesheets

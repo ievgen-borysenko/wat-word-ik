@@ -7,7 +7,8 @@
 //
 //   1. paths    every shipped file is on an allow-list (the pages index.html and
 //               deuren.html and the JS and CSS bundles; no source maps, hidden
-//               files, JSON dumps, docs, tests, images) and is a regular file;
+//               files, JSON dumps, docs, tests, images) and is a regular file,
+//               and both pages are there;
 //   2. refs     every file except index.html is referenced by another shipped
 //               file, and every local reference in a page exists;
 //   3. size     JS, CSS and the whole tree stay within a budget;
@@ -17,7 +18,8 @@
 //   5. runtime  the JS names no browser API that talks to the network, stores
 //               data or starts a worker, and no way to send data to the page's
 //               own host without one (an image request, a navigation, a URL
-//               written into an element, a string that starts a query string);
+//               written into an element, a link other than the one to the other
+//               view, a string that starts a query string);
 //   6. html     each page carries a Content-Security-Policy meta that lets the
 //               page load its own script and stylesheet and nothing else
 //               (default-src 'none'); it loads nothing from another host, has
@@ -48,8 +50,9 @@ export const SHIPPED_PATHS = [
 ];
 
 /**
- * The HTML pages: index.html (the floors view, required) and deuren.html (the doors
- * view). Every page that is shipped gets the checks of checkPage.
+ * The HTML pages: index.html (the floors view) and deuren.html (the doors view).
+ * Both are required: a tree without one of them is refused ('missing'). Each gets
+ * the checks of checkPage.
  */
 export const PAGES = ['index.html', 'deuren.html'];
 
@@ -291,18 +294,27 @@ export const RUNTIME_APIS = [
  *     .formAction, .poster, .ping, .search), also with a literal in brackets;
  *   - URL attributes as keys of element props (src:, srcset:, poster:, ping:,
  *     formAction:), the form that JSX compiles to;
+ *   - links as keys of element props (href:, quoted or not), with one exception:
+ *     the link to the other view, in the exact shape the build writes it
+ *     (VIEW_LINK_HREF_RE below), at most VIEW_LINK_HREFS_MAX times in all the
+ *     scripts together. That shape is a template literal with a literal page
+ *     (deuren.html or ./), a literal `#` and one name; everything after a `#`
+ *     is the fragment, which the browser never sends to a host, so that link
+ *     carries nothing off the page, whatever the name holds (see hrefProps);
  *   - a string literal that starts a query string ("?key=", "/path?key=",
  *     "./x?key=", also as a template literal) where an expression begins.
  * It does NOT find a property or attribute name assembled at run time
- * (el[k] = v, setAttribute(k, v)), a URL built from character codes, aliasing
- * of open or location, history.pushState/replaceState with a query (the page
- * writes its own hash with replaceState; a query written there reaches the
- * host on the next reload), or a link the user clicks. The CSP (default-src
- * 'none') makes the browser block image, media, frame and object loads in
- * any case; a navigation is not a load that CSP can block, so for those the
- * end-to-end guard, which refuses every request with a query string, is the
- * remaining layer, for the paths the tests take. A UI string containing
- * "Image", "Audio" or "open(" is reported as well: reword the string.
+ * (el[k] = v, setAttribute(k, v), a computed key in element props), a URL
+ * built from character codes, aliasing of open or location,
+ * history.pushState/replaceState with a query (the page writes its own hash
+ * with replaceState; a query written there reaches the host on the next
+ * reload), or a link written as markup text (innerHTML and the like). The CSP
+ * (default-src 'none') makes the browser block image, media, frame and object
+ * loads in any case; a navigation is not a load that CSP can block, so for
+ * those the end-to-end guard, which refuses every request with a query
+ * string, is the remaining layer, for the paths the tests take. A UI string
+ * containing "Image", "Audio" or "open(" is reported as well: reword the
+ * string.
  */
 /** @type {[name: string, pattern: RegExp][]} */
 export const REQUEST_SINKS = [
@@ -319,6 +331,43 @@ export const REQUEST_SINKS = [
   ['URL attribute in element props', /(?<![\w$.-])(["'`]?)(?:src|srcset|poster|ping|formAction|formaction)\1\s*:/],
   ['query string literal', /(?<=(?:^|[=(,:+[{;!&|?>]|\breturn)\s*)(["'`])(?:\.{0,2}\/[^"'`\s?]*)?\?[A-Za-z_][\w.-]*=/],
 ];
+
+/** `href` as a key of element props, quoted or not, matched as the URL attributes above are. */
+export const HREF_PROP_RE = /(?<![\w$.-])(["'`]?)href\1\s*:/g;
+
+/**
+ * The only `href` prop allowed, tried where HREF_PROP_RE found the key: the link
+ * to the other view as the build writes it (src/ui/OtherViewLink.tsx), for example
+ * href:`deuren.html#${t}`. The key unquoted, no space, a template literal that
+ * holds exactly a literal page (deuren.html or ./), a literal `#` and one
+ * identifier or member expression, and then the end of the value (`,` or `}`):
+ * no query string, no other text, no second expression, no concatenation. The
+ * minifier may rename the identifier. When a build writes the link in any other
+ * shape (a changed source or minifier), this audit refuses it and the real-build
+ * test in check-dist.test.mjs fails, so the new shape is reviewed before it ships.
+ */
+export const VIEW_LINK_HREF_RE = /href:`(?:deuren\.html|\.\/)#\$\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\}`(?=[,}])/y;
+
+/** The links to the other view the scripts may hold in all: the real build has two, one on each page. */
+export const VIEW_LINK_HREFS_MAX = 2;
+
+/**
+ * The `href` props of one script, by position: the links to the other view
+ * (VIEW_LINK_HREF_RE) and every other one, which is refused.
+ * @param {string} text
+ * @returns {{ viewLinks: number[], others: number[] }}
+ */
+export function hrefProps(text) {
+  /** @type {number[]} */
+  const viewLinks = [];
+  /** @type {number[]} */
+  const others = [];
+  for (const m of text.matchAll(HREF_PROP_RE)) {
+    VIEW_LINK_HREF_RE.lastIndex = m.index;
+    (VIEW_LINK_HREF_RE.test(text) ? viewLinks : others).push(m.index);
+  }
+  return { viewLinks, others };
+}
 
 /** Attributes whose value is a URL that the browser may load or navigate to. */
 const URL_ATTRS = new Set([
@@ -732,15 +781,16 @@ export function auditDist(dir, runtime = []) {
       violations.push({ file: e.path, rule: 'path', message: 'not on the list of shipped paths (index.html, deuren.html, assets/*.js, assets/*.css)' });
     }
   }
-  if (!files.some((f) => f.path === 'index.html')) {
-    violations.push({ file: 'index.html', rule: 'path', message: 'missing' });
+  for (const page of PAGES) {
+    if (!files.some((f) => f.path === page)) violations.push({ file: page, rule: 'path', message: 'missing' });
   }
 
   /** @type {Map<string, string>} */
   const texts = new Map(files.map((f) => [f.path, readFileSync(join(root, f.path), 'utf8')]));
   const shipped = new Set(files.map((f) => f.path));
 
-  // 2. refs: every file except index.html is named by another shipped file.
+  // 2. refs: every file except index.html is named by another shipped file. index.html
+  // is the entry, and the link back to it is `./`; deuren.html must be linked by name.
   for (const f of files) {
     if (f.path === 'index.html') continue;
     const named = [...texts].some(([other, text]) => other !== f.path && text.includes(f.path));
@@ -757,6 +807,7 @@ export function auditDist(dir, runtime = []) {
   }
 
   // 4. content, 5. runtime
+  let viewLinks = 0;
   for (const [path, text] of texts) {
     /** @param {string} rule @param {string} message */
     const add = (rule, message) => violations.push({ file: path, rule, message });
@@ -782,6 +833,15 @@ export function auditDist(dir, runtime = []) {
       for (const [name, re] of REQUEST_SINKS) {
         const m = text.match(re);
         if (m && m.index !== undefined) add('request', `${name} at ${where(text, m.index, m[0].length)}`);
+      }
+      const hrefs = hrefProps(text);
+      for (const at of hrefs.others) {
+        add('request', `link in element props (href) that is not the link to the other view at ${where(text, at, 5)}`);
+      }
+      for (const at of hrefs.viewLinks) {
+        if (++viewLinks > VIEW_LINK_HREFS_MAX) {
+          add('request', `link to the other view beyond the ${VIEW_LINK_HREFS_MAX} the pages render at ${where(text, at, 5)}`);
+        }
       }
     }
   }

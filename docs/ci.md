@@ -111,8 +111,10 @@ whatever it is used for; who may author commits is decided in review.
 
 - **Only expected files:** the two pages, `index.html` (the floors view) and
   `deuren.html` (the doors view), and the JavaScript and CSS bundles in
-  `assets/`. Source maps, hidden files, documents, JSON dumps, tests, images
-  and any other page are refused, and so is any file that nothing links to.
+  `assets/`. Both pages must be there: a build without one of them is
+  refused. Source maps, hidden files, documents, JSON dumps, tests, images
+  and any other page are refused, and so is any file that nothing links to
+  (except `index.html`, the entry; `deuren.html` must be named by a script).
 - **Size budget:** JavaScript up to 150 kB, CSS up to 40 kB, the whole site up
   to 400 kB. The measured sizes are printed on every run.
 - **Nothing private inside:** no paths from a developer's computer (home
@@ -129,13 +131,18 @@ whatever it is used for; who may author commits is decided in review.
   `open()`, no direct writes of URL properties (`src`, `href`, `srcset` and the
   like), no `src`, `srcset`, `poster`, `ping` or `formAction` in element props,
   and no string that starts a query string (`"?key="`, `"/page?key="`). An
-  `href` in element props is allowed: each page renders one link, to the
-  other view, whose address it builds at run time from its own hash. Links
-  the user clicks are covered by the end-to-end request guard (Job 3 below),
-  for the links the tests follow. What this scan cannot see is listed in the
-  comment above `REQUEST_SINKS` in `scripts/check-dist.mjs`: names assembled
-  at run time, aliases of `open` or `location`, a query written with
-  `history.replaceState`, a link the user clicks.
+  `href` in element props is refused too, with one exception: the link to
+  the other view, which each page renders once. It must have the exact shape
+  the build writes, a template with the page (`deuren.html` or `./`), a
+  literal `#` and one name (`` href:`deuren.html#${t}` ``), and the scripts
+  may hold at most two such links. Everything after a `#` is the fragment,
+  which the browser never sends to a host, so that link carries nothing off
+  the page, whatever the name holds. The end-to-end request guard (Job 3
+  below) still refuses any request with a query string, for the links the
+  tests follow. What this scan cannot see is listed in the comment above
+  `REQUEST_SINKS` in `scripts/check-dist.mjs`: names assembled at run time,
+  aliases of `open` or `location`, a query written with
+  `history.replaceState`, a link written as markup text.
 - **Locked-down pages:** each page must carry a Content-Security-Policy that
   lets the page load its own script and stylesheet and nothing else:
   `default-src 'none'`, `'self'` only in `script-src` and `style-src`, images
