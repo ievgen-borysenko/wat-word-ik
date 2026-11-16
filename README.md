@@ -5,7 +5,7 @@ up) that shows **why** to study and **what** to study. On the first page, drag t
 subjects (1-10, the Dutch grade scale) and watch a building of 36 professions
 light up or go dark. Click a profession to see what you need to know for it.
 
-![The page in use: Maths goes from 4 to 8 and the open professions go from 16 to 28 of 36; Dutch goes from 7 to 4 and nine of them go dark again; the card of the primary school teacher then shows Dutch 4 against the 7 it needs.](docs/demo.gif)
+![A short tour of the four pages: in the building, Maths goes from 4 to 8 and the open professions go from 16 to 28 of 36; the same grades as doors, where Dutch goes from 7 to 4 and nine doors close again; the onderbouw page, where vwo and Nature & Health open 28 doors instead of 23; the bovenbouw page, where vwo and Culture & Society open 26 doors and maths A as an exam subject opens two more.](docs/demo.gif)
 
 Try it: <https://ievgen-borysenko.github.io/wat-word-ik/>
 
