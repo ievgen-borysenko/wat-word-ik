@@ -1,6 +1,6 @@
 import { batch, computed, effect, signal } from '@preact/signals';
 import { PROFESSIONS } from '../data/professions';
-import { decodeRouteHash, encodeRouteHash, langFragment } from '../engine/hash';
+import { decodeRouteHash, encodeRouteHash, langFragment, type RouteHashState } from '../engine/hash';
 import { isVmbo, profileCounts, routeCounts, routeOf, validProfile, type ProfileCount, type RouteCounts, type RouteView } from '../engine/route';
 import type { SchoolLevel, SchoolProfile } from '../engine/types';
 import { HTML_LANG } from '../i18n';
@@ -11,6 +11,10 @@ import { HASH_DELAY_MS, lang, langChosen, pageTitle } from './store';
  * signals and in the URL hash only (`#n=havo&p=nt&l=nl`, see engine/hash.ts). The
  * language, its switch and the "How it works" flag are the ones in store.ts, which
  * reads `l` from the same hash. Nothing is written to cookies, storage or any server.
+ *
+ * The bovenbouw view (bovenbouw.html) reads the same `n` and `p` and uses the level,
+ * the profile, the open card and the memory of each family from here; its own subjects,
+ * doors and hash are in examStore.ts. Each page starts only its own sync.
  */
 
 const initial = decodeRouteHash(typeof location === 'undefined' ? '' : location.hash);
@@ -66,6 +70,19 @@ export function setProfile(next: SchoolProfile | null): void {
   });
 }
 
+/** A hash change: the level, the profile (remembered for its family) and a language that came with it. */
+export function applyRouteHash(d: RouteHashState): void {
+  batch(() => {
+    level.value = d.level;
+    profile.value = d.profile;
+    remember(d.level, d.profile);
+    if (d.lang) {
+      lang.value = d.lang;
+      langChosen.value = true;
+    }
+  });
+}
+
 /** The hash this page writes for its state. */
 export const routeHash = computed(() =>
   encodeRouteHash({ level: level.value, profile: profile.value, lang: langChosen.value ? lang.value : null }),
@@ -100,16 +117,5 @@ export function startRouteSync(): void {
     }, HASH_DELAY_MS);
   });
 
-  window.addEventListener('hashchange', () => {
-    const d = decodeRouteHash(location.hash);
-    batch(() => {
-      level.value = d.level;
-      profile.value = d.profile;
-      remember(d.level, d.profile);
-      if (d.lang) {
-        lang.value = d.lang;
-        langChosen.value = true;
-      }
-    });
-  });
+  window.addEventListener('hashchange', () => applyRouteHash(decodeRouteHash(location.hash)));
 }

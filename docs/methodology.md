@@ -4,16 +4,20 @@
 > (requirements, levels, pay, the vmbo directions) was made up for this
 > prototype to make the picture readable. It is approximate demo data, not
 > real admission rules and not career advice. The exception is the admission
-> by school profile to hbo and wo on the onderbouw page: it was checked
-> against the Dutch admission regulation (Ratho) of 1 September 2026; see
-> [sources.md](sources.md).
+> to hbo and wo, by school profile on the onderbouw page and by profile and
+> exam subject on the bovenbouw page: it was checked against the Dutch
+> admission regulation (Ratho) of 1 September 2026. The national dates to
+> apply on the bovenbouw page were checked on rijksoverheid.nl and in the
+> Ratho; see [sources.md](sources.md).
 
 ## What the pages show
 
-The site has three pages. The first two, for groep 6-8 of primary school,
+The site has four pages. The first two, for groep 6-8 of primary school,
 answer one question: *with grades like these, which professions are open to
 you?* The third, for klas 1-3 of secondary school, asks the same of a school
-level and a profile (see "Third page: onderbouw" below). Each shows what is
+level and a profile (see "Third page: onderbouw" below). The fourth, for the
+upper years after the profile choice, adds the exam subjects a pupil has on
+top of the profile (see "Fourth page: bovenbouw" below). Each shows what is
 **open**, never what you *will become*, and none shows probabilities.
 
 ## Inputs
@@ -132,9 +136,14 @@ The profession's floor stays the source of its diploma level:
 | 4 (wo) | closed: from havo up | closed: from havo up | direct profile: one step via vwo 5 or an hbo first year (propedeuse); else closed | by profile |
 
 A wo programme where no profile admits without an extra subject
-(Geneeskunde, Diergeneeskunde) is closed from vmbo and from havo "from vwo
-up": from havo every profile is two steps short. At vwo such a door names the
-profiles that admit with one extra subject.
+(Geneeskunde, Diergeneeskunde) is closed from vmbo "from vwo up". From havo,
+the profiles that admit with one extra subject (N&T, N&G) are two steps short,
+and so is the level alone without a profile: the door says "from vwo up". A
+profile that the regulation gives no right to admission (`#`: E&M and C&M
+there) names the profiles that admit ("with N&T or N&G"), from havo as at vwo,
+because vwo would not open the door for it; the card says the same ("another
+profile is needed"). At vwo such a door names the profiles that admit with one
+extra subject.
 
 "By profile" uses the admission data of each hbo and wo profession: the
 profiles that admit directly are **open**; a profile that one extra exam
@@ -146,8 +155,8 @@ levels below). From havo to wo with a profile that would also need an extra
 subject is two steps, so closed. The card's admission section follows the
 profession and the level: "from havo" for hbo below vwo, "from vwo" for hbo
 at vwo and for wo; at havo a wo card with a direct profile adds that vwo 5 or
-an hbo first year comes first (with no direct profile the door is closed
-"from vwo up" and the card leaves that line out).
+an hbo first year comes first (with no direct profile the card leaves that
+line out).
 
 Two simplifications, both the stricter reading:
 
@@ -175,7 +184,8 @@ vmbo-gl/tl shows the same hbo door one step away via mbo 4. From vmbo-gl/tl,
 mbo 4 is the normal next school; for a havo or vwo pupil it is a route of
 several years, not one extra step, and showing it would erase what the
 profile choice changes. Every closed door names a level or profile that does
-reach it. Unit tests check all of this for every profession.
+reach it; from havo, for Geneeskunde and Diergeneeskunde, the profiles named
+reach it from vwo up. Unit tests check all of this for every profession.
 
 An hbo programme has two rules, because the regulation has a table for
 havo pupils and one for vwo pupils: at havo (and on the card at the vmbo
@@ -191,6 +201,90 @@ Ratho row of one programme per profession, and `admission.source` names it;
 programme stands for a profession (Built Environment for the construction
 engineer, Technische Informatica for the software engineer, Natuurkunde for
 the scientist) is our own editorial choice, not part of the regulation.
+
+## Fourth page: bovenbouw
+
+`bovenbouw.html` is for the upper years of secondary school, after the
+profile choice and before the choice of a study. The onderbouw page judges a
+profile before any subject is chosen; here the pupil knows which exam
+subjects they take, and the page holds them against the full rule of each hbo
+and wo programme. The input is the same two rows of buttons, plus, at havo
+and vwo only, a box for each of five exam subjects the pupil may take on top
+of the profile: wiskunde A, wiskunde B, natuurkunde, scheikunde and biologie.
+No grades, no names; the profile may stay "not chosen yet".
+
+**The rule of a cell.** Every Ratho cell of an hbo or wo programme is also
+written by hand as a typed rule next to its text (`source.rules` in
+`src/data/professions.ts`), never parsed from the text when the page runs:
+
+- `*`: the profile admits;
+- `#`: the profile gives no right to admission (an institution may still
+  admit after an investigation of what the pupil knows);
+- otherwise an AND of OR-groups: each group needs one of its subjects. The
+  cell `(wisA of wisB) + (nat of nlt of o&o of PgP-T)` is two groups, `[wiskunde
+  A, wiskunde B]` and `[natuurkunde, nlt, o&o, PgP-T]`.
+
+A data test reads every cell's text with a small parser of its own and checks
+that it says the same as the typed rule, that a typed cell is `*` exactly
+where the profile is in `direct`, that a cell of one group holds the profile's
+`bridge` subject and any other cell has none, and that every group holds at
+least one exam subject, so the boxes can always meet it.
+
+**Judging** (`src/engine/exam.ts`). A group is met when the pupil has one of
+its exam subjects. Against the cell of the pupil's profile at the pupil's
+level:
+
+- every group met (or `*`, or a programme without a row): **open**;
+- exactly one group missing: **one step more**, and the door names that
+  group's exam subjects ("extra vak natuurkunde", or two subjects as
+  alternatives);
+- more groups missing: **not on this route** for now, and the door names what
+  is missing ("nog nodig: (wiskunde A of wiskunde B) en natuurkunde");
+- `#`: **not on this route** for now, and the door names the profiles that
+  admit.
+
+nlt, o&o and PgP-T are not boxes: they are not general exam subjects of every
+school. A group is met only by its exam subjects, so a pupil who takes nlt
+sees that group as missing; the card names these three in words where the
+rule mentions them and says that they count where the rule names them.
+
+hbo follows the havo rule at havo and the vwo rule (`admission.vwo`) at vwo,
+as on the onderbouw page; wo follows the vwo rule. Below the programme's level
+the page keeps the onderbouw routing, shared in one function
+(`routeWith` in `src/engine/route.ts`): mbo 2 first from vmbo-bb/kb, via mbo
+4 or havo 4 from vmbo-gl/tl. wo from havo is one step (vwo 5 or an hbo first
+year) when the profile with the pupil's subjects meets the vwo rule.
+Otherwise the door is closed and names what the vwo rule still misses: the
+subjects, even a single one, since a subject and vwo 5 are two steps
+(Natuurkunde with N&G: "nog nodig: natuurkunde en wiskunde B"; ticking both
+makes it the one step), or for `#` the profiles that admit. Only without a
+profile does a closed wo door at havo say "from vwo up". The vmbo levels have no boxes and show
+the onderbouw doors; the subjects ticked at havo or vwo stay in memory, out of
+the address, and come back when the level does.
+
+Without a profile, havo and vwo show what the level alone decides, as on the
+onderbouw page, now with the pupil's subjects: open when every profile opens
+it, else one step more "with N&T or N&G". Each profile button counts the
+doors it opens with the ticked subjects. Without any subject ticked every door
+is in the same state as on the onderbouw page (from havo a closed wo door may
+name subjects where the onderbouw page names a profile or the level); ticking
+a subject never closes a door. Unit tests check both for every profession,
+level and profile.
+
+**The card** names the profession, the programme of the Ratho row, the
+pupil's own line ("Met C&M en wiskunde A heb je nog nodig: natuurkunde"), the
+rule for every profile in words, and the existing line on what it was checked
+against. A card of an mbo, hbo or wo profession also says when to apply:
+
+- a bachelor's programme (hbo or wo) that starts in September: through
+  Studielink by 1 May;
+- a programme with a limited number of places that selects (numerus fixus):
+  by 15 January;
+- mbo: by 1 April, at the mbo school itself.
+
+These are national dates (see [sources.md](sources.md)). Which programmes
+select differs per institution and per year, so the page names no programme
+as selective; the card says to check the programme's own page.
 
 ## Privacy
 
@@ -212,8 +306,15 @@ from the address on its first write. The links between the onderbouw page
 and the other two carry only the chosen language (`#l=nl`), never grades, a
 goal, a level or a profile.
 
+The bovenbouw page adds one key (`#n=vwo&p=ng&x=wb.na&l=nl`): `x` holds the
+ticked exam subjects as short codes joined by a dot (`wa` wiskunde A, `wb`
+wiskunde B, `na` natuurkunde, `sk` scheikunde, `bi` biologie), always written
+in that order, read in any order, and left out when no box is ticked or the
+level is vmbo. Unknown codes are dropped. Its links to the other three pages,
+and theirs to it, carry only the chosen language as well.
+
 The hosting provider serves the files and sees an ordinary page request, like
-for any web page, but never the grades, the goal, the level or the profile: browsers do not send the
+for any web page, but never the grades, the goal, the level, the profile or the subjects: browsers do not send the
 part after `#`. The address, with that part, stays in the browser history like
 any other page.
 
@@ -235,7 +336,8 @@ the other view does not show it.
 - **Crafted links.** A link can only choose among known values: ten grades
   from 1 to 10, one goal from the list of professions and one of the three
   languages; on the onderbouw page one of the four levels, one profile of
-  that level and a language. Anything else falls back to the defaults
+  that level and a language; on the bovenbouw page the same, plus any set of
+  the five exam subjects. Anything else falls back to the defaults
   (`src/engine/hash.ts` and its tests). A link cannot put text or code on the
   page. A link that carries the view-switch marker by hand hides the "came
   from a link" line for that visit; it changes nothing else.

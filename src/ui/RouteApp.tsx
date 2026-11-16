@@ -1,8 +1,9 @@
+import type { ComponentChildren, JSX } from 'preact';
 import { useRef } from 'preact/hooks';
 import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
 import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from '../data/secondary';
 import { groupByField } from '../engine/doors';
-import { admissionAt, fitOf, isVmbo, type RouteView } from '../engine/route';
+import { admissionAt, fitOf, isVmbo, type ProfileCount, type RouteCounts, type RouteView } from '../engine/route';
 import {
   HAVO_VWO_PROFILES,
   LEVELS,
@@ -12,19 +13,24 @@ import {
   type SchoolLevel,
   type SchoolProfile,
 } from '../engine/types';
-import { HTML_LANG, t } from '../i18n';
+import { HTML_LANG, t, type MessageKey } from '../i18n';
 import { euros, floorAbout, floorLabel, shortName } from './format';
 import { Header } from './Header';
 import { openedBy, useModalDialog } from './modal';
 import { PageLink } from './OtherViewLink';
 import { counts, level, linkFragment, profile, routeViews, selected, setLevel, setProfile, totals } from './routeStore';
-import { andList, doorLine, fitText, profileList, profileShort, stateClass, stateText, stepsText } from './routeText';
+import { andList, doorLine, groupsText, profileList, profileShort, stateClass, stateText, stepsText } from './routeText';
 import { aboutOpen, lang } from './store';
 
 /*
  * The onderbouw view (onderbouw.html): klas 1-3 of secondary school. Two rows of
  * buttons (school level, profile) and the same professions as doors, each open, one
  * step more, or not on this route. The routing is in engine/route.ts.
+ *
+ * The bovenbouw view (ExamApp.tsx) is built from the same parts, exported here: the
+ * rows of buttons, the summary, the doors, the card and "How it works". They read the
+ * level, the profile and the open card from routeStore.ts, which both views share, and
+ * take the doors and counts of their own view as props.
  */
 
 interface Choice {
@@ -37,7 +43,7 @@ interface Choice {
  * A row of buttons with radio-group semantics: one tab stop (the checked button), the
  * arrow keys, Home and End move the choice, and the choice follows focus.
  */
-function RadioRow({
+export function RadioRow({
   id,
   title,
   choices,
@@ -112,22 +118,26 @@ function RadioRow({
 }
 
 /** The key of "not chosen yet" in the profile row. */
-const NONE = 'none';
+export const NONE = 'none';
 
-function profileLabel(p: SchoolProfile, l: (typeof lang)['value']): string {
+export function profileLabel(p: SchoolProfile, l: (typeof lang)['value']): string {
   return (HAVO_VWO_PROFILES as readonly string[]).includes(p)
     ? PROFILE_NAMES[p as HavoVwoProfile].name[l]
     : DIRECTION_NAMES[p as keyof typeof DIRECTION_NAMES][l];
 }
 
-function ChoicePanel() {
+/**
+ * The panel: the level row, the profile row with the count of each profile, then
+ * `children` (the bovenbouw view puts its subject boxes there) and the hint.
+ */
+export function ChoicePanel({ counts, hint, children }: { counts: readonly ProfileCount[]; hint: string; children?: ComponentChildren }) {
   const l = lang.value;
   const lv = level.value;
   const total = PROFESSIONS.length;
   const mbo = PROFESSIONS.filter((p) => p.level === 1 || p.level === 2).length;
   const profileChoices: Choice[] = [
     { key: NONE, label: t(l, 'route.profile.none') },
-    ...counts.value.map((c) => ({
+    ...counts.map((c) => ({
       key: c.profile,
       label: profileLabel(c.profile, l),
       note:
@@ -155,14 +165,14 @@ function ChoicePanel() {
         value={profile.value ?? NONE}
         onChoose={(key) => setProfile(key === NONE ? null : (key as SchoolProfile))}
       />
-      <p class="route-hint">{t(l, isVmbo(lv) ? 'route.hint.vmbo' : 'route.hint.none')}</p>
+      {children}
+      <p class="route-hint">{hint}</p>
     </section>
   );
 }
 
-function RouteSummary() {
+export function RouteSummary({ totals: c }: { totals: RouteCounts }) {
   const l = lang.value;
-  const c = totals.value;
   const p = profile.value;
   const text = t(l, 'route.summary', { open: c.open, detour: c.detour, closed: c.closed });
   const chosen =
@@ -179,7 +189,7 @@ function RouteSummary() {
   );
 }
 
-function RouteDoor({ p, view }: { p: Profession; view: RouteView }) {
+export function RouteDoor({ p, view }: { p: Profession; view: RouteView }) {
   const l = lang.value;
   const fit = fitOf(p, level.value, profile.value);
   const visible = shortName(p, l);
@@ -219,9 +229,8 @@ function RouteDoor({ p, view }: { p: Profession; view: RouteView }) {
   );
 }
 
-function RouteStreet() {
+export function RouteStreet({ views }: { views: ReadonlyMap<string, RouteView> }) {
   const l = lang.value;
-  const views = routeViews.value;
   const groups = groupByField(PROFESSIONS, (p) => shortName(p, l), HTML_LANG[l]);
   return (
     <section class="street" aria-labelledby="street-title">
@@ -251,7 +260,7 @@ function RouteStreet() {
 }
 
 /** What the card says about the route: one sentence for the state, and the fit for mbo. */
-function routeLines(p: Profession, view: RouteView, l: (typeof lang)['value']): string[] {
+export function routeLines(p: Profession, view: RouteView, l: (typeof lang)['value']): string[] {
   const lines: string[] = [];
   const fit = fitOf(p, level.value, profile.value);
   if (view.state === 'open') {
@@ -262,10 +271,13 @@ function routeLines(p: Profession, view: RouteView, l: (typeof lang)['value']): 
     else if (view.profiles) lines.push(t(l, 'route.card.detourWith', { list: profileList(view.profiles, l), steps }));
     else lines.push(t(l, 'route.card.detour', { steps }));
   } else {
+    const need = view.need;
     lines.push(
-      view.need.kind === 'level'
-        ? t(l, 'route.card.closedLevel', { level: SCHOOL_LEVEL_NAMES[view.need.from][l] })
-        : t(l, 'route.card.closedProfile', { list: profileList(view.need.profiles, l) }),
+      need.kind === 'level'
+        ? t(l, 'route.card.closedLevel', { level: SCHOOL_LEVEL_NAMES[need.from][l] })
+        : need.kind === 'profile'
+          ? t(l, 'route.card.closedProfile', { list: profileList(need.profiles, l) })
+          : t(l, 'route.card.closedSubjects', { subjects: groupsText(need.groups, l, false) }),
     );
     lines.push(t(l, 'route.card.never'));
   }
@@ -317,10 +329,26 @@ function admissionLines(p: Profession, lv: SchoolLevel, l: (typeof lang)['value'
   return lines;
 }
 
-function RouteCardBody({ p, view }: { p: Profession; view: RouteView }) {
+/**
+ * The card of a door: the profession, its state, the route and the admission lines the
+ * view gives (`admission`), then `children` (the bovenbouw view's "when to apply") and
+ * the pay. `programme`, when given, names the programme the profession stands for.
+ */
+export function RouteCardBody({
+  p,
+  view,
+  admission,
+  programme,
+  children,
+}: {
+  p: Profession;
+  view: RouteView;
+  admission: readonly string[];
+  programme?: string | undefined;
+  children?: ComponentChildren;
+}) {
   const l = lang.value;
   const fit = fitOf(p, level.value, profile.value);
-  const admission = admissionLines(p, level.value, l);
   return (
     <div class="card route-card">
       <header class="card-head">
@@ -347,6 +375,7 @@ function RouteCardBody({ p, view }: { p: Profession; view: RouteView }) {
         </span>
       </p>
       <p class="card-about">{p.about[l]}</p>
+      {programme && <p class="card-programme">{t(l, 'exam.card.programme', { programme })}</p>}
 
       <section class="card-section">
         <h3>{t(l, 'route.card.route')}</h3>
@@ -368,6 +397,8 @@ function RouteCardBody({ p, view }: { p: Profession; view: RouteView }) {
         </section>
       )}
 
+      {children}
+
       <section class="card-section card-pay">
         <h3>{t(l, 'card.pay')}</h3>
         <p class="pay">
@@ -384,11 +415,17 @@ function RouteCardBody({ p, view }: { p: Profession; view: RouteView }) {
   );
 }
 
-/** The profession card of this view: the same dialog, focus and closing as the other views. */
-function RouteCard() {
+/** The profession card of a school view: the same dialog, focus and closing as the other views. */
+export function RouteCard({
+  views,
+  body,
+}: {
+  views: ReadonlyMap<string, RouteView>;
+  body: (p: Profession, view: RouteView) => JSX.Element;
+}) {
   const id = selected.value;
   const p = id ? PROFESSION_BY_ID.get(id) : undefined;
-  const view = p ? routeViews.value.get(p.id) : undefined;
+  const view = p ? views.get(p.id) : undefined;
   const lastId = useRef<string | null>(null);
   if (p) lastId.current = p.id;
   const modal = useModalDialog(Boolean(p && view), {
@@ -408,13 +445,13 @@ function RouteCard() {
       onPointerDown={modal.onPointerDown}
       onClick={modal.onClick}
     >
-      {p && view && <RouteCardBody key="card" p={p} view={view} />}
+      {p && view && body(p, view)}
     </dialog>
   );
 }
 
-/** "How it works" for the onderbouw view. */
-function RouteAbout() {
+/** "How it works" of a school view: the paragraphs `top`, the five floors, then `bottom`. */
+export function RouteAbout({ top, bottom }: { top: readonly MessageKey[]; bottom: readonly MessageKey[] }) {
   const l = lang.value;
   const modal = useModalDialog(aboutOpen.value, {
     focusSelector: '.about-close',
@@ -443,12 +480,9 @@ function RouteAbout() {
             ×
           </button>
         </header>
-        <p>{t(l, 'route.about.intro')}</p>
-        <p>{t(l, 'route.about.doors')}</p>
-        <p>{t(l, 'route.about.states')}</p>
-        <p>{t(l, 'route.about.profiles')}</p>
-        <p>{t(l, 'route.about.vmbo')}</p>
-        <p>{t(l, 'route.about.bbkb')}</p>
+        {top.map((key) => (
+          <p key={key}>{t(l, key)}</p>
+        ))}
         <p>{t(l, 'doors.about.levels')}</p>
         <ul class="about-floors">
           {LEVELS.map((lv) => (
@@ -457,12 +491,23 @@ function RouteAbout() {
             </li>
           ))}
         </ul>
-        <p>{t(l, 'route.about.demo')}</p>
-        <p>{t(l, 'route.about.privacy')}</p>
+        {bottom.map((key) => (
+          <p key={key}>{t(l, key)}</p>
+        ))}
       </div>
     </dialog>
   );
 }
+
+const ABOUT_TOP: readonly MessageKey[] = [
+  'route.about.intro',
+  'route.about.doors',
+  'route.about.states',
+  'route.about.profiles',
+  'route.about.vmbo',
+  'route.about.bbkb',
+];
+const ABOUT_BOTTOM: readonly MessageKey[] = ['route.about.demo', 'route.about.privacy'];
 
 /** The onderbouw view (onderbouw.html). */
 export function RouteApp() {
@@ -473,11 +518,11 @@ export function RouteApp() {
       <Header subtitle="route.subtitle" goal={false} />
       <main class="layout">
         <aside class="col-route">
-          <ChoicePanel />
+          <ChoicePanel counts={counts.value} hint={t(l, isVmbo(level.value) ? 'route.hint.vmbo' : 'route.hint.none')} />
         </aside>
         <div class="col-building">
-          <RouteSummary />
-          <RouteStreet />
+          <RouteSummary totals={totals.value} />
+          <RouteStreet views={routeViews.value} />
           <footer class="footer">
             <p class="legend">
               <span>{t(l, 'route.legend.open')}</span>
@@ -501,12 +546,17 @@ export function RouteApp() {
               <PageLink to="index" fragment={fragment} label={t(l, 'view.toPrimaryBuilding')} cls="other-page" />
               {' · '}
               <PageLink to="doors" fragment={fragment} label={t(l, 'view.toPrimaryDoors')} cls="other-page" />
+              {' · '}
+              <PageLink to="bovenbouw" fragment={fragment} label={t(l, 'view.toBovenbouw')} cls="other-page" />
             </p>
           </footer>
         </div>
       </main>
-      <RouteCard />
-      <RouteAbout />
+      <RouteCard
+        views={routeViews.value}
+        body={(p, view) => <RouteCardBody key="card" p={p} view={view} admission={admissionLines(p, level.value, l)} />}
+      />
+      <RouteAbout top={ABOUT_TOP} bottom={ABOUT_BOTTOM} />
     </div>
   );
 }

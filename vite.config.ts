@@ -107,13 +107,14 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     modulePreload: { polyfill: false },
-    // Three pages over the same engine, data and components: the floors view, the doors
-    // view and the onderbouw view.
+    // Four pages over the same engine, data and components: the floors view, the doors
+    // view, the onderbouw view and the bovenbouw view.
     rolldownOptions: {
       input: {
         index: resolve(import.meta.dirname, 'index.html'),
         deuren: resolve(import.meta.dirname, 'deuren.html'),
         onderbouw: resolve(import.meta.dirname, 'onderbouw.html'),
+        bovenbouw: resolve(import.meta.dirname, 'bovenbouw.html'),
       },
       // The code the pages share (Preact, the engine, the data, the components).
       output: { chunkFileNames: 'assets/shared-[hash].js' },

@@ -1,6 +1,7 @@
-import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from '../data/secondary';
+import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, EXAM_SUBJECT_SHORT, OTHER_OPTION_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from '../data/secondary';
+import { isExamSubject } from '../engine/exam';
 import type { ClosedNeed, Fit, RouteStep, RouteView } from '../engine/route';
-import type { HavoVwoProfile, Lang } from '../engine/types';
+import type { HavoVwoProfile, Lang, RathoSubject } from '../engine/types';
 import { HTML_LANG, t } from '../i18n';
 
 /** "a, b or c" in the page language. */
@@ -37,10 +38,34 @@ export function stepsText(steps: readonly RouteStep[], l: Lang): string {
   );
 }
 
+/** A subject in a list: an exam subject by its short name, nlt, o&o and PgP-T by their abbreviation. */
+export function subjectName(s: RathoSubject, l: Lang): string {
+  return isExamSubject(s) ? EXAM_SUBJECT_SHORT[s][l] : OTHER_OPTION_NAMES[s].short;
+}
+
+/**
+ * Groups of subjects, of which each needs one: "physics", "maths A or maths B", and with
+ * two or more groups "(maths A or maths B) and physics". With `others` false, only the
+ * exam subjects (the boxes on the page) are named, as on a door.
+ */
+export function groupsText(groups: readonly (readonly RathoSubject[])[], l: Lang, others: boolean): string {
+  const named = groups.map((g) => g.filter((s) => others || isExamSubject(s)).map((s) => subjectName(s, l)));
+  if (named.length === 1) return orList(named[0] ?? [], l);
+  return andList(
+    named.map((g) => (g.length > 1 ? `(${orList(g, l)})` : orList(g, l))),
+    l,
+  );
+}
+
 export function needText(need: ClosedNeed, l: Lang): string {
-  return need.kind === 'level'
-    ? t(l, 'route.need.level', { level: SCHOOL_LEVEL_NAMES[need.from][l] })
-    : t(l, 'route.need.profile', { list: profileList(need.profiles, l) });
+  switch (need.kind) {
+    case 'level':
+      return t(l, 'route.need.level', { level: SCHOOL_LEVEL_NAMES[need.from][l] });
+    case 'profile':
+      return t(l, 'route.need.profile', { list: profileList(need.profiles, l) });
+    case 'subjects':
+      return t(l, 'route.need.subjects', { subjects: groupsText(need.groups, l, false) });
+  }
 }
 
 export function fitText(fit: Fit, l: Lang): string {

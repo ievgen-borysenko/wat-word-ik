@@ -1,4 +1,4 @@
-import type { ExamSubject, HavoVwoProfile, Localized, SchoolLevel, VmboDirection } from '../engine/types';
+import type { ExamSubject, HavoVwoProfile, Localized, OtherOption, SchoolLevel, VmboDirection } from '../engine/types';
 import { L } from './subjects';
 
 /*
@@ -50,4 +50,41 @@ export const EXAM_SUBJECT_NAMES: Readonly<Record<ExamSubject, Localized>> = {
   natuurkunde: L('natuurkunde', 'physics', 'фізика'),
   scheikunde: L('scheikunde', 'chemistry', 'хімія'),
   biologie: L('biologie', 'biology', 'біологія'),
+};
+
+/**
+ * The exam subjects by their short school names, for lists on the bovenbouw view's doors
+ * and cards ("maths A or maths B"), where the full names would nest brackets; the boxes
+ * show the full names above.
+ */
+export const EXAM_SUBJECT_SHORT: Readonly<Record<ExamSubject, Localized>> = {
+  'wiskunde-a': L('wiskunde A', 'maths A', 'математика A'),
+  'wiskunde-b': L('wiskunde B', 'maths B', 'математика B'),
+  natuurkunde: L('natuurkunde', 'physics', 'фізика'),
+  scheikunde: L('scheikunde', 'chemistry', 'хімія'),
+  biologie: L('biologie', 'biology', 'біологія'),
+};
+
+/**
+ * The subjects a cell of the regulation can offer as a choice that the bovenbouw view
+ * has no box for: the abbreviation as the regulation writes it, and the full name
+ * from the legend of its Bijlage B (Dutch school terms, kept in every language).
+ */
+export const OTHER_OPTION_NAMES: Readonly<Record<OtherOption, { readonly short: string; readonly name: Localized }>> = {
+  nlt: {
+    short: 'nlt',
+    name: L('nlt (natuur, leven & technologie)', 'nlt (natuur, leven & technologie)', 'nlt (natuur, leven & technologie)'),
+  },
+  'o&o': {
+    short: 'o&o',
+    name: L('o&o (onderzoek & ontwerpen)', 'o&o (onderzoek & ontwerpen)', 'o&o (onderzoek & ontwerpen)'),
+  },
+  'pgp-t': {
+    short: 'PgP-T',
+    name: L(
+      'PgP-T (Praktijkgerichte Programma Technologie)',
+      'PgP-T (Praktijkgerichte Programma Technologie)',
+      'PgP-T (Praktijkgerichte Programma Technologie)',
+    ),
+  },
 };

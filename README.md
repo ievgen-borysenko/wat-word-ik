@@ -1,6 +1,6 @@
 # Wat word ik?
 
-A small website of three pages for children from about age 10 (groep 7/8 and
+A small website of four pages for children from about age 10 (groep 7/8 and
 up) that shows **why** to study and **what** to study. On the first page, drag the sliders for your school
 subjects (1-10, the Dutch grade scale) and watch a building of 36 professions
 light up or go dark. Click a profession to see what you need to know for it.
@@ -18,25 +18,35 @@ grades but the school level (vmbo-bb/kb, vmbo-gl/tl, havo, vwo) and the
 profile or vmbo direction. The same professions stand as doors that are
 open, one step away (the door names the step) or not on this route for now
 (the door says which level or profile leads there), and each profile button
-counts the doors it opens. All three pages link to each other.
+counts the doors it opens.
+
+A fourth page, `bovenbouw.html`, is for the upper years of havo and vwo, after
+the profile choice and before the choice of a study. On top of the level and
+the profile it takes the exam subjects a pupil has besides the profile (maths
+A or B, physics, chemistry, biology) and holds them against the admission rule
+of each hbo and wo programme: the card says what you have, what is still
+missing, and when to apply. All four pages link to each other.
 
 It shows what is *open* with your grades or your school route, never what you
 *will become*.
 
 **Status: M0 prototype with demo data.** All requirements, levels and pay
 values are approximate and made up for this prototype. The one exception is
-the admission by school profile to hbo and wo on the onderbouw page, checked
-against the Dutch admission regulation (Ratho) of 1 September 2026. See
+the admission to hbo and wo, by school profile on the onderbouw page and by
+profile and exam subject on the bovenbouw page, checked against the Dutch
+admission regulation (Ratho) of 1 September 2026, and the national dates to
+apply on the bovenbouw page, checked on rijksoverheid.nl. See
 [docs/methodology.md](docs/methodology.md) and [docs/sources.md](docs/sources.md).
 
 Languages: Dutch, English, Ukrainian.
 
 ## Privacy
 
-Three static pages, no backend. Each page stores nothing and sends nothing: no
+Four static pages, no backend. Each page stores nothing and sends nothing: no
 accounts, cookies, local storage, analytics, ads, external fonts or network
-requests. The grades and the goal, and on the onderbouw page the level and the
-profile, live only in the part of the address after `#`. The hosting provider
+requests. The grades and the goal, on the onderbouw page the level and the
+profile, and on the bovenbouw page also the exam subjects, live only in the
+part of the address after `#`. The hosting provider
 serves the files and sees an ordinary page request, but never that state:
 browsers do not send the part after `#`.
 
@@ -73,9 +83,10 @@ ship the pages and nothing else:
   maintainer's co-author line and Dependabot's sign-off, and no generated-by
   footers;
 - the built site is audited in a separate job that installs no dependencies,
-  so no package code can touch the audit: it holds the three pages
-  (`index.html`, the building, `deuren.html`, the doors, and
-  `onderbouw.html`, the school route), their bundles and nothing else, stays within a size budget, contains no local paths, private
+  so no package code can touch the audit: it holds the four pages
+  (`index.html`, the building, `deuren.html`, the doors, `onderbouw.html`,
+  the school route, and `bovenbouw.html`, the route with exam subjects),
+  their bundles and nothing else, stays within a size budget, contains no local paths, private
   addresses, e-mail addresses or keys, uses no browser feature that sends or
   stores data and no way to send data to its own host, keeps on each page a
   Content-Security-Policy that lets it load its own scripts and stylesheets
@@ -113,5 +124,5 @@ e2e          end-to-end tests of the built site (Playwright)
 ## Licence
 
 MIT, see [LICENSE](LICENSE). The built pages bundle Preact and Preact Signals
-(MIT) into one script that all three pages load; their copyright and licence
+(MIT) into one script that all four pages load; their copyright and licence
 notices open that shared script.

@@ -6,9 +6,10 @@
 // about to ship keep that promise and carry nothing else:
 //
 //   1. paths    every shipped file is on an allow-list (the pages index.html,
-//               deuren.html and onderbouw.html and the JS and CSS bundles; no
-//               source maps, hidden files, JSON dumps, docs, tests, images) and
-//               is a regular file, and all three pages are there;
+//               deuren.html, onderbouw.html and bovenbouw.html and the JS and
+//               CSS bundles; no source maps, hidden files, JSON dumps, docs,
+//               tests, images) and is a regular file, and all four pages are
+//               there;
 //   2. refs     every file except index.html is referenced by another shipped
 //               file, and every local reference in a page exists;
 //   3. size     JS, CSS and the whole tree stay within a budget;
@@ -46,19 +47,25 @@ export const SHIPPED_PATHS = [
   /^index\.html$/,
   /^deuren\.html$/,
   /^onderbouw\.html$/,
+  /^bovenbouw\.html$/,
   /^assets\/[A-Za-z0-9_-]+\.js$/,
   /^assets\/[A-Za-z0-9_-]+\.css$/,
 ];
 
 /**
- * The HTML pages: index.html (the floors view), deuren.html (the doors view) and
- * onderbouw.html (the onderbouw view). All are required: a tree without one of them
- * is refused ('missing'). Each gets the checks of checkPage.
+ * The HTML pages: index.html (the floors view), deuren.html (the doors view),
+ * onderbouw.html (the onderbouw view) and bovenbouw.html (the bovenbouw view). All are
+ * required: a tree without one of them is refused ('missing'). Each gets the checks of
+ * checkPage.
  */
-export const PAGES = ['index.html', 'deuren.html', 'onderbouw.html'];
+export const PAGES = ['index.html', 'deuren.html', 'onderbouw.html', 'bovenbouw.html'];
 
-/** Size budget in bytes (1 kB = 1000 bytes, as in Vite's build report). */
-export const BUDGET = { js: 150_000, css: 40_000, total: 400_000 };
+/**
+ * Size budget in bytes (1 kB = 1000 bytes, as in Vite's build report). JS is the sum of
+ * all bundles; the texts of all three languages live in one shared bundle, so each page's
+ * texts count once for every page.
+ */
+export const BUDGET = { js: 180_000, css: 40_000, total: 400_000 };
 
 /** URLs allowed in shipped text: XML namespaces (not fetched) and the repository. */
 export const ALLOWED_URLS = [
@@ -302,10 +309,11 @@ export const RUNTIME_APIS = [
  *     (VIEW_LINK_HREF_RE below), to a page on the list VIEW_LINK_PAGES and at
  *     most once per page in all the scripts together (viewLinkFindings), so at
  *     most VIEW_LINK_HREFS_MAX times. That shape
- *     is a template literal with a literal page (./, deuren.html or
- *     onderbouw.html), a literal `#` and one name; everything after a `#` is the
- *     fragment, which the browser never sends to a host, so that link carries
- *     nothing off the page, whatever the name holds (see hrefProps);
+ *     is a template literal with a literal page (./, deuren.html,
+ *     onderbouw.html or bovenbouw.html), a literal `#` and one name;
+ *     everything after a `#` is the fragment, which the browser never sends to
+ *     a host, so that link carries nothing off the page, whatever the name
+ *     holds (see hrefProps);
  *   - a string literal that starts a query string ("?key=", "/path?key=",
  *     "./x?key=", also as a template literal) where an expression begins.
  * It does NOT find a property or attribute name assembled at run time
@@ -350,25 +358,26 @@ export const HREF_PROP_RE =
  * The only `href` prop allowed, tried where HREF_PROP_RE found the key: a link
  * between the pages as the build writes it (PageLink in src/ui/OtherViewLink.tsx),
  * for example href:`deuren.html#${t}`. The key unquoted, no space, a template
- * literal that holds exactly a literal page (./, deuren.html or onderbouw.html), a
- * literal `#` and one identifier or member expression, and then the end of the value (`,` or `}`):
+ * literal that holds exactly a literal page (./, deuren.html, onderbouw.html or
+ * bovenbouw.html), a literal `#` and one identifier or member expression, and then the
+ * end of the value (`,` or `}`):
  * no query string, no other text, no second expression, no concatenation. The
  * minifier may rename the identifier. When a build writes the link in any other
  * shape (a changed source or minifier), this audit refuses it and the real-build
  * test in check-dist.test.mjs fails, so the new shape is reviewed before it ships.
  */
 export const VIEW_LINK_HREF_RE =
-  /href:`(?:\.\/|deuren\.html|onderbouw\.html)#\$\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\}`(?=[,}])/y;
+  /href:`(?:\.\/|deuren\.html|onderbouw\.html|bovenbouw\.html)#\$\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\}`(?=[,}])/y;
 
 /**
  * The pages a link may go to, as the template names them: the floors view (`./`, the
- * entry), the doors view and the onderbouw view. The real build writes one template
- * per page in one component, which every footer link renders through, so each page
- * may be named by at most one link in all the scripts together.
+ * entry), the doors view, the onderbouw view and the bovenbouw view. The real build
+ * writes one template per page in one component, which every footer link renders
+ * through, so each page may be named by at most one link in all the scripts together.
  */
-export const VIEW_LINK_PAGES = ['./', 'deuren.html', 'onderbouw.html'];
+export const VIEW_LINK_PAGES = ['./', 'deuren.html', 'onderbouw.html', 'bovenbouw.html'];
 
-/** The links between the pages the scripts may hold in all: one per page, three in the real build. */
+/** The links between the pages the scripts may hold in all: one per page, four in the real build. */
 export const VIEW_LINK_HREFS_MAX = VIEW_LINK_PAGES.length;
 
 /**
@@ -853,7 +862,7 @@ export function auditDist(dir, runtime = []) {
       violations.push({
         file: e.path,
         rule: 'path',
-        message: 'not on the list of shipped paths (index.html, deuren.html, onderbouw.html, assets/*.js, assets/*.css)',
+        message: 'not on the list of shipped paths (index.html, deuren.html, onderbouw.html, bovenbouw.html, assets/*.js, assets/*.css)',
       });
     }
   }
@@ -866,8 +875,8 @@ export function auditDist(dir, runtime = []) {
   const shipped = new Set(files.map((f) => f.path));
 
   // 2. refs: every file except index.html is named by another shipped file. index.html
-  // is the entry, and the link back to it is `./`; deuren.html and onderbouw.html must
-  // be linked by name.
+  // is the entry, and the link back to it is `./`; deuren.html, onderbouw.html and
+  // bovenbouw.html must be linked by name.
   for (const f of files) {
     if (f.path === 'index.html') continue;
     const named = [...texts].some(([other, text]) => other !== f.path && text.includes(f.path));

@@ -165,13 +165,14 @@ test('a door opens the card; Escape and the close button give focus back to the 
   await expect(kok).toBeFocused();
 });
 
-test('the links between the three pages carry the language and nothing else', async ({ page }) => {
+test('the links between the pages carry the language and nothing else', async ({ page }) => {
   // Without a chosen language nothing is carried.
   await openRoute(page, '#n=vwo&p=ng');
   const links = page.locator('a.other-page');
-  await expect(links).toHaveCount(2);
+  await expect(links).toHaveCount(3);
   await expect(links.nth(0)).toHaveAttribute('href', './#');
   await expect(links.nth(1)).toHaveAttribute('href', 'deuren.html#');
+  await expect(links.nth(2)).toHaveAttribute('href', 'bovenbouw.html#');
 
   await openRoute(page, '#n=vwo&p=ng&l=nl');
   await expect(links.nth(0)).toHaveText('Voor groep 6-8: gebouw');
@@ -186,7 +187,7 @@ test('the links between the three pages carry the language and nothing else', as
   await expect.poll(() => hash(page)).toBe('#s=6666666666&l=nl');
 
   // From the building to the onderbouw view: the language only, not the grades or goal.
-  const toRoute = page.locator('a.other-page');
+  const toRoute = page.locator('a.other-page').first();
   await expect(toRoute).toHaveText('Voor de onderbouw (klas 1-3)');
   await expect(toRoute).toHaveAttribute('href', 'onderbouw.html#l=nl');
   await toRoute.click();
@@ -199,9 +200,9 @@ test('the links between the three pages carry the language and nothing else', as
   await expect(page.locator('.door')).toHaveCount(TOTAL_TILES);
   expect(new URL(page.url()).pathname).toBe('/deuren.html');
   await page.getByRole('button', { name: 'UA', exact: true }).click();
-  await expect(page.locator('a.other-page')).toHaveAttribute('href', 'onderbouw.html#l=ua');
+  await expect(page.locator('a.other-page').first()).toHaveAttribute('href', 'onderbouw.html#l=ua');
   await expect(page.locator('a.other-view')).toHaveAttribute('href', /^\.\/#s=6666666666&l=ua&v=1$/);
-  await page.locator('a.other-page').click();
+  await page.locator('a.other-page').first().click();
   await expect(page.locator('.door')).toHaveCount(TOTAL_TILES);
   await expect(page.locator('html')).toHaveAttribute('lang', 'uk');
   await expect(page).toHaveTitle('Wat word ik? - 1-3 клас середньої школи');
@@ -328,13 +329,23 @@ test('a wo card says the vwo rule, and at havo that vwo 5 or an hbo first year c
   );
 });
 
-test('with no direct profile, a wo card at havo does not promise one step: Geneeskunde', async ({ page }) => {
+test('with no direct profile, a wo card at havo does not promise one step, and E&M or C&M names the profiles: Geneeskunde', async ({ page }) => {
   await openRoute(page, '#n=havo&p=ng&l=en');
   await expectDoor(page, 'arts', 'closed', 'from vwo up');
   await door(page, 'arts').click();
   const card = page.getByRole('dialog');
   await expect(card.locator('.admission-lines li').first()).toHaveText('No profile gets you in without an extra subject.');
   await expect(card.locator('.admission-lines')).not.toContainText('From havo');
+  await page.keyboard.press('Escape');
+
+  // E&M and C&M have no right to admission: from havo too the door names the profiles that admit, as the card does.
+  for (const key of ['em', 'cm']) {
+    await profile(page, key).click();
+    for (const id of ['arts', 'chirurg', 'dierenarts']) await expectDoor(page, id, 'closed', 'with N&T or N&G');
+  }
+  await door(page, 'arts').click();
+  await expect(card.locator('.route-lines li').first()).toHaveText('Not on this route for now. With N&T or N&G it can be done.');
+  await expect(card.locator('.admission-lines')).toContainText('With E&M or C&M: another profile is needed.');
 });
 
 test('an hbo card shows the havo rule at havo and the vwo rule at vwo, each with its own row', async ({ page }) => {

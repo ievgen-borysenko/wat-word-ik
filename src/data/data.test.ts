@@ -6,16 +6,19 @@ import {
   HAVO_VWO_PROFILES,
   LANGS,
   LEVELS,
+  OTHER_OPTIONS,
   SCHOOL_LEVELS,
   SUBJECT_IDS,
   VMBO_DIRECTIONS,
+  type CellRule,
   type ExamSubject,
   type Localized,
   type Profession,
   type ProfileRule,
+  type RathoSubject,
 } from '../engine/types';
 import { PROFESSIONS, RATHO_VERSION } from './professions';
-import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from './secondary';
+import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, EXAM_SUBJECT_SHORT, OTHER_OPTION_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from './secondary';
 import { SUBJECTS } from './subjects';
 
 function expectLocalized(l: Localized | undefined, where: string): void {
@@ -328,5 +331,128 @@ describe('onderbouw data (school levels, profiles, vmbo directions)', () => {
     expect(counts('vwo')).toEqual({ nt: 33, ng: 28, em: 28, cm: 26 });
     expect(counts('gltl')).toEqual({ techniek: 9, zorg: 4, economie: 1, groen: 1 });
     expect(counts('bbkb')).toEqual(counts('gltl'));
+  });
+});
+
+/** Every abbreviation the regulation's cells use in the data (Bijlage A and B, item 1), as a subject. */
+const RATHO_SUBJECTS: Readonly<Record<string, RathoSubject>> = {
+  ...ABBREVIATIONS,
+  nlt: 'nlt',
+  'o&o': 'o&o',
+  'PgP-T': 'pgp-t',
+};
+
+/**
+ * A cell's text read as a rule, here in the test only: the data holds the rule written
+ * by hand, and this checks that the two say the same. `+` joins groups, `of` joins the
+ * choices of a group, a group may stand in brackets. Null when a word is unknown.
+ */
+function readCell(text: string): CellRule | null {
+  if (text === '*') return { kind: 'admits' };
+  if (text === '#') return { kind: 'noRight' };
+  const groups: RathoSubject[][] = [];
+  for (const part of text.split(' + ')) {
+    const inner = /^\((.*)\)$/.exec(part.trim())?.[1] ?? part.trim();
+    const group: RathoSubject[] = [];
+    for (const word of inner.split(' of ')) {
+      const w = word.trim();
+      if (!Object.hasOwn(RATHO_SUBJECTS, w)) return null;
+      group.push(RATHO_SUBJECTS[w]!);
+    }
+    groups.push(group);
+  }
+  return { kind: 'subjects', groups };
+}
+
+describe('bovenbouw data (each cell as a typed rule)', () => {
+  it('reads the cell texts as the test means them', () => {
+    expect(readCell('nat + wisB')).toEqual({ kind: 'subjects', groups: [['natuurkunde'], ['wiskunde-b']] });
+    expect(readCell('(wisA of wisB) + (nat of nlt of o&o of PgP-T)')).toEqual({
+      kind: 'subjects',
+      groups: [
+        ['wiskunde-a', 'wiskunde-b'],
+        ['natuurkunde', 'nlt', 'o&o', 'pgp-t'],
+      ],
+    });
+    expect(readCell('econ')).toBeNull();
+  });
+
+  it('every row has a typed rule next to each cell, and no row has none', () => {
+    for (const p of PROFESSIONS) {
+      for (const { rule, where } of rulesOf(p)) {
+        const src = rule.source!;
+        expect(src.rules === null, `${where}: cells and rules go together`).toBe(src.cells === null);
+      }
+    }
+  });
+
+  it('each typed rule says what its cell says', () => {
+    let cells = 0;
+    for (const p of PROFESSIONS) {
+      for (const { rule, where } of rulesOf(p)) {
+        const { cells: texts, rules } = rule.source!;
+        if (texts === null || rules === null) continue;
+        for (const profile of HAVO_VWO_PROFILES) {
+          const text = texts[profile];
+          expect(readCell(text), `${where} ${profile} "${text}" has a word the test does not know`).not.toBeNull();
+          expect(rules[profile], `${where} ${profile} "${text}"`).toEqual(readCell(text));
+          cells++;
+        }
+      }
+    }
+    expect(cells).toBeGreaterThan(0);
+  });
+
+  it('every group can be met with the boxes on the page: it holds an exam subject, and no subject is named twice in a cell', () => {
+    for (const p of PROFESSIONS) {
+      for (const { rule, where } of rulesOf(p)) {
+        for (const profile of HAVO_VWO_PROFILES) {
+          const cell = rule.source?.rules?.[profile];
+          if (cell?.kind !== 'subjects') continue;
+          const all = cell.groups.flat();
+          expect(new Set(all).size, `${where} ${profile}`).toBe(all.length);
+          for (const g of cell.groups) {
+            expect(g.some((s) => (EXAM_SUBJECTS as readonly string[]).includes(s)), `${where} ${profile} [${g.join(', ')}]`).toBe(true);
+          }
+        }
+      }
+    }
+  });
+
+  it('the typed rules agree with direct and bridge: * is direct, one group is a bridge to one of its subjects, the rest closed', () => {
+    for (const p of PROFESSIONS) {
+      for (const { rule, where } of rulesOf(p)) {
+        const rules = rule.source?.rules;
+        if (!rules) continue;
+        for (const profile of HAVO_VWO_PROFILES) {
+          const cell = rules[profile];
+          const at = `${where} ${profile}`;
+          expect(rule.direct.includes(profile), at).toBe(cell.kind === 'admits');
+          const bridge = rule.bridge[profile];
+          if (cell.kind === 'subjects' && cell.groups.length === 1) {
+            expect(cell.groups[0], `${at} bridges to ${String(bridge)}`).toContain(bridge);
+          } else {
+            expect(bridge, at).toBeUndefined();
+          }
+        }
+      }
+    }
+  });
+
+  it('every exam subject has a short name in all three languages, which starts its full name', () => {
+    expect(Object.keys(EXAM_SUBJECT_SHORT)).toEqual([...EXAM_SUBJECTS]);
+    for (const s of EXAM_SUBJECTS) {
+      expectLocalized(EXAM_SUBJECT_SHORT[s], `exam subject ${s}.short`);
+      for (const lang of LANGS) expect(EXAM_SUBJECT_NAMES[s][lang].startsWith(EXAM_SUBJECT_SHORT[s][lang]), `${s}.${lang}`).toBe(true);
+    }
+  });
+
+  it('every subject without a box has its abbreviation and a full name in all three languages', () => {
+    expect(Object.keys(OTHER_OPTION_NAMES)).toEqual([...OTHER_OPTIONS]);
+    for (const [id, o] of Object.entries(OTHER_OPTION_NAMES)) {
+      expect(o.short.trim().length, id).toBeGreaterThan(0);
+      expectLocalized(o.name, `other option ${id}`);
+      for (const lang of LANGS) expect(o.name[lang].startsWith(o.short), `${id}.${lang}`).toBe(true);
+    }
   });
 });

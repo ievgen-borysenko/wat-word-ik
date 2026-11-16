@@ -1,6 +1,6 @@
 # Contributing
 
-The site is three static pages: TypeScript and Preact, built with Vite. Every change goes
+The site is four static pages: TypeScript and Preact, built with Vite. Every change goes
 through the same checks:
 
 ```sh
@@ -126,7 +126,7 @@ inside a floor is the order of the tiles on screen.
 | `rung`   | position on the ladder, counting from 1 |
 | `field`  | field of work, the group of its door in the doors view (`deuren.html`): `care`, `technology`, `making`, `nature` or `people` (`FIELDS` in `src/engine/types.ts`) |
 | `vmbo`   | mbo professions (levels 1 and 2) only: the vmbo direction that fits best in the onderbouw view: `techniek`, `zorg`, `economie` or `groen`. A fit, never a requirement |
-| `admission` | hbo and wo professions (levels 3 and 4) only: `{ direct, bridge }`, the havo/vwo profiles (`nt`, `ng`, `em`, `cm`) that admit directly, and per other profile the one extra exam subject that closes the gap (`wiskunde-a`, `wiskunde-b`, `natuurkunde`, `scheikunde`, `biologie`). A profile in neither list needs another profile. `direct` is empty only when every admitting profile needs an extra subject. `source` names the Ratho row the rule follows, with its intake (`havo` or `vwo`) and, where a footnote lets profiles catch up subjects in the first year, `catchUp` (see [sources.md](sources.md)); when a row does not settle, write the stricter reading and `verified: false`. hbo professions also have `vwo`, the rule for vwo pupils (`{ direct, bridge, source }` from section 4 of Bijlage B); wo professions have none |
+| `admission` | hbo and wo professions (levels 3 and 4) only: `{ direct, bridge }`, the havo/vwo profiles (`nt`, `ng`, `em`, `cm`) that admit directly, and per other profile the one extra exam subject that closes the gap (`wiskunde-a`, `wiskunde-b`, `natuurkunde`, `scheikunde`, `biologie`). A profile in neither list needs another profile. `direct` is empty only when every admitting profile needs an extra subject. `source` names the Ratho row the rule follows, with its intake (`havo` or `vwo`), the four cells as written (`cells`) and, next to each, the cell as a typed rule (`rules`, used by the bovenbouw view: `*` admits, `#` no right, or groups of subjects of which each needs one; write a row with `ratho(...)` and `needs(...)`; `notListed(...)` for a programme without a row, where both are `null`), and, where a footnote lets profiles catch up subjects in the first year, `catchUp` (see [sources.md](sources.md)); when a row does not settle, write the stricter reading and `verified: false`. hbo professions also have `vwo`, the rule for vwo pupils (`{ direct, bridge, source }` from section 4 of Bijlage B); wo professions have none |
 
 Rules the tests check (`src/data/data.test.ts`):
 
@@ -158,6 +158,14 @@ Rules the tests check (`src/data/data.test.ts`):
   closed, and no row means every profile. The test pins the counts on the
   profile buttons: a change in the data changes them, so update them on
   purpose.
+- **Bovenbouw data.** Every row with cells has a typed rule next to each
+  cell, and a row without cells has none. The test reads each cell's text
+  with its own small reader and checks that the typed rule says the same, that
+  the typed rules agree with `direct` and `bridge` (`*` is direct, a rule of
+  one group bridges to one of its subjects), and that every group holds at
+  least one of the five exam subjects, so the boxes on the page can meet it.
+  `src/engine/exam.test.ts` pins the counts on the bovenbouw profile buttons
+  for several sets of subjects; update them on purpose too.
 
 The states (open, nearly there, locked) and the minimum average per floor are
 described in [methodology.md](methodology.md). They are engine rules: change

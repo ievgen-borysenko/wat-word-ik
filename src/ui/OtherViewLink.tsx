@@ -2,8 +2,8 @@ import { langFragment } from '../engine/hash';
 import { t } from '../i18n';
 import { lang, langChosen, otherViewHash } from './store';
 
-/** The three pages: the floors view (index), the doors view (deuren.html) and the onderbouw view. */
-export type PageId = 'index' | 'doors' | 'onderbouw';
+/** The four pages: the floors view (index), the doors view (deuren.html), the onderbouw view and the bovenbouw view. */
+export type PageId = 'index' | 'doors' | 'onderbouw' | 'bovenbouw';
 
 /**
  * A plain link to another page of the site, named after where it goes. `fragment` is
@@ -13,7 +13,7 @@ export type PageId = 'index' | 'doors' | 'onderbouw';
  * template per page: that is the only `href` shape check:dist accepts in the built
  * script (VIEW_LINK_HREF_RE in scripts/check-dist.mjs), once per page, because after
  * a literal `#` nothing can reach the host. Every link on every page renders through
- * this one component, so the build holds exactly three such templates.
+ * this one component, so the build holds exactly four such templates.
  */
 export function PageLink({ to, fragment, label, cls }: { to: PageId; fragment: string; label: string; cls: string }) {
   return to === 'doors' ? (
@@ -22,6 +22,10 @@ export function PageLink({ to, fragment, label, cls }: { to: PageId; fragment: s
     </a>
   ) : to === 'onderbouw' ? (
     <a class={cls} href={`onderbouw.html#${fragment}`}>
+      {label}
+    </a>
+  ) : to === 'bovenbouw' ? (
+    <a class={cls} href={`bovenbouw.html#${fragment}`}>
       {label}
     </a>
   ) : (
@@ -43,10 +47,11 @@ export function OtherViewLink({ to }: { to: 'index' | 'doors' }) {
 }
 
 /**
- * From a grade view to the onderbouw view. It carries the language when it was chosen
- * (`l=` alone) and nothing else: grades and goal mean nothing there.
+ * From a grade view to a school view (onderbouw or bovenbouw). It carries the language
+ * when it was chosen (`l=` alone) and nothing else: grades and goal mean nothing there.
  */
-export function OnderbouwLink() {
+export function SchoolLink({ to }: { to: 'onderbouw' | 'bovenbouw' }) {
   const fragment = langFragment(langChosen.value ? lang.value : null);
-  return <PageLink to="onderbouw" fragment={fragment} label={t(lang.value, 'view.toOnderbouw')} cls="other-page" />;
+  const label = t(lang.value, to === 'onderbouw' ? 'view.toOnderbouw' : 'view.toBovenbouw');
+  return <PageLink to={to} fragment={fragment} label={label} cls="other-page" />;
 }
