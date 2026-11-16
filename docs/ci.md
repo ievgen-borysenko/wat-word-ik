@@ -137,8 +137,10 @@ whatever it is used for; who may author commits is decided in review.
   between the pages, which every footer renders through one component. Each
   must have the exact shape the build writes, a template with the page
   (`./`, `deuren.html` or `onderbouw.html`), a literal `#` and one name
-  (`` href:`deuren.html#${t}` ``), and the scripts may name each page at
-  most once, so they hold at most three such links. Everything after a `#`
+  (`` href:`deuren.html#${t}` ``). The page must be on the list
+  `VIEW_LINK_PAGES`, whatever the shape check accepts, and the scripts may
+  name each page at most once, so they hold at most three such links; a
+  second link is reported with the file and position of both. Everything after a `#`
   is the fragment, which the browser never sends to a host, so that link
   carries nothing off the page, whatever the name holds. The end-to-end request guard (Job 3
   below) still refuses any request with a query string, for the links the

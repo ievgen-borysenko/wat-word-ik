@@ -14,6 +14,7 @@ import {
   formatNotice,
   formatReport,
   hrefProps,
+  viewLinkFindings,
   noticeProblems,
   splitLicence,
 } from './check-dist.mjs';
@@ -488,16 +489,55 @@ describe('check-dist', () => {
         ['onderbouw.html', 'h(`a`,{href:`onderbouw.html#${t}`})'],
       ])) {
         expect(rules(withJs(js)), page).toEqual(['assets/index-abc123.js request']);
-        expect(auditDist(withJs(js)).violations[0]?.message, page).toContain(
-          `a second link to ${page}, where the pages render one link to each page`,
+        // Both positions: the duplicate at the end of the script, the first in VIEW_LINKS_JS.
+        const text = `${CLEAN_JS}${js}`;
+        const firstAt = CLEAN_JS.indexOf(`href:\`${page}#`);
+        const againAt = CLEAN_JS.length + js.indexOf('href:');
+        expect(auditDist(withJs(js)).violations[0]?.message, page).toMatch(
+          new RegExp(
+            `^a second link to ${page.replaceAll('.', '\\.')} at assets/index-abc123\\.js:1:${againAt + 1}, the first is at assets/index-abc123\\.js:1:${firstAt + 1}; the pages render one link to each page: `,
+          ),
         );
+        expect(text.slice(againAt, againAt + 5)).toBe('href:');
         // Also when the second link is in another script.
         const other = tree({
           'assets/index-other.js': `${js};`,
           'index.html': html({ head: '<script type="module" src="./assets/index-other.js"></script>' }),
         });
         expect(rules(other), page).toEqual(['assets/index-other.js request']);
+        const message = auditDist(other).violations[0]?.message ?? '';
+        expect(message, page).toContain(`a second link to ${page} at assets/index-other.js:1:`);
+        expect(message, page).toContain(`, the first is at assets/index-abc123.js:1:${CLEAN_JS.indexOf(`href:\`${page}#`) + 1};`);
       }
+    });
+
+    it('checks the links of all scripts together: the page list, then one link per page, with both positions', () => {
+      const link = (/** @type {string} */ page) => `h(\`a\`,{href:\`${page}#\${t}\`})`;
+      const a = `x;\n${link('./')}`;
+      const b = `${link('deuren.html')};${link('./')}`;
+      const links = [
+        { file: 'assets/a.js', text: a, at: a.indexOf('href:') },
+        { file: 'assets/b.js', text: b, at: b.indexOf('href:') },
+        { file: 'assets/b.js', text: b, at: b.lastIndexOf('href:') },
+      ];
+      const found = viewLinkFindings(links);
+      expect(found.map((f) => f.file)).toEqual(['assets/b.js']);
+      expect(found[0]?.message).toMatch(/^a second link to \.\/ at assets\/b\.js:1:\d+, the first is at assets\/a\.js:2:8; /);
+      expect(viewLinkFindings(links.slice(0, 2))).toEqual([]);
+    });
+
+    it('refuses a link to a page that is not in VIEW_LINK_PAGES, even when the regex accepts its shape', () => {
+      // As if VIEW_LINK_HREF_RE had been widened to a fourth page: the list still decides.
+      const text = 'h(`a`,{href:`bovenbouw.html#${t}`})';
+      const found = viewLinkFindings([{ file: 'assets/a.js', text, at: text.indexOf('href:') }]);
+      expect(found).toHaveLength(1);
+      expect(found[0]?.message).toMatch(/^link to bovenbouw\.html, which is not one of the pages \(\.\/, deuren\.html, onderbouw\.html\), at 1:8 /);
+      // A narrower list refuses a page the regex knows.
+      const known = 'h(`a`,{href:`onderbouw.html#${t}`})';
+      expect(viewLinkFindings([{ file: 'f.js', text: known, at: known.indexOf('href:') }], ['./', 'deuren.html'])[0]?.message).toMatch(
+        /^link to onderbouw\.html, which is not one of the pages/,
+      );
+      expect(viewLinkFindings([{ file: 'f.js', text: known, at: known.indexOf('href:') }])).toEqual([]);
     });
 
     it('accepts the three links spread over several scripts, as long as each page is named once', () => {

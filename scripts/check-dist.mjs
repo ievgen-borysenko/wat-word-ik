@@ -299,8 +299,9 @@ export const RUNTIME_APIS = [
  *     a computed literal key, a method or getter) and setAttribute("href", ...),
  *     with one exception:
  *     the links between the pages, in the exact shape the build writes them
- *     (VIEW_LINK_HREF_RE below), at most once per page in all the scripts
- *     together (VIEW_LINK_PAGES), so at most VIEW_LINK_HREFS_MAX times. That shape
+ *     (VIEW_LINK_HREF_RE below), to a page on the list VIEW_LINK_PAGES and at
+ *     most once per page in all the scripts together (viewLinkFindings), so at
+ *     most VIEW_LINK_HREFS_MAX times. That shape
  *     is a template literal with a literal page (./, deuren.html or
  *     onderbouw.html), a literal `#` and one name; everything after a `#` is the
  *     fragment, which the browser never sends to a host, so that link carries
@@ -377,6 +378,42 @@ export const VIEW_LINK_HREFS_MAX = VIEW_LINK_PAGES.length;
  */
 export function viewLinkPage(text, at) {
   return /^href:`([^#`]*)#/.exec(text.slice(at, at + 40))?.[1] ?? '';
+}
+
+/**
+ * The links between the pages found in all the scripts, checked together, in the
+ * order found: each must go to a page of `pages` (VIEW_LINK_PAGES; the regex alone
+ * does not decide that), and each page may be named once. A second link names
+ * where the first one is, file and line:column, and where it is itself.
+ * @param {{ file: string, text: string, at: number }[]} links
+ * @param {readonly string[]} [pages]
+ * @returns {{ file: string, message: string }[]}
+ */
+export function viewLinkFindings(links, pages = VIEW_LINK_PAGES) {
+  /** @type {Map<string, string>} */
+  const first = new Map();
+  /** @type {{ file: string, message: string }[]} */
+  const found = [];
+  for (const { file, text, at } of links) {
+    const page = viewLinkPage(text, at);
+    const here = `${file}:${position(text, at)}`;
+    if (!pages.includes(page)) {
+      found.push({
+        file,
+        message: `link to ${page || '(no page)'}, which is not one of the pages (${pages.join(', ')}), at ${where(text, at, 5)}`,
+      });
+      continue;
+    }
+    const seen = first.get(page);
+    if (seen === undefined) first.set(page, here);
+    else {
+      found.push({
+        file,
+        message: `a second link to ${page} at ${here}, the first is at ${seen}; the pages render one link to each page: ${where(text, at, 5)}`,
+      });
+    }
+  }
+  return found;
 }
 
 /**
@@ -642,13 +679,20 @@ function walk(root) {
  * @param {number} length
  */
 export function where(text, index, length) {
-  const before = text.slice(0, index);
-  const line = before.split('\n').length;
-  const col = index - before.lastIndexOf('\n');
   const start = Math.max(0, index - 30);
   const end = Math.min(text.length, index + length + 30);
   const excerpt = text.slice(start, end).replace(/\s+/g, ' ');
-  return `${line}:${col} ...${excerpt}...`;
+  return `${position(text, index)} ...${excerpt}...`;
+}
+
+/**
+ * `line:column` of `index` in `text`, both counted from 1.
+ * @param {string} text
+ * @param {number} index
+ */
+export function position(text, index) {
+  const before = text.slice(0, index);
+  return `${before.split('\n').length}:${index - before.lastIndexOf('\n')}`;
 }
 
 /** @param {string} s */
@@ -840,8 +884,8 @@ export function auditDist(dir, runtime = []) {
   }
 
   // 4. content, 5. runtime
-  /** @type {Set<string>} */
-  const linkedPages = new Set();
+  /** @type {{ file: string, text: string, at: number }[]} */
+  const viewLinks = [];
   for (const [path, text] of texts) {
     /** @param {string} rule @param {string} message */
     const add = (rule, message) => violations.push({ file: path, rule, message });
@@ -872,15 +916,11 @@ export function auditDist(dir, runtime = []) {
       for (const at of hrefs.others) {
         add('request', `link in element props (href) that is not a link between the pages at ${where(text, at, 5)}`);
       }
-      for (const at of hrefs.viewLinks) {
-        const page = viewLinkPage(text, at);
-        if (linkedPages.has(page)) {
-          add('request', `a second link to ${page}, where the pages render one link to each page, at ${where(text, at, 5)}`);
-        }
-        linkedPages.add(page);
-      }
+      for (const at of hrefs.viewLinks) viewLinks.push({ file: path, text, at });
     }
   }
+
+  for (const { file, message } of viewLinkFindings(viewLinks)) violations.push({ file, rule: 'request', message });
 
   // 6. html
   for (const page of PAGES) {
