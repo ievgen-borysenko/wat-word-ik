@@ -1,4 +1,5 @@
-import { applyPreset, expect, goalDisplay, openApp, sliders, test } from './fixtures';
+import type { Page } from '@playwright/test';
+import { TOTAL_TILES, applyPreset, expect, goalDisplay, openApp, sliders, test } from './fixtures';
 
 // The page promises: no cookies, no storage, no network requests. The guard in
 // fixtures.ts checks the requests, console and CSP; this test checks storage
@@ -62,6 +63,11 @@ test('nothing is stored after using every control', async ({ page }) => {
   // The URL hash is the only state; wait for its debounced update.
   await expect.poll(() => page.evaluate(() => location.hash)).toMatch(/^#s=6{10}&g=[a-z-]+&l=en$/);
 
+  await expectNothingStored(page);
+});
+
+/** Nothing in any browser store, seen from the page and from the browser. */
+async function expectNothingStored(page: Page): Promise<void> {
   const state = await page.evaluate(async () => {
     const files: string[] = [];
     for await (const name of (await navigator.storage.getDirectory()).keys()) files.push(name);
@@ -89,4 +95,33 @@ test('nothing is stored after using every control', async ({ page }) => {
   const stored = await page.context().storageState({ indexedDB: true });
   expect(stored.cookies).toEqual([]);
   expect(stored.origins).toEqual([]);
+}
+
+// The same promise on the onderbouw view: every button, the keyboard, the card, the
+// dialog and the language switch, then nothing stored and only its own hash written.
+test('nothing is stored on the onderbouw view after using every control', async ({ page }) => {
+  await page.goto('/onderbouw.html');
+  await expect(page.locator('.door')).toHaveCount(TOTAL_TILES);
+  for (const level of ['bbkb', 'gltl', 'havo', 'vwo']) {
+    await page.locator(`.choice-level [data-key="${level}"]`).click();
+    for (const key of await page.locator('.choice-profile [role="radio"]').evaluateAll((els) => els.map((e) => e.getAttribute('data-key')))) {
+      await page.locator(`.choice-profile [data-key="${key}"]`).click();
+    }
+  }
+  await page.locator('.choice-level [aria-checked="true"]').focus();
+  await page.keyboard.press('ArrowLeft');
+  await page.keyboard.press('Tab');
+  // From the last profile (C&M) the arrow wraps round to "not chosen yet".
+  await page.keyboard.press('ArrowRight');
+
+  await page.locator('.door').nth(3).click();
+  await expect(page.getByRole('dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  await page.locator('.help-btn').click();
+  await expect(page.locator('.about-dialog')).toBeVisible();
+  await page.keyboard.press('Escape');
+  for (const code of ['NL', 'UA', 'EN']) await page.getByRole('button', { name: code, exact: true }).click();
+
+  await expect.poll(() => page.evaluate(() => location.hash)).toBe('#n=havo&l=en');
+  await expectNothingStored(page);
 });

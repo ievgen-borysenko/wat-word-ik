@@ -8,11 +8,13 @@ import {
   NOTICE_HEAD,
   REPO_URL,
   VIEW_LINK_HREFS_MAX,
+  VIEW_LINK_PAGES,
   auditDist,
   checkCsp,
   formatNotice,
   formatReport,
   hrefProps,
+  viewLinkFindings,
   noticeProblems,
   splitLicence,
 } from './check-dist.mjs';
@@ -58,23 +60,24 @@ function html(o = {}) {
   ].join('\n');
 }
 
-/** A script without the links to the other view, so nothing links to deuren.html. */
+/** A script without the links between the pages, so nothing links to deuren.html or onderbouw.html. */
 const BASE_JS =
   'const n=`http://www.w3.org/2000/svg`;let h="#s=6";location.hash.startsWith(h)&&history.replaceState(null,"",h);';
 /**
- * The link to the other view on each page, in the shape the real build writes
- * (src/ui/OtherViewLink.tsx): the two `href` props that check:dist allows.
+ * The links between the pages, in the shape the real build writes (PageLink in
+ * src/ui/OtherViewLink.tsx): the three `href` props that check:dist allows, one per page.
  */
 const VIEW_LINKS_JS =
-  'function W({to:e}){let t=S.value.slice(1),n=F(Q.value,e);return e===`doors`?$(`a`,{class:`other-view`,href:`deuren.html#${t}`,children:n}):$(`a`,{class:`other-view`,href:`./#${t}`,children:n})}';
+  'function W({to:e,fragment:t,label:n,cls:r}){return e===`doors`?$(`a`,{class:r,href:`deuren.html#${t}`,children:n}):e===`onderbouw`?$(`a`,{class:r,href:`onderbouw.html#${t}`,children:n}):$(`a`,{class:r,href:`./#${t}`,children:n})}';
 const CLEAN_JS = BASE_JS + VIEW_LINKS_JS;
 const CLEAN_CSS = '.a{color:red}@media (max-width:600px){.a{color:blue}}.lang-btn{x:1}';
 
-/** A minimal tree shaped like the real build: both pages, the script links to deuren.html. */
+/** A minimal tree shaped like the real build: the three pages, the script links to deuren.html and onderbouw.html. */
 function cleanTree() {
   return {
     'index.html': html(),
     'deuren.html': html(),
+    'onderbouw.html': html(),
     'assets/index-abc123.js': CLEAN_JS,
     'assets/index-def456.css': CLEAN_CSS,
   };
@@ -144,9 +147,18 @@ describe('check-dist', () => {
       expect(report.violations).toEqual([{ file: 'deuren.html', rule: 'path', message: 'missing' }]);
     });
 
+    it('requires onderbouw.html: a build that leaves out the onderbouw view is refused', () => {
+      const report = auditDist(tree({ 'onderbouw.html': null }));
+      expect(report.violations).toEqual([{ file: 'onderbouw.html', rule: 'path', message: 'missing' }]);
+    });
+
     it('reports each missing page', () => {
-      const found = auditDist(tree({ 'index.html': null, 'deuren.html': null })).violations;
-      expect(found.filter((v) => v.message === 'missing').map((v) => v.file)).toEqual(['index.html', 'deuren.html']);
+      const found = auditDist(tree({ 'index.html': null, 'deuren.html': null, 'onderbouw.html': null })).violations;
+      expect(found.filter((v) => v.message === 'missing').map((v) => v.file)).toEqual([
+        'index.html',
+        'deuren.html',
+        'onderbouw.html',
+      ]);
     });
   });
 
@@ -400,7 +412,7 @@ describe('check-dist', () => {
       auditDist(tree({ 'assets/index-abc123.js': `${BASE_JS}${js};` }))
         .violations.filter((v) => v.rule === 'request')
         .map((v) => v.message.split(' at ')[0]);
-    const REFUSED = 'link in element props (href) that is not the link to the other view';
+    const REFUSED = 'link in element props (href) that is not a link between the pages';
 
     it('refuses the reproducer: a link that sends the hash to the host as a query string', () => {
       const js = 'h("a",{href:"./?"+new URLSearchParams({g:location.hash})})';
@@ -437,6 +449,16 @@ describe('check-dist', () => {
       ['a concatenation after the template', 'h(`a`,{href:`deuren.html#${t}`+q})'],
       ['a method call on the template', 'h(`a`,{href:`./#${t}`.concat(q)})'],
       ['a ternary after the template', 'h(`a`,{href:`./#${t}`?a:b})'],
+      ['a query string after the third page', 'h(`a`,{href:`onderbouw.html?${x}`})'],
+      ['the third page without a literal #', 'h(`a`,{href:`onderbouw.html${t}`})'],
+      ['the third page with a prefix', 'h(`a`,{href:`/onderbouw.html#${t}`})'],
+      ['the third page under ./', 'h(`a`,{href:`./onderbouw.html#${t}`})'],
+      ['a page that only looks like the third', 'h(`a`,{href:`onderbouw.htm#${t}`})'],
+      ['any character for the dot', 'h(`a`,{href:`onderbouwXhtml#${t}`})'],
+      ['a fourth page', 'h(`a`,{href:`bovenbouw.html#${t}`})'],
+      ['the third page with text after the expression', 'h(`a`,{href:`onderbouw.html#${t}&n=${u}`})'],
+      ['the third page and a concatenation', 'h(`a`,{href:`onderbouw.html#${t}`+q})'],
+      ['the third page as a string', 'h(`a`,{href:"onderbouw.html#"+t})'],
     ])('refuses %s: %s', (_what, js) => {
       expect(hrefFindings(js)).toEqual([REFUSED]);
     });
@@ -444,21 +466,88 @@ describe('check-dist', () => {
     it.each([
       ['an identifier', 'h(`a`,{href:`deuren.html#${t}`,children:n})'],
       ['a member expression', 'h(`a`,{class:`x`,href:`./#${Sn.value}`})'],
-    ])('allows the link to the other view with %s: %s', (_what, js) => {
+      ['the third page and an identifier', 'h(`a`,{class:r,href:`onderbouw.html#${t}`,children:n})'],
+      ['the third page and a member expression', 'h(`a`,{href:`onderbouw.html#${a.b}`})'],
+    ])('allows a link between the pages with %s: %s', (_what, js) => {
       expect(hrefFindings(js)).toEqual([]);
     });
 
-    it('passes the clean tree, whose script holds both links to the other view', () => {
-      expect(hrefProps(CLEAN_JS)).toEqual({ viewLinks: [CLEAN_JS.indexOf('href:`deuren'), CLEAN_JS.indexOf('href:`./')], others: [] });
+    it('passes the clean tree, whose script holds the three links between the pages', () => {
+      expect(hrefProps(CLEAN_JS)).toEqual({
+        viewLinks: [CLEAN_JS.indexOf('href:`deuren'), CLEAN_JS.indexOf('href:`onderbouw'), CLEAN_JS.indexOf('href:`./')],
+        others: [],
+      });
       expect(rules(tree())).toEqual([]);
     });
 
-    it(`allows at most ${VIEW_LINK_HREFS_MAX} links to the other view in all the scripts together`, () => {
-      const third = 'h(`a`,{href:`./#${t}`})';
-      expect(rules(withJs(third))).toEqual(['assets/index-abc123.js request']);
-      expect(auditDist(withJs(third)).violations[0]?.message).toContain(`link to the other view beyond the ${VIEW_LINK_HREFS_MAX} the pages render`);
-      const other = tree({ 'assets/index-other.js': `${third};`, 'index.html': html({ head: '<script type="module" src="./assets/index-other.js"></script>' }) });
-      expect(rules(other)).toEqual(['assets/index-other.js request']);
+    it(`allows one link to each of the ${VIEW_LINK_HREFS_MAX} pages, in all the scripts together`, () => {
+      expect(VIEW_LINK_PAGES).toEqual(['./', 'deuren.html', 'onderbouw.html']);
+      expect(VIEW_LINK_HREFS_MAX).toBe(3);
+      for (const [page, js] of /** @type {[string, string][]} */ ([
+        ['./', 'h(`a`,{href:`./#${t}`})'],
+        ['deuren.html', 'h(`a`,{href:`deuren.html#${t}`})'],
+        ['onderbouw.html', 'h(`a`,{href:`onderbouw.html#${t}`})'],
+      ])) {
+        expect(rules(withJs(js)), page).toEqual(['assets/index-abc123.js request']);
+        // Both positions: the duplicate at the end of the script, the first in VIEW_LINKS_JS.
+        const text = `${CLEAN_JS}${js}`;
+        const firstAt = CLEAN_JS.indexOf(`href:\`${page}#`);
+        const againAt = CLEAN_JS.length + js.indexOf('href:');
+        expect(auditDist(withJs(js)).violations[0]?.message, page).toMatch(
+          new RegExp(
+            `^a second link to ${page.replaceAll('.', '\\.')} at assets/index-abc123\\.js:1:${againAt + 1}, the first is at assets/index-abc123\\.js:1:${firstAt + 1}; the pages render one link to each page: `,
+          ),
+        );
+        expect(text.slice(againAt, againAt + 5)).toBe('href:');
+        // Also when the second link is in another script.
+        const other = tree({
+          'assets/index-other.js': `${js};`,
+          'index.html': html({ head: '<script type="module" src="./assets/index-other.js"></script>' }),
+        });
+        expect(rules(other), page).toEqual(['assets/index-other.js request']);
+        const message = auditDist(other).violations[0]?.message ?? '';
+        expect(message, page).toContain(`a second link to ${page} at assets/index-other.js:1:`);
+        expect(message, page).toContain(`, the first is at assets/index-abc123.js:1:${CLEAN_JS.indexOf(`href:\`${page}#`) + 1};`);
+      }
+    });
+
+    it('checks the links of all scripts together: the page list, then one link per page, with both positions', () => {
+      const link = (/** @type {string} */ page) => `h(\`a\`,{href:\`${page}#\${t}\`})`;
+      const a = `x;\n${link('./')}`;
+      const b = `${link('deuren.html')};${link('./')}`;
+      const links = [
+        { file: 'assets/a.js', text: a, at: a.indexOf('href:') },
+        { file: 'assets/b.js', text: b, at: b.indexOf('href:') },
+        { file: 'assets/b.js', text: b, at: b.lastIndexOf('href:') },
+      ];
+      const found = viewLinkFindings(links);
+      expect(found.map((f) => f.file)).toEqual(['assets/b.js']);
+      expect(found[0]?.message).toMatch(/^a second link to \.\/ at assets\/b\.js:1:\d+, the first is at assets\/a\.js:2:8; /);
+      expect(viewLinkFindings(links.slice(0, 2))).toEqual([]);
+    });
+
+    it('refuses a link to a page that is not in VIEW_LINK_PAGES, even when the regex accepts its shape', () => {
+      // As if VIEW_LINK_HREF_RE had been widened to a fourth page: the list still decides.
+      const text = 'h(`a`,{href:`bovenbouw.html#${t}`})';
+      const found = viewLinkFindings([{ file: 'assets/a.js', text, at: text.indexOf('href:') }]);
+      expect(found).toHaveLength(1);
+      expect(found[0]?.message).toMatch(/^link to bovenbouw\.html, which is not one of the pages \(\.\/, deuren\.html, onderbouw\.html\), at 1:8 /);
+      // A narrower list refuses a page the regex knows.
+      const known = 'h(`a`,{href:`onderbouw.html#${t}`})';
+      expect(viewLinkFindings([{ file: 'f.js', text: known, at: known.indexOf('href:') }], ['./', 'deuren.html'])[0]?.message).toMatch(
+        /^link to onderbouw\.html, which is not one of the pages/,
+      );
+      expect(viewLinkFindings([{ file: 'f.js', text: known, at: known.indexOf('href:') }])).toEqual([]);
+    });
+
+    it('accepts the three links spread over several scripts, as long as each page is named once', () => {
+      const parts = VIEW_LINKS_JS.split('):e===`onderbouw`?');
+      const split = tree({
+        'assets/index-abc123.js': `${BASE_JS}${parts[0]})}`,
+        'assets/index-other.js': `function V(r,t,n){return e===\`onderbouw\`?${parts[1]}`,
+        'index.html': html({ head: '<script type="module" src="./assets/index-other.js"></script>' }),
+      });
+      expect(rules(split)).toEqual([]);
     });
 
     it('does not take a read of an href property or a string `href` for a prop', () => {
@@ -562,30 +651,43 @@ describe('check-dist', () => {
     });
   });
 
-  describe('deuren.html (the second page)', () => {
-    /** The clean tree with `page` as deuren.html, which its script links to. @param {string} page */
-    const withDoors = (page) => tree({ 'deuren.html': page });
+  for (const [name, link] of /** @type {[string, string][]} */ ([
+    ['deuren.html', 'href:`deuren.html#${t}`'],
+    ['onderbouw.html', 'href:`onderbouw.html#${t}`'],
+  ])) {
+    describe(`${name} (a page besides the entry)`, () => {
+      /** The clean tree with `page` as this page, which its script links to. @param {string} page */
+      const withPage = (page) => tree({ [name]: page });
 
-    it('is shipped when the script links to it, with the same checks as index.html', () => {
-      expect(rules(withDoors(html()))).toEqual([]);
-    });
+      it('is shipped when the script links to it, with the same checks as index.html', () => {
+        expect(rules(withPage(html()))).toEqual([]);
+      });
 
-    it('requires its own CSP meta', () => {
-      expect(rules(withDoors(html({ csp: '' })))).toEqual(['deuren.html csp']);
-    });
+      it('requires its own CSP meta', () => {
+        expect(rules(withPage(html({ csp: '' })))).toEqual([`${name} csp`]);
+      });
 
-    it('rejects an inline script and a remote stylesheet', () => {
-      const head = '<script>go()</script><link rel="stylesheet" href="https://cdn.example.com/x.css">';
-      expect(rules(withDoors(html({ head }))).sort()).toEqual(['deuren.html html', 'deuren.html html', 'deuren.html url'].sort());
-    });
+      it('rejects an inline script and a remote stylesheet', () => {
+        const head = '<script>go()</script><link rel="stylesheet" href="https://cdn.example.com/x.css">';
+        expect(rules(withPage(html({ head }))).sort()).toEqual([`${name} html`, `${name} html`, `${name} url`].sort());
+      });
 
-    it('is refused when nothing links to it', () => {
-      expect(rules(tree({ 'assets/index-abc123.js': BASE_JS }))).toEqual(['deuren.html unreferenced']);
+      it('is refused when nothing links to it', () => {
+        const unlinked = CLEAN_JS.replace(link, 'children:0');
+        expect(unlinked).not.toBe(CLEAN_JS);
+        expect(rules(tree({ 'assets/index-abc123.js': unlinked }))).toEqual([`${name} unreferenced`]);
+      });
     });
+  }
 
-    it('refuses any other page', () => {
-      expect(rules(tree({ 'other.html': html() }))).toContain('other.html path');
-    });
+  it('is refused for every page but the entry when no script links to any of them', () => {
+    expect(rules(tree({ 'assets/index-abc123.js': BASE_JS }))).toEqual(['deuren.html unreferenced', 'onderbouw.html unreferenced']);
+  });
+
+  it('refuses any other page', () => {
+    expect(rules(tree({ 'other.html': html() }))).toContain('other.html path');
+    expect(rules(tree({ 'onderbouw.htm': html() }))).toContain('onderbouw.htm path');
+    expect(rules(tree({ 'assets/onderbouw.html': html() }))).toContain('assets/onderbouw.html path');
   });
 
   it('lists every violation, not only the first', () => {
@@ -767,22 +869,24 @@ describe('check-dist', () => {
 
     it('opens the script that bundles package code with the notice of every runtime package of the lockfile', () => {
       expect(runtime.map((p) => p.name)).toContain('preact');
-      // Two pages share one chunk with the package code; it carries the notice, the page scripts do not.
-      expect(chunks.filter((c) => c.isEntry).length).toBe(2);
+      // Three pages share one chunk with the package code; it carries the notice, the other scripts do not.
+      expect(chunks.filter((c) => c.isEntry).length).toBe(3);
       expect(chunks.filter(hasPackageCode).map((c) => c.code?.startsWith(`${NOTICE_HEAD}\n`))).toEqual([true]);
-      expect(chunks.filter((c) => !hasPackageCode(c)).map((c) => c.code?.includes(NOTICE_HEAD))).toEqual([false, false]);
+      const others = chunks.filter((c) => !hasPackageCode(c));
+      expect(others.length).toBeGreaterThanOrEqual(3);
+      expect(others.map((c) => c.code?.includes(NOTICE_HEAD))).toEqual(others.map(() => false));
       expect(noticeProblems(chunks.map((c) => c.code ?? ''), runtime)).toEqual([]);
     });
 
-    it(`holds ${VIEW_LINK_HREFS_MAX} href props, the links to the other view in the allowed shape, and no other`, () => {
+    it(`holds ${VIEW_LINK_HREFS_MAX} href props, one link to each page in the allowed shape, and no other`, () => {
       const found = chunks.map((c) => ({ code: c.code ?? '', ...hrefProps(c.code ?? '') }));
       expect(found.flatMap((f) => f.others)).toEqual([]);
       const pages = found.flatMap((f) => f.viewLinks.map((at) => /^href:`([^#`]*)#/.exec(f.code.slice(at))?.[1]));
-      expect(pages.sort()).toEqual(['./', 'deuren.html']);
+      expect(pages.sort()).toEqual(['./', 'deuren.html', 'onderbouw.html']);
       expect(pages).toHaveLength(VIEW_LINK_HREFS_MAX);
     });
 
-    it('passes the whole audit, with both pages', () => {
+    it('passes the whole audit, with the three pages', () => {
       const dir = mkdtempSync(join(tmpdir(), 'check-dist-real-'));
       made.push(dir);
       for (const o of outputs) {
@@ -791,7 +895,11 @@ describe('check-dist', () => {
       }
       const report = auditDist(dir, runtime);
       expect(report.violations).toEqual([]);
-      expect(report.sizes.map((s) => s.path).filter((p) => p.endsWith('.html'))).toEqual(['deuren.html', 'index.html']);
+      expect(report.sizes.map((s) => s.path).filter((p) => p.endsWith('.html'))).toEqual([
+        'deuren.html',
+        'index.html',
+        'onderbouw.html',
+      ]);
     });
   });
 

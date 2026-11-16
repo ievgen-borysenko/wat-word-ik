@@ -1,19 +1,23 @@
 import { PROFESSION_BY_ID } from '../data/professions';
 import { LANGS } from '../engine/types';
-import { t } from '../i18n';
+import { t, type MessageKey } from '../i18n';
 import { goalText } from './format';
 import { openedBy } from './modal';
 import { aboutOpen, evaluations, goal, lang, selected, setLang, toggleGoal } from './store';
 
-export function Header() {
+/**
+ * The page header: title, subtitle, "How it works", language switch and demo badge.
+ * The grade views show the goal banner; the onderbouw view has no goal and its own subtitle.
+ */
+export function Header({ subtitle = 'app.subtitle', goal = true }: { subtitle?: MessageKey; goal?: boolean }) {
   const l = lang.value;
   return (
     <header class="header">
       <div class="header-title">
         <h1>{t(l, 'app.title')}</h1>
-        <p class="subtitle">{t(l, 'app.subtitle')}</p>
+        <p class="subtitle">{t(l, subtitle)}</p>
       </div>
-      <GoalBanner />
+      {goal && <GoalBanner />}
       <div class="header-side">
         <button
           type="button"

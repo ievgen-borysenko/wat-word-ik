@@ -13,8 +13,8 @@ export interface SitePolicy {
 }
 
 /**
- * The pages (the floors view and the doors view, deuren.html) may load themselves and
- * the files in dist/assets/, nothing else (read from
+ * The pages (the floors view, the doors view, deuren.html, and the onderbouw view,
+ * onderbouw.html) may load themselves and the files in dist/assets/, nothing else (read from
  * the folder, not trusted from the server: `vite preview` answers any unknown
  * path with index.html and status 200).
  */
@@ -23,6 +23,7 @@ export function sitePolicy(origin: string, dist = DIST): SitePolicy {
     ['/', { resource: 'document', type: /^text\/html\b/ }],
     ['/index.html', { resource: 'document', type: /^text\/html\b/ }],
     ['/deuren.html', { resource: 'document', type: /^text\/html\b/ }],
+    ['/onderbouw.html', { resource: 'document', type: /^text\/html\b/ }],
   ]);
   for (const name of readdirSync(resolve(dist, 'assets'))) {
     if (name.endsWith('.js')) paths.set(`/assets/${name}`, { resource: 'script', type: /^(?:text|application)\/javascript\b/ });

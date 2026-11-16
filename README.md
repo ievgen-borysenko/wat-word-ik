@@ -1,7 +1,7 @@
 # Wat word ik?
 
-A small web page for children from about age 10 (groep 7/8 and up) that shows
-**why** to study and **what** to study. Drag the sliders for your school
+A small website of three pages for children from about age 10 (groep 7/8 and
+up) that shows **why** to study and **what** to study. On the first page, drag the sliders for your school
 subjects (1-10, the Dutch grade scale) and watch a building of 36 professions
 light up or go dark. Click a profession to see what you need to know for it.
 
@@ -12,22 +12,32 @@ Try it: <https://ievgen-borysenko.github.io/wat-word-ik/>
 A second view, `deuren.html`, shows the same grades as a street of doors
 grouped by field of work; each view links to the other.
 
-It shows what is *open* with your grades, never what you *will become*.
+A third page, `onderbouw.html`, is for the next age: klas 1-3 of secondary
+school (about 12 to 15), before the profile choice. There the input is not
+grades but the school level (vmbo-bb/kb, vmbo-gl/tl, havo, vwo) and the
+profile or vmbo direction. The same professions stand as doors that are
+open, one step away (the door names the step) or not on this route for now
+(the door says which level or profile leads there), and each profile button
+counts the doors it opens. All three pages link to each other.
 
-**Status: M0 prototype with demo data.** All requirements, levels and pay
-values are approximate and made up for this prototype; no source has been
-used yet. See
+It shows what is *open* with your grades or your school route, never what you
+*will become*.
+
+**Status: M0 prototype with demo data.** All requirements, levels, pay
+values and admission rules by profile are approximate and made up for this
+prototype; no source has been used yet. See
 [docs/methodology.md](docs/methodology.md) and [docs/sources.md](docs/sources.md).
 
 Languages: Dutch, English, Ukrainian.
 
 ## Privacy
 
-Static page, no backend. The page itself stores nothing and sends nothing: no
+Three static pages, no backend. Each page stores nothing and sends nothing: no
 accounts, cookies, local storage, analytics, ads, external fonts or network
-requests. The grades and the goal live only in the part of the address after
-`#`. The hosting provider serves the files and sees an ordinary page request,
-but never the grades: browsers do not send the part after `#`.
+requests. The grades and the goal, and on the onderbouw page the level and the
+profile, live only in the part of the address after `#`. The hosting provider
+serves the files and sees an ordinary page request, but never that state:
+browsers do not send the part after `#`.
 
 ## Run
 
@@ -62,9 +72,9 @@ ship the pages and nothing else:
   maintainer's co-author line and Dependabot's sign-off, and no generated-by
   footers;
 - the built site is audited in a separate job that installs no dependencies,
-  so no package code can touch the audit: it holds both pages
-  (`index.html`, the building, and `deuren.html`, the doors), their bundles
-  and nothing else, stays within a size budget, contains no local paths, private
+  so no package code can touch the audit: it holds the three pages
+  (`index.html`, the building, `deuren.html`, the doors, and
+  `onderbouw.html`, the school route), their bundles and nothing else, stays within a size budget, contains no local paths, private
   addresses, e-mail addresses or keys, uses no browser feature that sends or
   stores data and no way to send data to its own host, keeps on each page a
   Content-Security-Policy that lets it load its own scripts and stylesheets
@@ -88,7 +98,7 @@ npm run e2e                       # end-to-end tests of dist/
 ## Layout
 
 ```
-src/engine   pure TypeScript: scoring, hints, URL hash codec (+ tests)
+src/engine   pure TypeScript: scoring, hints, doors, school routes, URL hash codec (+ tests)
 src/data     subjects and professions (demo data, 3 languages) + validation test
 src/i18n     UI strings: nl.json, en.json, ua.json
 src/ui       Preact components
@@ -102,5 +112,5 @@ e2e          end-to-end tests of the built site (Playwright)
 ## Licence
 
 MIT, see [LICENSE](LICENSE). The built pages bundle Preact and Preact Signals
-(MIT) into one script that both pages load; their copyright and licence
+(MIT) into one script that all three pages load; their copyright and licence
 notices open that shared script.

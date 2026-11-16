@@ -4,7 +4,7 @@ import { DOOR_WORDS, DoorsSummary, Street } from './Doors';
 import { floorLabel } from './format';
 import { Header } from './Header';
 import { openedBy, useModalDialog } from './modal';
-import { OtherViewLink } from './OtherViewLink';
+import { OnderbouwLink, OtherViewLink } from './OtherViewLink';
 import { ProfessionCard } from './ProfessionCard';
 import { SlidersPanel } from './SlidersPanel';
 import { aboutOpen, lang } from './store';
@@ -90,6 +90,8 @@ export function DoorsApp() {
               </button>
               {' · '}
               <OtherViewLink to="index" />
+              {' · '}
+              <OnderbouwLink />
             </p>
           </footer>
         </div>

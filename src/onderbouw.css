@@ -1,0 +1,205 @@
+/*
+ * The onderbouw view (onderbouw.html). Loaded after styles.css and doors.css, whose
+ * street, doors, card and dialogs it reuses. Instead of sliders: a panel with two
+ * rows of buttons (school level, profile). The page may grow and scroll down on
+ * every screen; it never scrolls sideways.
+ */
+
+/* ── page frame: no fixed slider panel, the panel sits in the flow ─────── */
+
+@media (min-width: 900px) {
+  .route-app {
+    height: auto;
+    min-height: 100vh;
+    min-height: 100dvh;
+  }
+  .route-app .col-route {
+    grid-area: sliders;
+    min-width: 0;
+  }
+  /*
+   * As many groups to a row as fit at 260px or more (three at 1280px, one under the other at 900px),
+   * and as many doors to a row as fit at 64px or more: a narrow desktop window gets
+   * fewer, wider doors instead of doors too narrow for their words.
+   */
+  .route-app .street {
+    grid-auto-rows: auto;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  .route-app .doors {
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
+  }
+}
+
+@media (max-width: 899.98px) {
+  .route-app .col-building {
+    padding-bottom: 12px;
+  }
+  .route-app .col-route {
+    min-width: 0;
+    margin-bottom: 6px;
+  }
+}
+
+/* ── the panel: school level and profile ───────────────────────────────── */
+
+.route-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: grid;
+  gap: 10px;
+}
+
+.choice-title {
+  font-size: 0.95rem;
+  margin-bottom: 4px;
+}
+
+.choice-row {
+  display: grid;
+  gap: 5px;
+}
+
+.choice-level .choice-row {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
+.choice-profile .choice-row {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.choice-btn {
+  min-width: 0;
+  min-height: 40px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 5px 6px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f3f5f8;
+  text-align: center;
+  line-height: 1.2;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.choice-btn:hover {
+  background: #e7ebf2;
+}
+
+.choice-btn.is-none {
+  grid-column: 1 / -1;
+  min-height: 32px;
+}
+
+.choice-btn.is-checked {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+
+.choice-label {
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.choice-note {
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
+  color: var(--muted);
+}
+
+.choice-btn.is-checked .choice-note {
+  color: #ffffff;
+}
+
+.route-hint {
+  font-size: 0.78rem;
+  color: var(--muted);
+}
+
+/* ── summary ───────────────────────────────────────────────────────────── */
+
+.route-chosen {
+  color: var(--ajar-ink);
+  font-weight: 600;
+}
+
+/* ── doors: the line under a door says the step or what is needed ─────── */
+
+/*
+ * Nothing on this page may widen it, whatever the font: a word longer than its door
+ * or its group (a Ukrainian state word in a wide system font, as on Linux) breaks
+ * instead of spilling over the right edge.
+ */
+.route-app .street,
+.route-app .block,
+.route-app .door {
+  min-width: 0;
+}
+
+.route-app .door-state,
+.route-app .door-key,
+.route-app .block-head h3,
+.route-app .summary-counts,
+.route-app .choice-note {
+  overflow-wrap: anywhere;
+}
+
+.route-app .door.is-closed .door-leaf {
+  transform: rotateY(0deg);
+}
+
+.route-app .door-state {
+  display: block;
+}
+
+.route-app .door.is-fit .door-frame {
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--hue) 45%, transparent);
+}
+
+/* Phones: the doors keep their names and lines, three or four to a row, and the page scrolls down. */
+@media (max-width: 899.98px) {
+  .route-app .doors {
+    grid-template-columns: repeat(auto-fill, minmax(84px, 1fr));
+    gap: 6px 4px;
+    margin-top: 3px;
+  }
+  .route-app .block {
+    padding: 2px 4px 5px;
+  }
+  .route-app .door {
+    padding: 2px 0;
+  }
+  .route-app .door-frame {
+    width: min(100%, 44px);
+    height: 44px;
+    min-height: 0;
+    aspect-ratio: auto;
+    border-radius: 18px 18px 3px 3px;
+  }
+  .route-app .door-name,
+  .route-app .door-state {
+    display: block;
+  }
+  .route-app .door-name {
+    font-size: 0.7rem;
+  }
+  .route-app .door-state {
+    font-size: 0.64rem;
+  }
+  .route-app .summary-counts {
+    white-space: normal;
+  }
+}
+
+/* The card's route and admission lines. */
+.route-lines,
+.admission-lines {
+  margin: 0;
+}

@@ -1,6 +1,6 @@
 # Contributing
 
-The page is static: TypeScript and Preact, built with Vite. Every change goes
+The site is three static pages: TypeScript and Preact, built with Vite. Every change goes
 through the same checks:
 
 ```sh
@@ -125,6 +125,8 @@ inside a floor is the order of the tiles on screen.
 | `family` | ladder name; a profession that is not on a ladder uses its own id |
 | `rung`   | position on the ladder, counting from 1 |
 | `field`  | field of work, the group of its door in the doors view (`deuren.html`): `care`, `technology`, `making`, `nature` or `people` (`FIELDS` in `src/engine/types.ts`) |
+| `vmbo`   | mbo professions (levels 1 and 2) only: the vmbo direction that fits best in the onderbouw view: `techniek`, `zorg`, `economie` or `groen`. A fit, never a requirement |
+| `admission` | hbo and wo professions (levels 3 and 4) only: `{ direct, bridge }`, the havo/vwo profiles (`nt`, `ng`, `em`, `cm`) that admit directly, and per other profile the one extra exam subject that closes the gap (`wiskunde-a`, `wiskunde-b`, `natuurkunde`, `scheikunde`, `biologie`). A profile in neither list needs another profile. When unsure of a rule, write the stricter reading |
 
 Rules the tests check (`src/data/data.test.ts`):
 
@@ -144,6 +146,11 @@ Rules the tests check (`src/data/data.test.ts`):
 - **Count.** The test pins the number of professions (36). When you add or
   remove one, change that number in the test and in `README.md` in the same
   change.
+- **Onderbouw data.** Every mbo profession names a vmbo direction and every
+  hbo and wo profession has admission data with at least one direct profile;
+  nothing else has either. Every profile and subject named exists, and no
+  profile is both direct and bridged. The test pins the counts on the profile
+  buttons: a change in the data changes them, so update them on purpose.
 
 The states (open, nearly there, locked) and the minimum average per floor are
 described in [methodology.md](methodology.md). They are engine rules: change
@@ -201,7 +208,7 @@ Ukrainian, no Russianisms. Use " - " (a hyphen with spaces) as the dash.
 
 ## Privacy
 
-Do not add storage, analytics, external fonts or network requests: the page
+Do not add storage, analytics, external fonts or network requests: each page
 promises it stores and sends nothing (see the Privacy section in
 [methodology.md](methodology.md)). `src/csp.test.ts` builds the site and
-checks that its Content-Security-Policy allows no network access.
+checks that the Content-Security-Policy of every page allows no network access.

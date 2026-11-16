@@ -68,7 +68,7 @@ function licenceNotice(): Plugin {
     },
     outputOptions(options) {
       // On every chunk that holds package code: the entry when there is one page, the
-      // shared chunk when both pages import the same packages.
+      // shared chunk when the pages import the same packages.
       return {
         ...options,
         postBanner: (chunk) => (chunk.moduleIds.some((id) => bundledPackage(id) !== null) ? notice : ''),
@@ -107,13 +107,15 @@ export default defineConfig({
     target: 'es2022',
     sourcemap: false,
     modulePreload: { polyfill: false },
-    // Two pages over the same engine, data and components: the floors view and the doors view.
+    // Three pages over the same engine, data and components: the floors view, the doors
+    // view and the onderbouw view.
     rolldownOptions: {
       input: {
         index: resolve(import.meta.dirname, 'index.html'),
         deuren: resolve(import.meta.dirname, 'deuren.html'),
+        onderbouw: resolve(import.meta.dirname, 'onderbouw.html'),
       },
-      // The code both pages share (Preact, the engine, the data, the components).
+      // The code the pages share (Preact, the engine, the data, the components).
       output: { chunkFileNames: 'assets/shared-[hash].js' },
     },
   },

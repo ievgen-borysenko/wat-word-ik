@@ -7,6 +7,11 @@ import { L } from './subjects';
  * picture readable, not real admission rules. Real sources are planned for M1
  * (see docs/sources.md).
  *
+ * The same holds for `vmbo` and `admission`, which only the onderbouw view reads:
+ * which vmbo direction fits an mbo profession best, and which havo or vwo profile
+ * admits to an hbo or wo programme. Where a rule was not certain, the stricter
+ * reading was written down.
+ *
  * Order inside a floor is the fixed tile order on screen.
  */
 
@@ -114,6 +119,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'elektro',
     rung: 1,
     field: 'technology',
+    vmbo: 'techniek',
   },
   {
     id: 'timmerman',
@@ -130,6 +136,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'bouw',
     rung: 1,
     field: 'making',
+    vmbo: 'techniek',
   },
   {
     id: 'kapper',
@@ -146,6 +153,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'kapper',
     rung: 1,
     field: 'people',
+    vmbo: 'zorg',
   },
   {
     id: 'kok',
@@ -162,6 +170,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'keuken',
     rung: 2,
     field: 'making',
+    vmbo: 'economie',
   },
   {
     id: 'verzorgende',
@@ -179,6 +188,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'zorg',
     rung: 1,
     field: 'care',
+    vmbo: 'zorg',
   },
   {
     id: 'vrachtwagenchauffeur',
@@ -196,6 +206,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'logistiek',
     rung: 2,
     field: 'technology',
+    vmbo: 'techniek',
   },
   {
     id: 'hovenier',
@@ -213,6 +224,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'hovenier',
     rung: 1,
     field: 'nature',
+    vmbo: 'groen',
   },
   {
     id: 'automonteur',
@@ -229,6 +241,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'machines',
     rung: 1,
     field: 'technology',
+    vmbo: 'techniek',
   },
 
   // ── Level 2: mbo 4 ───────────────────────────────────────────────────────
@@ -248,6 +261,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'elektro',
     rung: 2,
     field: 'technology',
+    vmbo: 'techniek',
   },
   {
     id: 'verpleegkundige',
@@ -265,6 +279,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'zorg',
     rung: 2,
     field: 'care',
+    vmbo: 'zorg',
   },
   {
     id: 'meubelmaker',
@@ -286,6 +301,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'bouw',
     rung: 2,
     field: 'making',
+    vmbo: 'techniek',
   },
   {
     id: 'laborant',
@@ -302,6 +318,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'lab',
     rung: 1,
     field: 'nature',
+    vmbo: 'techniek',
   },
   {
     id: 'politieagent',
@@ -318,6 +335,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'recht',
     rung: 1,
     field: 'people',
+    vmbo: 'zorg',
   },
   {
     id: 'grafisch-vormgever',
@@ -334,6 +352,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'ontwerp',
     rung: 1,
     field: 'making',
+    vmbo: 'techniek',
   },
   {
     id: 'applicatieontwikkelaar',
@@ -351,6 +370,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'software',
     rung: 1,
     field: 'technology',
+    vmbo: 'techniek',
   },
 
   // ── Level 3: hbo ─────────────────────────────────────────────────────────
@@ -370,6 +390,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'elektro',
     rung: 3,
     field: 'technology',
+    admission: { direct: ['nt'], bridge: { ng: 'natuurkunde' } },
   },
   {
     id: 'mechatronica-engineer',
@@ -387,6 +408,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'machines',
     rung: 2,
     field: 'technology',
+    admission: { direct: ['nt'], bridge: { ng: 'natuurkunde' } },
   },
   {
     id: 'leraar-basisonderwijs',
@@ -404,6 +426,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'onderwijs',
     rung: 1,
     field: 'people',
+    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {} },
   },
   {
     id: 'software-engineer',
@@ -420,6 +443,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'software',
     rung: 2,
     field: 'technology',
+    admission: { direct: ['nt', 'ng', 'em'], bridge: { cm: 'wiskunde-a' } },
   },
   {
     id: 'journalist',
@@ -436,6 +460,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'media',
     rung: 1,
     field: 'people',
+    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {} },
   },
   {
     id: 'bouwkundig-ingenieur',
@@ -453,6 +478,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'bouw',
     rung: 3,
     field: 'making',
+    admission: { direct: ['nt'], bridge: { ng: 'natuurkunde' } },
   },
   {
     id: 'game-designer',
@@ -469,6 +495,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'ontwerp',
     rung: 2,
     field: 'making',
+    admission: { direct: ['nt', 'ng', 'em'], bridge: { cm: 'wiskunde-a' } },
   },
   {
     id: 'archeoloog',
@@ -486,6 +513,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'erfgoed',
     rung: 1,
     field: 'nature',
+    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {} },
   },
 
   // ── Level 4: wo ──────────────────────────────────────────────────────────
@@ -504,6 +532,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'zorg',
     rung: 3,
     field: 'care',
+    admission: { direct: ['ng'], bridge: { nt: 'biologie' } },
   },
   {
     id: 'chirurg',
@@ -520,6 +549,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'zorg',
     rung: 4,
     field: 'care',
+    admission: { direct: ['ng'], bridge: { nt: 'biologie' } },
   },
   {
     id: 'electrical-engineer',
@@ -537,6 +567,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'elektro',
     rung: 4,
     field: 'nature',
+    admission: { direct: ['nt'], bridge: {} },
   },
   {
     id: 'wetenschapper',
@@ -558,6 +589,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'machines',
     rung: 3,
     field: 'nature',
+    admission: { direct: ['nt'], bridge: {} },
   },
   {
     id: 'advocaat',
@@ -574,6 +606,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'recht',
     rung: 2,
     field: 'people',
+    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {} },
   },
   {
     id: 'architect',
@@ -590,6 +623,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'bouw',
     rung: 4,
     field: 'making',
+    admission: { direct: ['nt'], bridge: {} },
   },
   {
     id: 'apotheker',
@@ -606,6 +640,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'lab',
     rung: 2,
     field: 'care',
+    admission: { direct: ['nt', 'ng'], bridge: {} },
   },
   {
     id: 'dierenarts',
@@ -622,6 +657,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'dierenarts',
     rung: 1,
     field: 'nature',
+    admission: { direct: ['ng'], bridge: { nt: 'biologie' } },
   },
 ];
 

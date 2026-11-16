@@ -4,8 +4,8 @@ import { describe, expect, it } from 'vitest';
 
 /*
  * Builds the site in memory with the real vite.config.ts and checks what would ship:
- * the Content-Security-Policy of both pages (index.html and deuren.html), and that no
- * raw docs are emitted.
+ * the Content-Security-Policy of the three pages (index.html, deuren.html and
+ * onderbouw.html), and that no raw docs are emitted.
  */
 
 const root = resolve(import.meta.dirname, '..');
@@ -39,10 +39,11 @@ function directives(csp: string): Map<string, string[]> {
 describe('built site', async () => {
   const files = await buildFiles();
 
-  it('has exactly the two pages: the floors view and the doors view', () => {
+  it('has exactly the three pages: the floors view, the doors view and the onderbouw view', () => {
     expect(files.filter((f) => f.fileName.endsWith('.html')).map((f) => f.fileName).sort()).toEqual([
       'deuren.html',
       'index.html',
+      'onderbouw.html',
     ]);
   });
 
@@ -50,7 +51,7 @@ describe('built site', async () => {
     expect(files.filter((f) => f.fileName.startsWith('docs/') || f.fileName.endsWith('.md'))).toEqual([]);
   });
 
-  for (const page of ['index.html', 'deuren.html']) {
+  for (const page of ['index.html', 'deuren.html', 'onderbouw.html']) {
     describe(page, () => {
       const html = files.find((f) => f.fileName === page);
       const source = typeof html?.source === 'string' ? html.source : '';

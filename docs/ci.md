@@ -1,8 +1,9 @@
 # What CI checks
 
-The page makes a promise to children and parents: no accounts, no ads, no
-analytics, no cookies or storage, and no network requests while it runs. CI
-exists to prove, on every change, that we ship the page and nothing else: no
+The site makes a promise to children and parents: no accounts, no ads, no
+analytics, no cookies or storage, and no network requests while any of its
+three pages runs. CI exists to prove, on every change, that we ship the three
+pages and nothing else: no
 secrets, no passwords, no personal details, no files that do not belong there.
 
 The workflow is [.github/workflows/ci.yml](../.github/workflows/ci.yml). It runs
@@ -109,12 +110,13 @@ whatever it is used for; who may author commits is decided in review.
 
 `check:dist` audits the built site, the exact files that will be published:
 
-- **Only expected files:** the two pages, `index.html` (the floors view) and
-  `deuren.html` (the doors view), and the JavaScript and CSS bundles in
-  `assets/`. Both pages must be there: a build without one of them is
-  refused. Source maps, hidden files, documents, JSON dumps, tests, images
-  and any other page are refused, and so is any file that nothing links to
-  (except `index.html`, the entry; `deuren.html` must be named by a script).
+- **Only expected files:** the three pages, `index.html` (the floors view),
+  `deuren.html` (the doors view) and `onderbouw.html` (the onderbouw view),
+  and the JavaScript and CSS bundles in `assets/`. All three pages must be
+  there: a build without one of them is refused. Source maps, hidden files,
+  documents, JSON dumps, tests, images and any other page are refused, and so
+  is any file that nothing links to (except `index.html`, the entry;
+  `deuren.html` and `onderbouw.html` must be named by a script).
 - **Size budget:** JavaScript up to 150 kB, CSS up to 40 kB, the whole site up
   to 400 kB. The measured sizes are printed on every run.
 - **Nothing private inside:** no paths from a developer's computer (home
@@ -131,13 +133,16 @@ whatever it is used for; who may author commits is decided in review.
   `open()`, no direct writes of URL properties (`src`, `href`, `srcset` and the
   like), no `src`, `srcset`, `poster`, `ping` or `formAction` in element props,
   and no string that starts a query string (`"?key="`, `"/page?key="`). An
-  `href` in element props is refused too, with one exception: the link to
-  the other view, which each page renders once. It must have the exact shape
-  the build writes, a template with the page (`deuren.html` or `./`), a
-  literal `#` and one name (`` href:`deuren.html#${t}` ``), and the scripts
-  may hold at most two such links. Everything after a `#` is the fragment,
-  which the browser never sends to a host, so that link carries nothing off
-  the page, whatever the name holds. The end-to-end request guard (Job 3
+  `href` in element props is refused too, with one exception: the links
+  between the pages, which every footer renders through one component. Each
+  must have the exact shape the build writes, a template with the page
+  (`./`, `deuren.html` or `onderbouw.html`), a literal `#` and one name
+  (`` href:`deuren.html#${t}` ``). The page must be on the list
+  `VIEW_LINK_PAGES`, whatever the shape check accepts, and the scripts may
+  name each page at most once, so they hold at most three such links; a
+  second link is reported with the file and position of both. Everything after a `#`
+  is the fragment, which the browser never sends to a host, so that link
+  carries nothing off the page, whatever the name holds. The end-to-end request guard (Job 3
   below) still refuses any request with a query string, for the links the
   tests follow. What this scan cannot see is listed in the comment above
   `REQUEST_SINKS` in `scripts/check-dist.mjs`: names assembled at run time,
@@ -152,7 +157,7 @@ whatever it is used for; who may author commits is decided in review.
 - **Licence notices:** the built site bundles the code of the runtime
   packages (Preact and Preact Signals, all MIT), whose licences ask that their
   copyright and permission notice go with every copy. The build writes them as
-  one comment at the top of the script that holds that code (the chunk both
+  one comment at the top of the script that holds that code (the chunk the
   pages share), from each installed package's own
   licence file: name, version, licence and copyright lines of each package,
   then each distinct licence text once. An update of a dependency therefore
@@ -184,7 +189,8 @@ does not build again), serves it locally and drives it in Chromium with
 Playwright, at desktop size (1280x800) and phone size (375x812):
 
 - **No traffic, no errors:** during every test, the browser makes only plain
-  GET requests: the pages (`/`, `index.html`, `deuren.html`) as documents,
+  GET requests: the pages (`/`, `index.html`, `deuren.html`,
+  `onderbouw.html`) as documents,
   the files in `assets/` as a script or a stylesheet, never with a query
   string, each answered with the right content type (the local server
   answers an unknown path with the page, so a status of 200 alone proves
@@ -194,9 +200,11 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
   `/?x=1` and load its own file as an image, and expects the guard to report
   each of them.
 - **No storage:** after dragging sliders, using the presets, opening a card,
-  pinning a goal, switching languages and opening "How it works", there are no
-  cookies, nothing in local or session storage, no IndexedDB databases, no
-  service workers, no caches and nothing in the origin private file system.
+  pinning a goal, switching languages and opening "How it works", and on the
+  onderbouw view after every level and profile button, the keyboard, a card,
+  the dialog and the language switch, there are no cookies, nothing in local
+  or session storage, no IndexedDB databases, no service workers, no caches
+  and nothing in the origin private file system.
 - **It works:** "all 3" opens exactly the five jobs that need no diploma, "all
   9" opens most of the building, the state in the address survives a reload,
   the language goes into the address only after it was chosen on the page, a
@@ -205,7 +213,13 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
   (`e2e/doors.spec.ts`): the door states and the counter at the lowest, mixed
   and highest grades, the step it names opens what it says, the card opens
   from a door, a goal marks the sliders, the language switch, and the link to
-  the other view keeps the address after `#`, both ways.
+  the other view keeps the address after `#`, both ways. The onderbouw view
+  (`e2e/onderbouw.spec.ts`): the doors and the counts per profile for a level
+  and a profile, the level and profile buttons (also with the arrow keys,
+  Home and End) change them, a vmbo direction closes no mbo door, the state
+  survives a reload and a hash change and drops what is not its own, the card
+  gives focus back to its door, and the links between the three pages carry
+  the chosen language and nothing else.
 - **Grades from a link:** the notice appears when a link with grades is opened,
   not after a reload, and goes away when a slider moves; closing it moves focus
   to the first preset. Switching views keeps it when the grades came from a
@@ -213,13 +227,16 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
   view-switch marker (`v=1`) is gone from the address once the page has loaded.
 - **Accessible:** no serious or critical findings (axe) on the main view, an
   open card, the "How it works" dialog and the link notice, in Dutch, English
-  and Ukrainian, on both views.
+  and Ukrainian, on all three views.
 - **Fits the screen:** never any sideways scrolling. On desktop (1280x800
   and 1366x768) neither the page nor the slider column scrolls. On phones
   (375x812, 375x667, 360x640, 320x568) the ground floor of the building, and
-  the last group of doors, stay above the slider panel; the phone checks run
-  on both views a second time with a wide system font (Verdana or DejaVu
-  Sans).
+  the last group of doors, stay above the slider panel. The onderbouw view has
+  no slider panel and may scroll down; on desktop, on a tablet (768x1024) and
+  on phones nothing on it reaches past the right edge. The phone checks run on
+  all three views a second time with a wide system font (Verdana or DejaVu
+  Sans); on the onderbouw view the desktop sizes do too, since a wider Linux
+  font once pushed it past the edge at 900px.
 
 Data sent to the page's own host (for example the grades in the query string
 of an image request, which the host's logs would keep) is stopped in three
