@@ -198,12 +198,87 @@ describe('check-tree', () => {
     'e2e/report.html',
     '.github/workflows/other.yml',
     '.env',
+    'collector/notes.txt',
   ])('refuses %s, which is not on the list', (path) => {
     const r = repo({ [path]: 'x\n' });
     expect(rules(r)).toEqual([`${path} not-listed`]);
     const message = checkTree(r.dir, r.env).violations[0]?.message ?? '';
     expect(message).toContain('not on the list');
     expect(message).toContain('same pull request');
+  });
+
+  describe('the collector (collector/)', () => {
+    const LISTED = [
+      'collector/.python-version',
+      'collector/run.py',
+      'collector/gate.py',
+      'collector/tests/__init__.py',
+      'collector/tests/test_gate.py',
+      'collector/fixtures/synthetic/extract.tsv',
+      'collector/fixtures/synthetic/expected.json',
+      'docs/collector.md',
+    ];
+
+    it('lists its modules, tests, synthetic fixture and docs', () => {
+      for (const path of LISTED) expect(onList(path), path).toBe(true);
+      const r = repo(Object.fromEntries(LISTED.map((path) => [path, 'x\n'])));
+      expect(rules(r)).toEqual([]);
+    });
+
+    it.each([
+      'collector/notes.txt',
+      'collector/README.md',
+      'collector/Run.py',
+      'collector/run_all.py',
+      'collector/run.pyc',
+      'collector/__pycache__/run.cpython-314.pyc',
+      'collector/sub/gate.py',
+      'collector/requirements.txt',
+      'collector/.python-version.bak',
+      'collector/tests/helper.py',
+      'collector/tests/test_gate.txt',
+      'collector/tests/data/sample.tsv',
+      'collector/fixtures/real/extract.tsv',
+      'collector/fixtures/synthetic/raw.xlsx',
+      'collector/fixtures/synthetic/notes.md',
+      'collector/fixtures/synthetic/sub/extract.tsv',
+      'collector/extract/knowledge.tsv',
+      'collector/sandbox/fetch.sb',
+      'docs/collector-notes.md',
+    ])('refuses %s, which is not on the list (yet)', (path) => {
+      expect(onList(path)).toBe(false);
+      expect(rules(repo({ [path]: 'x\n' }))).toEqual([`${path} not-listed`]);
+    });
+
+    // Python is not code for the private-host rule: there `x.local` would be a property,
+    // and the collector names none so.
+    it('holds Python files to the private host name rule', () => {
+      const path = 'collector/gate.py';
+      expect(rules(repo({ [path]: 'import threading\nstate = threading.local()\n' }))).toEqual([`${path} private-host`]);
+    });
+
+    it('refuses an executable collector file, a binary fixture and a local path in a test', () => {
+      const r = repo({
+        'collector/run.py': 'print(1)\n',
+        'collector/fixtures/synthetic/extract.json': Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]),
+        'collector/tests/test_gate.py': `HOME = '/${'Users'}/someone/dev'\n`,
+      });
+      r.git(['update-index', '--chmod=+x', 'collector/run.py']);
+      expect(new Set(rules(r))).toEqual(
+        new Set(['collector/run.py executable', 'collector/fixtures/synthetic/extract.json encoding', 'collector/tests/test_gate.py local-path']),
+      );
+    });
+
+    it('refuses a stray collector file that a commit adds and a later one removes', () => {
+      const r = repo();
+      const base = r.commit('base');
+      r.write('collector/notes.txt');
+      r.commit('Add collector notes');
+      r.git(['rm', '--quiet', 'collector/notes.txt']);
+      r.commit('Remove them');
+      const history = checkTree(r.dir, r.env, { base, head: 'HEAD' }).violations.map((v) => `${v.path} ${v.rule}`);
+      expect(history).toEqual(['collector/notes.txt history']);
+    });
   });
 
   it('lists every root file it allows by exact name only', () => {
