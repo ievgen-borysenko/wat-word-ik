@@ -420,6 +420,11 @@ describe('check-dist', () => {
       ['a computed literal key', 'h(`a`,{["href"]:u})'],
       ['a getter', 'h(`a`,{get href(){return u}})'],
       ['setAttribute', 'a.setAttribute("href",u)'],
+      [
+        'setAttribute as an optional call',
+        'const a=document.querySelector(".other-view"),u=new URL(location.href);u.searchParams.set("g",location.hash);a.setAttribute?.("href",u);a.click()',
+      ],
+      ['setAttributeNS', 'a.setAttributeNS(null,"href",u)'],
       ['the page without a literal #', 'h(`a`,{href:`deuren.html${t}`})'],
       ['the page and # as a string', 'h(`a`,{href:"./#"+t})'],
       ['the hash first, then the page', 'h(`a`,{href:`${t}deuren.html#`})'],

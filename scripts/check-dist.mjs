@@ -338,10 +338,10 @@ export const REQUEST_SINKS = [
  * `href` as a key of element props, in every form an object literal can define it:
  * `href:` quoted or not (matched as the URL attributes above are), the shorthand
  * `{href}`, a computed literal key `["href"]:`, and a method or getter `href(){}`;
- * also `setAttribute("href", ...)`.
+ * also `setAttribute("href", ...)`, with an optional call (`?.(`) and as setAttributeNS(null, ...).
  */
 export const HREF_PROP_RE =
-  /(?<![\w$.-])(["'`]?)href\1\s*:|(?<=[{,]\s*)href(?=\s*[,}])|\[\s*(["'`])href\2\s*\]\s*:|(?<![\w$.])href\s*\(|\bsetAttribute\s*\(\s*(["'`])href\3/g;
+  /(?<![\w$.-])(["'`]?)href\1\s*:|(?<=[{,]\s*)href(?=\s*[,}])|\[\s*(["'`])href\2\s*\]\s*:|(?<![\w$.])href\s*\(|\bsetAttribute(?:NS)?\s*(?:\?\.)?\s*\(\s*(?:null\s*,\s*)?(["'`])href\3/g;
 
 /**
  * The only `href` prop allowed, tried where HREF_PROP_RE found the key: the link
