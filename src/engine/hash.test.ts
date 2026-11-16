@@ -1,21 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
   DEFAULT_SCHOOL_LEVEL,
+  EXAM_SUBJECT_CODES,
   VIEW_MARKER,
+  decodeExamHash,
+  decodeExtras,
   decodeHash,
   decodeRouteHash,
+  encodeExamHash,
+  encodeExtras,
   encodeHash,
   encodeRouteHash,
   hashHasSliders,
   hashHasViewMarker,
   langFragment,
   withViewMarker,
+  type ExamHashState,
   type HashState,
   type RouteHashState,
 } from './hash';
-import { profilesOf } from './route';
+import { isVmbo, profilesOf } from './route';
 import { uniformSliders } from './scoring';
-import { LANGS, SCHOOL_LEVELS, SUBJECT_IDS, type Sliders } from './types';
+import { EXAM_SUBJECTS, LANGS, SCHOOL_LEVELS, SUBJECT_IDS, type ExamSubject, type Sliders } from './types';
 
 const IDS = new Set(['arts', 'journalist']);
 const DEFAULT = uniformSliders(6);
@@ -215,5 +221,70 @@ describe('onderbouw hash (n = level, p = profile)', () => {
     expect(langFragment(null)).toBe('');
     expect(decodeHash(`#${langFragment('nl')}`, IDS)).toEqual({ sliders: DEFAULT, goal: null, lang: 'nl' });
     expect(decodeRouteHash(`#${langFragment('en')}`)).toEqual({ level: 'havo', profile: null, lang: 'en' });
+  });
+});
+
+describe('bovenbouw hash (n, p and x = the exam subjects on top of the profile)', () => {
+  /** Every set of exam subjects, in the order of EXAM_SUBJECTS. */
+  const SUBSETS: ExamSubject[][] = Array.from({ length: 1 << EXAM_SUBJECTS.length }, (_, mask) =>
+    EXAM_SUBJECTS.filter((_, i) => mask & (1 << i)),
+  );
+
+  it('encodes the documented format: short codes in a fixed order, x and p left out when empty', () => {
+    expect(encodeExamHash({ level: 'vwo', profile: 'ng', extras: ['wiskunde-b', 'natuurkunde'], lang: 'nl' })).toBe('#n=vwo&p=ng&x=wb.na&l=nl');
+    expect(encodeExamHash({ level: 'havo', profile: null, extras: ['biologie', 'wiskunde-a'], lang: null })).toBe('#n=havo&x=wa.bi');
+    expect(encodeExamHash({ level: 'havo', profile: 'cm', extras: [], lang: 'en' })).toBe('#n=havo&p=cm&l=en');
+    expect(EXAM_SUBJECT_CODES).toEqual({ 'wiskunde-a': 'wa', 'wiskunde-b': 'wb', natuurkunde: 'na', scheikunde: 'sk', biologie: 'bi' });
+    expect(new Set(Object.values(EXAM_SUBJECT_CODES)).size).toBe(EXAM_SUBJECTS.length);
+  });
+
+  it('writes no subjects at a vmbo level, and reads none there', () => {
+    expect(encodeExamHash({ level: 'gltl', profile: 'zorg', extras: ['natuurkunde'], lang: null })).toBe('#n=gltl&p=zorg');
+    expect(decodeExamHash('#n=bbkb&x=na.wb')).toEqual({ level: 'bbkb', profile: null, extras: [], lang: null });
+  });
+
+  it('round-trips every level, profile, set of subjects and language', () => {
+    for (const level of SCHOOL_LEVELS) {
+      for (const profile of [null, ...profilesOf(level)]) {
+        for (const extras of SUBSETS) {
+          for (const lang of [null, ...LANGS]) {
+            const state: ExamHashState = { level, profile, extras: isVmbo(level) ? [] : extras, lang };
+            expect(decodeExamHash(encodeExamHash(state))).toEqual(state);
+          }
+        }
+      }
+    }
+  });
+
+  it('reads the subjects in any order, once each, and drops what it does not know', () => {
+    expect(decodeExtras('na.wb')).toEqual(['wiskunde-b', 'natuurkunde']);
+    expect(decodeExtras('wb.na')).toEqual(['wiskunde-b', 'natuurkunde']);
+    expect(decodeExtras('na.na.na')).toEqual(['natuurkunde']);
+    expect(decodeExtras('zz.na.NA.Wb..bi.')).toEqual(['natuurkunde', 'biologie']);
+    for (const junk of [null, '', '.', 'x', '__proto__', 'constructor', 'na,wb', 'na wb', 'natuurkunde', 'wiskunde-a', 'n'.repeat(100000)]) {
+      expect(decodeExtras(junk), String(junk).slice(0, 20)).toEqual([]);
+    }
+    expect(encodeExtras(['biologie', 'wiskunde-a', 'biologie'])).toBe('wa.bi');
+    expect(encodeExtras([])).toBe('');
+  });
+
+  it('never throws, and falls back to havo without a profile or subjects on garbage', () => {
+    for (const h of [undefined, null, 42, '', '#', '#x=', '#x=zz', '#%E0%A4%A', '#__proto__=1&x=na', '#' + 'x=na.'.repeat(20000)]) {
+      const d = decodeExamHash(h);
+      expect(d.level, String(h).slice(0, 20)).toBe('havo');
+      expect(d.profile, String(h).slice(0, 20)).toBeNull();
+      expect(d.lang, String(h).slice(0, 20)).toBeNull();
+    }
+    expect(decodeExamHash('#' + 'x=na.'.repeat(20000)).extras).toEqual(['natuurkunde']);
+    expect(decodeExamHash('#n=vwo&p=zorg&x=bi&l=de')).toEqual({ level: 'vwo', profile: null, extras: ['biologie'], lang: null });
+  });
+
+  it('each page reads only its own keys: onderbouw ignores x, the bovenbouw page ignores s, g and the view-switch marker', () => {
+    expect(decodeRouteHash('#n=vwo&p=ng&x=na.wb&l=nl')).toEqual({ level: 'vwo', profile: 'ng', lang: 'nl' });
+    expect(encodeRouteHash(decodeRouteHash('#n=vwo&p=ng&x=na.wb'))).toBe('#n=vwo&p=ng');
+    expect(decodeHash('#n=vwo&p=ng&x=na', IDS)).toEqual({ sliders: DEFAULT, goal: null, lang: null });
+    expect(decodeExamHash('#s=a666666661&g=arts&n=vwo&p=em&x=sk&v=1')).toEqual({ level: 'vwo', profile: 'em', extras: ['scheikunde'], lang: null });
+    expect(encodeExamHash(decodeExamHash('#s=a666666661&g=arts&n=vwo&p=em&x=sk&v=1'))).toBe('#n=vwo&p=em&x=sk');
+    expect(decodeExamHash(`#${langFragment('ua')}`)).toEqual({ level: 'havo', profile: null, extras: [], lang: 'ua' });
   });
 });

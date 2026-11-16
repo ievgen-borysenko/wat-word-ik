@@ -1,10 +1,12 @@
-import { validProfile } from './route';
+import { isVmbo, validProfile } from './route';
 import { uniformSliders } from './scoring';
 import {
   DEFAULT_GRADE,
+  EXAM_SUBJECTS,
   LANGS,
   SCHOOL_LEVELS,
   SUBJECT_IDS,
+  type ExamSubject,
   type Lang,
   type SchoolLevel,
   type SchoolProfile,
@@ -143,10 +145,63 @@ export function decodeRouteHash(hash: unknown): RouteHashState {
   return { level, profile, lang };
 }
 
+/*
+ * The bovenbouw view (bovenbouw.html) reads the same `n`, `p` and `l` and adds `x`, the
+ * exam subjects the pupil takes on top of the profile: `#n=vwo&p=ng&x=wb.na&l=nl`.
+ * Each subject has a short code (EXAM_SUBJECT_CODES), joined with `.` in the order of
+ * EXAM_SUBJECTS, whatever order the link had; an unknown code or a repeat is dropped,
+ * and `x` is left out while no subject is chosen. The subjects belong to havo and vwo:
+ * at a vmbo level `x` is neither read nor written.
+ */
+export interface ExamHashState extends RouteHashState {
+  /** In the order of EXAM_SUBJECTS, each once. */
+  readonly extras: readonly ExamSubject[];
+}
+
+/** The code of each exam subject in `x`. Stable: links depend on it. */
+export const EXAM_SUBJECT_CODES: Readonly<Record<ExamSubject, string>> = {
+  'wiskunde-a': 'wa',
+  'wiskunde-b': 'wb',
+  natuurkunde: 'na',
+  scheikunde: 'sk',
+  biologie: 'bi',
+};
+
+/** The exam subjects of `codes`, in the order of EXAM_SUBJECTS, each once; anything else is dropped. */
+export function decodeExtras(codes: string | null): ExamSubject[] {
+  if (codes === null) return [];
+  const given = new Set(codes.split('.'));
+  return EXAM_SUBJECTS.filter((s) => given.has(EXAM_SUBJECT_CODES[s]));
+}
+
+export function encodeExtras(extras: Iterable<ExamSubject>): string {
+  const chosen = new Set(extras);
+  return EXAM_SUBJECTS.filter((s) => chosen.has(s))
+    .map((s) => EXAM_SUBJECT_CODES[s])
+    .join('.');
+}
+
+export function encodeExamHash(state: ExamHashState): string {
+  const parts = [`n=${state.level}`];
+  if (state.profile) parts.push(`p=${state.profile}`);
+  const x = isVmbo(state.level) ? '' : encodeExtras(state.extras);
+  if (x) parts.push(`x=${x}`);
+  if (state.lang) parts.push(`l=${state.lang}`);
+  return `#${parts.join('&')}`;
+}
+
+/** Never throws: `n`, `p` and `l` as decodeRouteHash reads them, and the subjects as decodeExtras does, none at a vmbo level. */
+export function decodeExamHash(hash: unknown): ExamHashState {
+  const route = decodeRouteHash(hash);
+  const params = parseParams(hash);
+  const extras = params === null || isVmbo(route.level) ? [] : decodeExtras(params.get('x'));
+  return { ...route, extras };
+}
+
 /**
- * What a link between the onderbouw view and the grade views carries: the language,
- * when it was chosen (as `l=` alone), and nothing else. Without a `#`, so a link
- * template can put its own literal `#` in front.
+ * What a link between a school view (onderbouw, bovenbouw) and another page carries:
+ * the language, when it was chosen (as `l=` alone), and nothing else. Without a `#`, so
+ * a link template can put its own literal `#` in front.
  */
 export function langFragment(lang: Lang | null): string {
   return lang ? `l=${lang}` : '';

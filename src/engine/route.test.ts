@@ -274,9 +274,11 @@ describe('routeOf', () => {
         for (const lower of SCHOOL_LEVELS.filter((l) => levelRank(l) < levelRank(from))) {
           expect(routeOf(p, lower, null).state, `${where}, ${lower}`).toBe('closed');
         }
-      } else {
+      } else if (view.need.kind === 'profile') {
         expect(view.need.profiles.length, where).toBeGreaterThan(0);
         for (const other of view.need.profiles) expect(routeOf(p, level, other).state, `${where} -> ${other}`).not.toBe('closed');
+      } else {
+        expect.fail(`${where}: the onderbouw view never names subjects for a closed door`);
       }
     };
     for (const p of PROFESSIONS) {

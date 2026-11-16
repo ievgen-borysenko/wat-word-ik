@@ -1,0 +1,70 @@
+/*
+ * The bovenbouw view (bovenbouw.html). Loaded after styles.css, doors.css and
+ * onderbouw.css, whose panel, street, doors and card it reuses. Adds the boxes for the
+ * exam subjects (native checkboxes in labels) and the card's programme line.
+ */
+
+.choice-extras {
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+  border: 0;
+}
+
+.choice-extras legend {
+  padding: 0;
+  font-weight: 700;
+}
+
+.extras-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 5px;
+}
+
+.extra-btn {
+  min-width: 0;
+  min-height: 36px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 8px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: #f3f5f8;
+  line-height: 1.2;
+  cursor: pointer;
+  overflow-wrap: anywhere;
+}
+
+.extra-btn:hover {
+  background: #e7ebf2;
+}
+
+.extra-btn.is-checked {
+  border-color: var(--accent);
+  background: #e6edfb;
+}
+
+.extra-box {
+  flex: none;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.extra-label {
+  min-width: 0;
+  font-size: 0.82rem;
+  font-weight: 700;
+}
+
+.card-programme {
+  font-weight: 600;
+}
+
+.apply-lines {
+  margin: 0;
+}

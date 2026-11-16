@@ -155,15 +155,17 @@ export function dismissFromLink(): void {
 // ── side effects: document language and title, and the URL hash ───────────
 
 /**
- * The three pages: the floors view (index.html), the doors view (deuren.html) and the
- * onderbouw view (onderbouw.html, which syncs its own hash in routeStore.ts).
+ * The four pages: the floors view (index.html), the doors view (deuren.html), the
+ * onderbouw view (onderbouw.html, which syncs its own hash in routeStore.ts) and the
+ * bovenbouw view (bovenbouw.html, examStore.ts).
  */
-export type View = 'floors' | 'doors' | 'onderbouw';
+export type View = 'floors' | 'doors' | 'onderbouw' | 'bovenbouw';
 
 /** The document title of a view in a language. */
 export function pageTitle(view: View, l: Lang): string {
   if (view === 'doors') return `${t(l, 'app.title')} - ${t(l, 'doors.title')}`;
   if (view === 'onderbouw') return `${t(l, 'app.title')} - ${t(l, 'route.title')}`;
+  if (view === 'bovenbouw') return `${t(l, 'app.title')} - ${t(l, 'exam.title')}`;
   return `${t(l, 'app.title')} · ${t(l, 'app.subtitle')}`;
 }
 
@@ -172,7 +174,7 @@ export const HASH_DELAY_MS = 150;
 
 let started = false;
 
-export function startSync(view: Exclude<View, 'onderbouw'>): void {
+export function startSync(view: 'floors' | 'doors'): void {
   if (started) return;
   started = true;
 

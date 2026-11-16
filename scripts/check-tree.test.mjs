@@ -214,17 +214,20 @@ describe('check-tree', () => {
     expect(onList('src/package.json')).toBe(false);
   });
 
-  it('lists the three pages and their entries, and nothing that only looks like them', () => {
+  it('lists the four pages and their entries, and nothing that only looks like them', () => {
     for (const path of [
       'index.html',
       'deuren.html',
       'onderbouw.html',
+      'bovenbouw.html',
       'src/main.tsx',
       'src/doors.tsx',
       'src/onderbouw.tsx',
+      'src/bovenbouw.tsx',
       'src/styles.css',
       'src/doors.css',
       'src/onderbouw.css',
+      'src/bovenbouw.css',
     ]) {
       expect(onList(path), path).toBe(true);
     }
@@ -239,8 +242,12 @@ describe('check-tree', () => {
       'onderbouw.htm',
       'src/onderbouw.ts',
       'docs/onderbouw.html',
-      'bovenbouw.html',
-      'src/bovenbouw.tsx',
+      'src/bovenbouw.html',
+      'bovenbouw.htm',
+      'src/bovenbouw.ts',
+      'docs/bovenbouw.html',
+      'middenbouw.html',
+      'src/middenbouw.tsx',
     ]) {
       expect(onList(path), path).toBe(false);
     }

@@ -3,7 +3,7 @@ import { AboutDialog } from './AboutDialog';
 import { Building, Summary } from './Building';
 import { Header } from './Header';
 import { openedBy } from './modal';
-import { OnderbouwLink, OtherViewLink } from './OtherViewLink';
+import { OtherViewLink, SchoolLink } from './OtherViewLink';
 import { ProfessionCard } from './ProfessionCard';
 import { SlidersPanel } from './SlidersPanel';
 import { aboutOpen, lang } from './store';
@@ -38,7 +38,9 @@ export function App() {
               {' · '}
               <OtherViewLink to="doors" />
               {' · '}
-              <OnderbouwLink />
+              <SchoolLink to="onderbouw" />
+              {' · '}
+              <SchoolLink to="bovenbouw" />
             </p>
           </footer>
         </div>

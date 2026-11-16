@@ -25,6 +25,8 @@ test('the guard refuses every request outside the expected set', ({ baseURL }) =
   expect(check('/deuren.html')).toBeNull();
   expect(check('/onderbouw.html')).toBeNull();
   expect(check('/onderbouw.html?n=vwo')).toMatch(/carries a query string$/);
+  expect(check('/bovenbouw.html')).toBeNull();
+  expect(check('/bovenbouw.html?x=na')).toMatch(/carries a query string$/);
   expect(check(script, 'script')).toBeNull();
   expect(requestProblem({ url: 'data:image/svg+xml,x', method: 'GET', resourceType: 'image' }, policy)).toBeNull();
 
