@@ -115,6 +115,33 @@ export type SchoolProfile = HavoVwoProfile | VmboDirection;
 export const EXAM_SUBJECTS = ['wiskunde-a', 'wiskunde-b', 'natuurkunde', 'scheikunde', 'biologie'] as const;
 export type ExamSubject = (typeof EXAM_SUBJECTS)[number];
 
+/**
+ * Subjects that a cell of the regulation may offer as a choice next to an exam subject
+ * above: natuur, leven & technologie (nlt), onderzoek & ontwerpen (o&o) and the
+ * Praktijkgerichte Programma Technologie (PgP-T). The bovenbouw view has no box for
+ * them: it names them in words, and a group is met only by its exam subjects.
+ */
+export const OTHER_OPTIONS = ['nlt', 'o&o', 'pgp-t'] as const;
+export type OtherOption = (typeof OTHER_OPTIONS)[number];
+
+/** A subject as a cell of the regulation names it. */
+export type RathoSubject = ExamSubject | OtherOption;
+
+/**
+ * One cell of a regulation row as data, written by hand next to the cell's text (the
+ * data test checks the two against each other; nothing parses the text at run time):
+ *
+ *   `*`  admits: the profile gives the right to admission;
+ *   `#`  noRight: the profile gives no right to admission;
+ *   else subjects: groups that must all be in the exam, each by one of its subjects.
+ *        `nat` is [[nat]], `nat of nlt` is [[nat, nlt]], `nat + wisB` is [[nat], [wisB]],
+ *        `(wisA of wisB) + (nat of nlt)` is [[wisA, wisB], [nat, nlt]].
+ */
+export type CellRule =
+  | { readonly kind: 'admits' }
+  | { readonly kind: 'noRight' }
+  | { readonly kind: 'subjects'; readonly groups: readonly (readonly RathoSubject[])[] };
+
 /** One admission rule by profile: which profiles admit directly, which with one extra subject. */
 export interface ProfileRule {
   /**
@@ -156,6 +183,8 @@ export interface AdmissionSource {
   readonly programme: string;
   /** The cells NT, NG, EM, CM as written; null when the bijlage has no row for the programme. */
   readonly cells: Readonly<Record<HavoVwoProfile, string>> | null;
+  /** The same cells as typed rules, for the bovenbouw view; null exactly when `cells` is null. */
+  readonly rules: Readonly<Record<HavoVwoProfile, CellRule>> | null;
   /** The version of the regulation that was read (the date it is in force from). */
   readonly version: string;
   /** True when the row (or its absence) was read twice and both readings agreed. */
