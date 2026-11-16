@@ -23,7 +23,7 @@ export function t(lang: Lang, key: MessageKey, params: Params = {}): string {
 }
 
 /** Strings with a count: stored as `<key>.one`, `.few`, `.many`, `.other` (CLDR plural categories). */
-export const PLURAL_KEYS = ['tile.ariaSteps', 'card.focusAverage'] as const;
+export const PLURAL_KEYS = ['tile.ariaSteps', 'card.focusAverage', 'doors.open', 'doors.stepOpens', 'doors.next'] as const;
 export type PluralKey = (typeof PLURAL_KEYS)[number];
 
 export function tp(lang: Lang, key: PluralKey, n: number, params: Params = {}): string {

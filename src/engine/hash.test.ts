@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeHash, encodeHash, hashHasSliders, type HashState } from './hash';
+import { VIEW_MARKER, decodeHash, encodeHash, hashHasSliders, hashHasViewMarker, withViewMarker, type HashState } from './hash';
 import { uniformSliders } from './scoring';
 import { SUBJECT_IDS, type Sliders } from './types';
 
@@ -76,5 +76,69 @@ describe('hash codec', () => {
   it('keeps valid fields when others are invalid', () => {
     const d = decodeHash('#s=bad&g=arts&l=nl', IDS);
     expect(d).toEqual({ sliders: DEFAULT, goal: 'arts', lang: 'nl' });
+  });
+});
+
+describe('view-switch marker', () => {
+  const s: Sliders = { ...uniformSliders(6), wiskunde: 10, kunst: 1 };
+
+  it('is added at the end of an encoded hash and is v=1', () => {
+    expect(VIEW_MARKER).toBe('v=1');
+    expect(withViewMarker(encodeHash({ sliders: s, goal: 'arts', lang: 'ua' }))).toBe('#s=a666666661&g=arts&l=ua&v=1');
+    expect(withViewMarker(encodeHash({ sliders: DEFAULT, goal: null, lang: null }))).toBe('#s=6666666666&v=1');
+  });
+
+  it('is never written by encodeHash', () => {
+    for (const state of [
+      { sliders: s, goal: 'arts', lang: 'ua' },
+      { sliders: DEFAULT, goal: null, lang: null },
+    ] as HashState[]) {
+      expect(encodeHash(state)).not.toMatch(/(?:^#|&)v=/);
+      expect(encodeHash(decodeHash(withViewMarker(encodeHash(state)), IDS))).toBe(encodeHash(state));
+    }
+  });
+
+  it('carries no state: decoding ignores it', () => {
+    const state: HashState = { sliders: s, goal: 'arts', lang: 'nl' };
+    expect(decodeHash(withViewMarker(encodeHash(state)), IDS)).toEqual(state);
+    expect(decodeHash('#v=1', IDS)).toEqual({ sliders: DEFAULT, goal: null, lang: null });
+  });
+
+  it('is found only as exactly v=1', () => {
+    expect(hashHasViewMarker('#s=6666666666&v=1')).toBe(true);
+    expect(hashHasViewMarker('#s=6666666666&g=arts&l=nl&v=1')).toBe(true);
+    expect(hashHasViewMarker('#v=1&s=6666666666')).toBe(true);
+    expect(hashHasViewMarker('#v=1')).toBe(true);
+    for (const h of [
+      '#s=6666666666',
+      '#s=6666666666&v=0',
+      '#s=6666666666&v=',
+      '#s=6666666666&v',
+      '#s=6666666666&v=11',
+      '#s=6666666666&v=true',
+      '#s=6666666666&V=1',
+      '#s=6666666666&v=0&v=1',
+      '#s=6666666666&g=v=1',
+      '',
+      '#',
+      undefined,
+      null,
+      42,
+    ] as unknown[]) {
+      expect(hashHasViewMarker(h), String(h)).toBe(false);
+    }
+  });
+
+  it('does not change how grades are validated', () => {
+    expect(hashHasSliders('#s=6666666666&v=1')).toBe(true);
+    expect(hashHasSliders('#v=1')).toBe(false);
+    expect(hashHasSliders('#s=666&v=1')).toBe(false);
+    expect(hashHasSliders('#s=666666666b&v=1')).toBe(false);
+  });
+
+  it('leaves garbage hashes falling back to the defaults', () => {
+    for (const h of ['#s=&v=1', '#s=66666&v=1', '#%E0%A4%A&v=1', '#g=unknown&l=de&v=1', '#v=1&s=6666666660']) {
+      expect(decodeHash(h, IDS), h).toEqual({ sliders: DEFAULT, goal: null, lang: null });
+    }
   });
 });

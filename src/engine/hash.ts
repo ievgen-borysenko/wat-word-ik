@@ -6,6 +6,12 @@ import { uniformSliders } from './scoring';
  * Sliders are one character each in SUBJECT_IDS order; 10 is written as `a`.
  * `lang` is null unless the language came with the link or was picked on the
  * page, so a guessed browser language never ends up in a shared link.
+ *
+ * One more field is not state: the view-switch marker `v=1` (VIEW_MARKER). The link
+ * to the other view adds it when the grades on screen are the user's own, so the
+ * page it opens does not say they came from a link. It carries no data, only the
+ * exact `v=1` counts, decodeHash ignores it, and encodeHash never writes it: the
+ * page's first write of its own hash removes it from the address.
  */
 export interface HashState {
   readonly sliders: Sliders;
@@ -45,6 +51,14 @@ export function encodeHash(state: HashState): string {
   return `#${parts.join('&')}`;
 }
 
+/** The view-switch marker, as it appears in the hash. */
+export const VIEW_MARKER = 'v=1';
+
+/** `hash` (as encodeHash writes it) with the view-switch marker added at the end. */
+export function withViewMarker(hash: string): string {
+  return `${hash}&${VIEW_MARKER}`;
+}
+
 function parseParams(hash: unknown): URLSearchParams | null {
   if (typeof hash !== 'string') return null;
   try {
@@ -58,6 +72,15 @@ function parseParams(hash: unknown): URLSearchParams | null {
 export function hashHasSliders(hash: unknown): boolean {
   const params = parseParams(hash);
   return params !== null && decodeSliders(params.get('s')) !== null;
+}
+
+/**
+ * True when the hash carries the view-switch marker: `v=1` exactly (the first `v`
+ * field), anything else is not the marker. Says nothing about the other fields.
+ */
+export function hashHasViewMarker(hash: unknown): boolean {
+  const params = parseParams(hash);
+  return params !== null && params.get('v') === '1';
 }
 
 /** Never throws: any field that does not parse falls back to its default. */

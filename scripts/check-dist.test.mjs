@@ -7,10 +7,12 @@ import {
   MIT_NOTICE_SENTENCE,
   NOTICE_HEAD,
   REPO_URL,
+  VIEW_LINK_HREFS_MAX,
   auditDist,
   checkCsp,
   formatNotice,
   formatReport,
+  hrefProps,
   noticeProblems,
   splitLicence,
 } from './check-dist.mjs';
@@ -56,14 +58,23 @@ function html(o = {}) {
   ].join('\n');
 }
 
-const CLEAN_JS =
+/** A script without the links to the other view, so nothing links to deuren.html. */
+const BASE_JS =
   'const n=`http://www.w3.org/2000/svg`;let h="#s=6";location.hash.startsWith(h)&&history.replaceState(null,"",h);';
+/**
+ * The link to the other view on each page, in the shape the real build writes
+ * (src/ui/OtherViewLink.tsx): the two `href` props that check:dist allows.
+ */
+const VIEW_LINKS_JS =
+  'function W({to:e}){let t=S.value.slice(1),n=F(Q.value,e);return e===`doors`?$(`a`,{class:`other-view`,href:`deuren.html#${t}`,children:n}):$(`a`,{class:`other-view`,href:`./#${t}`,children:n})}';
+const CLEAN_JS = BASE_JS + VIEW_LINKS_JS;
 const CLEAN_CSS = '.a{color:red}@media (max-width:600px){.a{color:blue}}.lang-btn{x:1}';
 
-/** A minimal tree shaped like the real build. */
+/** A minimal tree shaped like the real build: both pages, the script links to deuren.html. */
 function cleanTree() {
   return {
     'index.html': html(),
+    'deuren.html': html(),
     'assets/index-abc123.js': CLEAN_JS,
     'assets/index-def456.css': CLEAN_CSS,
   };
@@ -126,6 +137,16 @@ describe('check-dist', () => {
 
     it('requires index.html', () => {
       expect(rules(tree({ 'index.html': null }))).toContain('index.html path');
+    });
+
+    it('requires deuren.html: a build that leaves out the doors view is refused', () => {
+      const report = auditDist(tree({ 'deuren.html': null }));
+      expect(report.violations).toEqual([{ file: 'deuren.html', rule: 'path', message: 'missing' }]);
+    });
+
+    it('reports each missing page', () => {
+      const found = auditDist(tree({ 'index.html': null, 'deuren.html': null })).violations;
+      expect(found.filter((v) => v.message === 'missing').map((v) => v.file)).toEqual(['index.html', 'deuren.html']);
     });
   });
 
@@ -373,6 +394,78 @@ describe('check-dist', () => {
     });
   });
 
+  describe('links in element props (href)', () => {
+    /** The messages of the href rule for a script made of BASE_JS and `js`. @param {string} js */
+    const hrefFindings = (js) =>
+      auditDist(tree({ 'assets/index-abc123.js': `${BASE_JS}${js};` }))
+        .violations.filter((v) => v.rule === 'request')
+        .map((v) => v.message.split(' at ')[0]);
+    const REFUSED = 'link in element props (href) that is not the link to the other view';
+
+    it('refuses the reproducer: a link that sends the hash to the host as a query string', () => {
+      const js = 'h("a",{href:"./?"+new URLSearchParams({g:location.hash})})';
+      expect(rules(withJs(js))).toEqual(['assets/index-abc123.js request']);
+      expect(hrefFindings(js)).toEqual([REFUSED]);
+    });
+
+    it.each([
+      ['an address on another host', 'h("a",{href:"https://example.com/x"})'],
+      ['a query string after the page', 'h(`a`,{href:`deuren.html?${x}`})'],
+      ['no literal page', 'h(`a`,{href:`${a}${b}`})'],
+      ['a quoted key', 'h("a",{"href":x})'],
+      ['a quoted key with the allowed value', 'h(`a`,{"href":`deuren.html#${t}`})'],
+      ['a plain name', 'h(`a`,{href:u})'],
+      ['the shorthand', 'let href="./?"+new URLSearchParams({g:location.hash});h("a",{href})'],
+      ['the shorthand among other props', 'h(`a`,{class:`x`, href ,children:n})'],
+      ['a computed literal key', 'h(`a`,{["href"]:u})'],
+      ['a getter', 'h(`a`,{get href(){return u}})'],
+      ['setAttribute', 'a.setAttribute("href",u)'],
+      [
+        'setAttribute as an optional call',
+        'const a=document.querySelector(".other-view"),u=new URL(location.href);u.searchParams.set("g",location.hash);a.setAttribute?.("href",u);a.click()',
+      ],
+      ['setAttributeNS', 'a.setAttributeNS(null,"href",u)'],
+      ['the page without a literal #', 'h(`a`,{href:`deuren.html${t}`})'],
+      ['the page and # as a string', 'h(`a`,{href:"./#"+t})'],
+      ['the hash first, then the page', 'h(`a`,{href:`${t}deuren.html#`})'],
+      ['another page', 'h(`a`,{href:`../#${t}`})'],
+      ['a page with a prefix', 'h(`a`,{href:`/deuren.html#${t}`})'],
+      ['a space after the key', 'h(`a`,{href: `./#${t}`})'],
+      ['a call in the expression', 'h(`a`,{href:`./#${t()}`})'],
+      ['two expressions', 'h(`a`,{href:`deuren.html#${t}${u}`})'],
+      ['text after the expression', 'h(`a`,{href:`deuren.html#${t}x`})'],
+      ['a concatenation after the template', 'h(`a`,{href:`deuren.html#${t}`+q})'],
+      ['a method call on the template', 'h(`a`,{href:`./#${t}`.concat(q)})'],
+      ['a ternary after the template', 'h(`a`,{href:`./#${t}`?a:b})'],
+    ])('refuses %s: %s', (_what, js) => {
+      expect(hrefFindings(js)).toEqual([REFUSED]);
+    });
+
+    it.each([
+      ['an identifier', 'h(`a`,{href:`deuren.html#${t}`,children:n})'],
+      ['a member expression', 'h(`a`,{class:`x`,href:`./#${Sn.value}`})'],
+    ])('allows the link to the other view with %s: %s', (_what, js) => {
+      expect(hrefFindings(js)).toEqual([]);
+    });
+
+    it('passes the clean tree, whose script holds both links to the other view', () => {
+      expect(hrefProps(CLEAN_JS)).toEqual({ viewLinks: [CLEAN_JS.indexOf('href:`deuren'), CLEAN_JS.indexOf('href:`./')], others: [] });
+      expect(rules(tree())).toEqual([]);
+    });
+
+    it(`allows at most ${VIEW_LINK_HREFS_MAX} links to the other view in all the scripts together`, () => {
+      const third = 'h(`a`,{href:`./#${t}`})';
+      expect(rules(withJs(third))).toEqual(['assets/index-abc123.js request']);
+      expect(auditDist(withJs(third)).violations[0]?.message).toContain(`link to the other view beyond the ${VIEW_LINK_HREFS_MAX} the pages render`);
+      const other = tree({ 'assets/index-other.js': `${third};`, 'index.html': html({ head: '<script type="module" src="./assets/index-other.js"></script>' }) });
+      expect(rules(other)).toEqual(['assets/index-other.js request']);
+    });
+
+    it('does not take a read of an href property or a string `href` for a prop', () => {
+      expect(rules(withJs('t!=`href`&&t in e;let u=a.href;x.hrefLang;y["href"]'))).toEqual([]);
+    });
+  });
+
   describe('Content-Security-Policy', () => {
     it('accepts the policy of the real build', () => {
       expect(checkCsp(CSP)).toEqual([]);
@@ -469,8 +562,34 @@ describe('check-dist', () => {
     });
   });
 
+  describe('deuren.html (the second page)', () => {
+    /** The clean tree with `page` as deuren.html, which its script links to. @param {string} page */
+    const withDoors = (page) => tree({ 'deuren.html': page });
+
+    it('is shipped when the script links to it, with the same checks as index.html', () => {
+      expect(rules(withDoors(html()))).toEqual([]);
+    });
+
+    it('requires its own CSP meta', () => {
+      expect(rules(withDoors(html({ csp: '' })))).toEqual(['deuren.html csp']);
+    });
+
+    it('rejects an inline script and a remote stylesheet', () => {
+      const head = '<script>go()</script><link rel="stylesheet" href="https://cdn.example.com/x.css">';
+      expect(rules(withDoors(html({ head }))).sort()).toEqual(['deuren.html html', 'deuren.html html', 'deuren.html url'].sort());
+    });
+
+    it('is refused when nothing links to it', () => {
+      expect(rules(tree({ 'assets/index-abc123.js': BASE_JS }))).toEqual(['deuren.html unreferenced']);
+    });
+
+    it('refuses any other page', () => {
+      expect(rules(tree({ 'other.html': html() }))).toContain('other.html path');
+    });
+  });
+
   it('lists every violation, not only the first', () => {
-    const dir = tree({ '.DS_Store': 'x', 'assets/index-abc123.js': 'fetch("https://api.example.com/");' });
+    const dir = tree({ '.DS_Store': 'x', 'assets/index-abc123.js': `${CLEAN_JS}fetch("https://api.example.com/");` });
     const report = auditDist(dir);
     expect(report.violations.map((v) => v.rule).sort()).toEqual(['path', 'runtime', 'unreferenced', 'url']);
     const text = formatReport(report);
@@ -623,20 +742,56 @@ describe('check-dist', () => {
       const report = auditDist(tree(), RUNTIME);
       expect(report.violations.map((v) => `${v.file} ${v.rule}`)).toEqual(['(dist) notice']);
     });
+  });
 
-    describe('the real build', async () => {
-      const { build } = await import('vite');
-      const result = await build({ root: ROOT, configFile: join(ROOT, 'vite.config.ts'), logLevel: 'silent', build: { write: false } });
-      /** @type {{ type: string, code?: string, isEntry?: boolean }[]} */
-      const outputs = (Array.isArray(result) ? result : [result]).flatMap((o) => ('output' in o ? o.output : []));
-      const chunks = outputs.filter((o) => o.type === 'chunk');
-      const runtime = runtimePackages(JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8')));
+  describe('the real build', async () => {
+    const { build } = await import('vite');
+    // Vitest sets NODE_ENV to `test`, and Vite then compiles the JSX for development, with
+    // source paths in it. `npm run build` runs with NODE_ENV unset, which Vite takes as
+    // production: build that, so these tests see what is shipped.
+    const nodeEnv = process.env.NODE_ENV;
+    process.env.NODE_ENV = 'production';
+    let result;
+    try {
+      result = await build({ root: ROOT, configFile: join(ROOT, 'vite.config.ts'), logLevel: 'silent', build: { write: false } });
+    } finally {
+      if (nodeEnv === undefined) delete process.env.NODE_ENV;
+      else process.env.NODE_ENV = nodeEnv;
+    }
+    /** @type {{ type: string, fileName: string, code?: string, source?: string | Uint8Array, isEntry?: boolean, moduleIds?: string[] }[]} */
+    const outputs = (Array.isArray(result) ? result : [result]).flatMap((o) => ('output' in o ? o.output : []));
+    const chunks = outputs.filter((o) => o.type === 'chunk');
+    const runtime = runtimePackages(JSON.parse(readFileSync(join(ROOT, 'package-lock.json'), 'utf8')));
+    /** @param {{ moduleIds?: string[] }} c */
+    const hasPackageCode = (c) => (c.moduleIds ?? []).some((id) => id.replaceAll('\\', '/').includes('/node_modules/'));
 
-      it('opens the entry script with the notice of every runtime package of the lockfile', () => {
-        expect(runtime.map((p) => p.name)).toContain('preact');
-        expect(chunks.filter((c) => c.isEntry).map((c) => c.code?.startsWith(`${NOTICE_HEAD}\n`))).toEqual([true]);
-        expect(noticeProblems(chunks.map((c) => c.code ?? ''), runtime)).toEqual([]);
-      });
+    it('opens the script that bundles package code with the notice of every runtime package of the lockfile', () => {
+      expect(runtime.map((p) => p.name)).toContain('preact');
+      // Two pages share one chunk with the package code; it carries the notice, the page scripts do not.
+      expect(chunks.filter((c) => c.isEntry).length).toBe(2);
+      expect(chunks.filter(hasPackageCode).map((c) => c.code?.startsWith(`${NOTICE_HEAD}\n`))).toEqual([true]);
+      expect(chunks.filter((c) => !hasPackageCode(c)).map((c) => c.code?.includes(NOTICE_HEAD))).toEqual([false, false]);
+      expect(noticeProblems(chunks.map((c) => c.code ?? ''), runtime)).toEqual([]);
+    });
+
+    it(`holds ${VIEW_LINK_HREFS_MAX} href props, the links to the other view in the allowed shape, and no other`, () => {
+      const found = chunks.map((c) => ({ code: c.code ?? '', ...hrefProps(c.code ?? '') }));
+      expect(found.flatMap((f) => f.others)).toEqual([]);
+      const pages = found.flatMap((f) => f.viewLinks.map((at) => /^href:`([^#`]*)#/.exec(f.code.slice(at))?.[1]));
+      expect(pages.sort()).toEqual(['./', 'deuren.html']);
+      expect(pages).toHaveLength(VIEW_LINK_HREFS_MAX);
+    });
+
+    it('passes the whole audit, with both pages', () => {
+      const dir = mkdtempSync(join(tmpdir(), 'check-dist-real-'));
+      made.push(dir);
+      for (const o of outputs) {
+        mkdirSync(dirname(join(dir, o.fileName)), { recursive: true });
+        writeFileSync(join(dir, o.fileName), o.type === 'chunk' ? (o.code ?? '') : (o.source ?? ''));
+      }
+      const report = auditDist(dir, runtime);
+      expect(report.violations).toEqual([]);
+      expect(report.sizes.map((s) => s.path).filter((p) => p.endsWith('.html'))).toEqual(['deuren.html', 'index.html']);
     });
   });
 
@@ -670,6 +825,12 @@ describe('check-dist', () => {
       const r = run(tree(), lockfile(JSON.stringify(lock)));
       expect(r.status).toBe(1);
       expect(r.stderr).toContain('(dist): [notice] no licence notice in any script; needed for a 1.0.0');
+    });
+
+    it('exits 1 when a page is missing', () => {
+      const r = run(tree({ 'deuren.html': null }));
+      expect(r.status).toBe(1);
+      expect(r.stderr).toContain('deuren.html: [path] missing');
     });
 
     it('exits 2 when the directory is missing', () => {

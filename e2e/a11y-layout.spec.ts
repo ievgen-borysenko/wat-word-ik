@@ -1,5 +1,5 @@
 import type { Page } from '@playwright/test';
-import { expect, fromLinkNotice, openApp, seriousA11yIssues, test } from './fixtures';
+import { expect, expectWideFont, fromLinkNotice, openApp, seriousA11yIssues, test, useWideFont } from './fixtures';
 
 const LANGS = ['nl', 'en', 'ua'] as const;
 
@@ -104,38 +104,11 @@ test('phones: the ground floor stays above the slider panel', async ({ page }, t
   await checkPhones(page, 'system font');
 });
 
-/** Wide sans-serif fonts: Verdana on macOS and Windows, DejaVu Sans on Linux. */
-const WIDE_FONTS = 'Verdana, "DejaVu Sans", sans-serif';
-/** Arial-width fonts, for comparison. */
-const NARROW_FONTS = 'Arial, "Liberation Sans", Helvetica, sans-serif';
-
-// The layout must not depend on the machine's default font: CI once failed at 320px
-// with a wider system font than the one the layout was tuned on.
+// The layout must not depend on the machine's default font (see useWideFont).
 test('phones with a wide system font: the same rules hold', async ({ page }, testInfo) => {
   test.skip(testInfo.project.name !== 'mobile', 'phone sizes only');
-  // Through the CSSOM before the page's scripts run: the page's CSP refuses a <style> tag.
-  await page.addInitScript((fonts) => {
-    const apply = () => document.documentElement?.style.setProperty('font-family', fonts, 'important');
-    apply();
-    document.addEventListener('DOMContentLoaded', apply);
-  }, WIDE_FONTS);
-
-  // The variant only proves something when a wide font is really installed.
+  await useWideFont(page);
   await openApp(page);
-  const ratio = await page.evaluate(
-    ([wide, narrow]) => {
-      const ctx = document.createElement('canvas').getContext('2d');
-      if (!ctx) return 0;
-      const width = (fonts: string) => {
-        ctx.font = `16px ${fonts}`;
-        return ctx.measureText('Wat word ik? NL EN UA Demodata').width;
-      };
-      return width(wide ?? '') / width(narrow ?? '');
-    },
-    [WIDE_FONTS, NARROW_FONTS],
-  );
-  expect(ratio, 'a wide font (Verdana or DejaVu Sans) must be installed for this test').toBeGreaterThan(1.08);
-  await expect(page.locator('html')).toHaveCSS('font-family', /Verdana|DejaVu Sans/);
-
+  await expectWideFont(page);
   await checkPhones(page, 'wide font');
 });

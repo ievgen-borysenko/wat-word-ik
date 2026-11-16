@@ -8,6 +8,30 @@ import { decimal, euros, floorAbout, floorLabel, shortName, subjectEmoji, subjec
 import { useModalDialog } from './modal';
 import { evaluations, goal, lang, selected, sliders, toggleGoal } from './store';
 
+/**
+ * How the card words a state: the pill under the title and the rungs of the ladder.
+ * The floors view uses FLOOR_WORDS; the doors view passes its own.
+ */
+export interface CardWords {
+  /** Class (`is-...`), a mark before the text, and the text of the state pill. */
+  pill(e: Evaluation, l: Lang): { readonly cls: string; readonly mark: string; readonly text: string };
+  /** Class, a mark after the name (empty for none) and the state for screen readers, of a ladder rung. */
+  rung(e: Evaluation | undefined, l: Lang): { readonly cls: string; readonly mark: string; readonly text: string };
+}
+
+const FLOOR_WORDS: CardWords = {
+  pill: (e, l) => ({
+    cls: `is-${e.state}`,
+    mark: e.state === 'far' ? '🔒 ' : e.state === 'near' ? `+${e.stepsToOpen} ` : '✓ ',
+    text: t(l, `state.${e.state}`),
+  }),
+  rung: (e, l) => ({
+    cls: `is-${e?.state ?? 'far'}`,
+    mark: e?.state === 'far' ? ' 🔒' : '',
+    text: t(l, `state.${e?.state ?? 'far'}`),
+  }),
+};
+
 const pct = (v: number) => `${(Math.max(0, Math.min(GRADE_MAX, v)) / GRADE_MAX) * 100}%`;
 
 /** A 0..10 bar: your level filled, a marker at the requirement, a red gap when short. */
@@ -56,12 +80,13 @@ function FocusLines({ p, e, l }: { p: Profession; e: Evaluation; l: Lang }) {
   );
 }
 
-function CardBody({ p, e }: { p: Profession; e: Evaluation }) {
+function CardBody({ p, e, words }: { p: Profession; e: Evaluation; words: CardWords }) {
   const l = lang.value;
   const s = sliders.value;
   const rungs = ladder(PROFESSIONS, p);
   const isGoal = goal.value === p.id;
   const titleRef = useRef<HTMLHeadingElement>(null);
+  const pill = words.pill(e, l);
 
   // When the ladder switches to another profession, move focus to its title.
   const first = useRef(true);
@@ -93,9 +118,9 @@ function CardBody({ p, e }: { p: Profession; e: Evaluation }) {
       </header>
 
       <p class="card-state">
-        <span class={`state-pill is-${e.state}`}>
-          {e.state === 'far' ? '🔒 ' : e.state === 'near' ? `+${e.stepsToOpen} ` : '✓ '}
-          {t(l, `state.${e.state}`)}
+        <span class={`state-pill ${pill.cls}`}>
+          {pill.mark}
+          {pill.text}
         </span>
       </p>
       <p class="card-about">{p.about[l]}</p>
@@ -149,20 +174,20 @@ function CardBody({ p, e }: { p: Profession; e: Evaluation }) {
           <p class="muted small">{t(l, 'card.ladderHint')}</p>
           <ol class="ladder">
             {rungs.map((r) => {
-              const re = evaluations.value.get(r.id);
+              const rung = words.rung(evaluations.value.get(r.id), l);
               const current = r.id === p.id;
               return (
                 <li key={r.id}>
                   <button
                     type="button"
-                    class={`ladder-chip is-${re?.state ?? 'far'} ${current ? 'is-current' : ''}`}
+                    class={`ladder-chip ${rung.cls} ${current ? 'is-current' : ''}`}
                     aria-current={current ? 'true' : undefined}
                     onClick={() => (selected.value = r.id)}
                   >
                     <span aria-hidden="true">{r.emoji}</span> {shortName(r, l)}{' '}
                     <span class="chip-floor">{floorLabel(r.level, l)}</span>
-                    {re?.state === 'far' && <span aria-hidden="true"> 🔒</span>}
-                    <span class="visually-hidden">, {t(l, `state.${re?.state ?? 'far'}`)}</span>
+                    {rung.mark && <span aria-hidden="true">{rung.mark}</span>}
+                    <span class="visually-hidden">, {rung.text}</span>
                   </button>
                 </li>
               );
@@ -203,7 +228,11 @@ function CardBody({ p, e }: { p: Profession; e: Evaluation }) {
   );
 }
 
-export function ProfessionCard() {
+/**
+ * The profession card. `words` and `opener` default to the floors view: its state words
+ * and its tiles (the element that takes focus when the card's opener is gone).
+ */
+export function ProfessionCard({ words = FLOOR_WORDS, opener = '.tile' }: { words?: CardWords; opener?: string }) {
   const id = selected.value;
   const p = id ? PROFESSION_BY_ID.get(id) : undefined;
   const e = p ? evaluations.value.get(p.id) : undefined;
@@ -219,7 +248,7 @@ export function ProfessionCard() {
       if (selected.value !== null) selected.value = null;
     },
     fallbackFocus: () =>
-      lastId.current ? document.querySelector<HTMLElement>(`.tile[data-id="${lastId.current}"]`) : null,
+      lastId.current ? document.querySelector<HTMLElement>(`${opener}[data-id="${lastId.current}"]`) : null,
   });
 
   return (
@@ -231,7 +260,7 @@ export function ProfessionCard() {
       onPointerDown={modal.onPointerDown}
       onClick={modal.onClick}
     >
-      {p && e && <CardBody key="card" p={p} e={e} />}
+      {p && e && <CardBody key="card" p={p} e={e} words={words} />}
     </dialog>
   );
 }

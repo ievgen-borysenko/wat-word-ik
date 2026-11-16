@@ -1,6 +1,6 @@
 import { batch, computed, effect, signal } from '@preact/signals';
 import { PROFESSIONS, PROFESSION_IDS } from '../data/professions';
-import { decodeHash, encodeHash, encodeSliders, hashHasSliders } from '../engine/hash';
+import { decodeHash, encodeHash, encodeSliders, hashHasSliders, hashHasViewMarker, withViewMarker } from '../engine/hash';
 import { evaluate, plusOne, uniformSliders, withSlider, type Evaluation } from '../engine/scoring';
 import { SUBJECT_IDS, type Lang, type Profession, type Sliders, type SubjectId } from '../engine/types';
 import { HTML_LANG, detectLang, t } from '../i18n';
@@ -34,8 +34,14 @@ function freshNavigation(): boolean {
   return entry?.type === 'navigate';
 }
 
-/** The grades on screen came from a link (`s=` in the hash), not from this user. */
-export const fromLink = signal<boolean>(hashHasSliders(initialHash) && freshNavigation());
+/**
+ * The grades on screen came from a link (`s=` in the hash), not from this user. A page
+ * opened by the link to the other view with the view-switch marker (`v=1`) shows the
+ * user's own grades: the link adds the marker only when they were not from a link.
+ */
+export const fromLink = signal<boolean>(
+  hashHasSliders(initialHash) && freshNavigation() && !hashHasViewMarker(initialHash),
+);
 /** Profession whose card is open. Not part of the hash. */
 export const selected = signal<string | null>(null);
 /** The "How it works" dialog is open. Not part of the hash. */
@@ -65,6 +71,18 @@ export const band = computed<0 | 1 | 2 | 3>(() => {
   if (open < total * 0.78) return 2;
   return 3;
 });
+
+/** The hash this page writes for its state. */
+export const stateHash = computed(() =>
+  encodeHash({ sliders: sliders.value, goal: goal.value, lang: langChosen.value ? lang.value : null }),
+);
+
+/**
+ * The hash the link to the other view carries: this page's state, plus the view-switch
+ * marker while the grades are the user's own, so the other view does not call them
+ * grades from a link. While the notice is showing, no marker: it carries over.
+ */
+export const otherViewHash = computed(() => (fromLink.value ? stateHash.value : withViewMarker(stateHash.value)));
 
 export const plusOneBySubject = computed<Readonly<Record<SubjectId, Profession[]>>>(() => {
   const s = sliders.value;
@@ -134,22 +152,34 @@ export function dismissFromLink(): void {
   fromLink.value = false;
 }
 
-// ── side effects: document language and the URL hash ──────────────────────
+// ── side effects: document language and title, and the URL hash ───────────
+
+/** The two pages: the floors view (index.html) and the doors view (deuren.html). */
+export type View = 'floors' | 'doors';
+
+/** The document title of a view in a language. */
+export function pageTitle(view: View, l: Lang): string {
+  return view === 'doors'
+    ? `${t(l, 'app.title')} - ${t(l, 'doors.title')}`
+    : `${t(l, 'app.title')} · ${t(l, 'app.subtitle')}`;
+}
 
 /** Delay before the hash follows the sliders: Safari limits how often replaceState may run. */
 export const HASH_DELAY_MS = 150;
 
 let started = false;
 
-export function startSync(): void {
+export function startSync(view: View): void {
   if (started) return;
   started = true;
 
   effect(() => {
     document.documentElement.lang = HTML_LANG[lang.value];
-    document.title = `${t(lang.value, 'app.title')} · ${t(lang.value, 'app.subtitle')}`;
+    document.title = pageTitle(view, lang.value);
   });
 
+  // The first write also drops what the page does not write itself, such as the
+  // view-switch marker, from the address.
   let timer: ReturnType<typeof setTimeout> | undefined;
   effect(() => {
     const hash = encodeHash({

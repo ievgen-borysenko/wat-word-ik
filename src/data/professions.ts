@@ -28,6 +28,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 1,
     family: 'schoonmaker',
     rung: 1,
+    field: 'care',
   },
   {
     id: 'kassamedewerker',
@@ -43,6 +44,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 1,
     family: 'kassamedewerker',
     rung: 1,
+    field: 'people',
   },
   {
     id: 'orderpicker',
@@ -59,6 +61,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 1,
     family: 'logistiek',
     rung: 1,
+    field: 'people',
   },
   {
     id: 'maaltijdbezorger',
@@ -75,6 +78,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 1,
     family: 'maaltijdbezorger',
     rung: 1,
+    field: 'people',
   },
   {
     id: 'keukenhulp',
@@ -90,6 +94,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 1,
     family: 'keuken',
     rung: 1,
+    field: 'making',
   },
 
   // ── Level 1: mbo 2-3 ─────────────────────────────────────────────────────
@@ -108,6 +113,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 2,
     family: 'elektro',
     rung: 1,
+    field: 'technology',
   },
   {
     id: 'timmerman',
@@ -123,6 +129,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 2,
     family: 'bouw',
     rung: 1,
+    field: 'making',
   },
   {
     id: 'kapper',
@@ -138,6 +145,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 2,
     family: 'kapper',
     rung: 1,
+    field: 'people',
   },
   {
     id: 'kok',
@@ -153,6 +161,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 2,
     family: 'keuken',
     rung: 2,
+    field: 'making',
   },
   {
     id: 'verzorgende',
@@ -169,6 +178,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 2,
     family: 'zorg',
     rung: 1,
+    field: 'care',
   },
   {
     id: 'vrachtwagenchauffeur',
@@ -185,6 +195,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 2,
     family: 'logistiek',
     rung: 2,
+    field: 'technology',
   },
   {
     id: 'hovenier',
@@ -201,6 +212,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 2,
     family: 'hovenier',
     rung: 1,
+    field: 'nature',
   },
   {
     id: 'automonteur',
@@ -216,6 +228,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 2,
     family: 'machines',
     rung: 1,
+    field: 'technology',
   },
 
   // ── Level 2: mbo 4 ───────────────────────────────────────────────────────
@@ -234,6 +247,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'elektro',
     rung: 2,
+    field: 'technology',
   },
   {
     id: 'verpleegkundige',
@@ -250,6 +264,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'zorg',
     rung: 2,
+    field: 'care',
   },
   {
     id: 'meubelmaker',
@@ -270,6 +285,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'bouw',
     rung: 2,
+    field: 'making',
   },
   {
     id: 'laborant',
@@ -285,6 +301,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'lab',
     rung: 1,
+    field: 'nature',
   },
   {
     id: 'politieagent',
@@ -300,6 +317,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'recht',
     rung: 1,
+    field: 'people',
   },
   {
     id: 'grafisch-vormgever',
@@ -315,6 +333,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'ontwerp',
     rung: 1,
+    field: 'making',
   },
   {
     id: 'applicatieontwikkelaar',
@@ -331,6 +350,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'software',
     rung: 1,
+    field: 'technology',
   },
 
   // ── Level 3: hbo ─────────────────────────────────────────────────────────
@@ -349,6 +369,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 4,
     family: 'elektro',
     rung: 3,
+    field: 'technology',
   },
   {
     id: 'mechatronica-engineer',
@@ -365,6 +386,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 4,
     family: 'machines',
     rung: 2,
+    field: 'technology',
   },
   {
     id: 'leraar-basisonderwijs',
@@ -381,6 +403,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'onderwijs',
     rung: 1,
+    field: 'people',
   },
   {
     id: 'software-engineer',
@@ -396,6 +419,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 4,
     family: 'software',
     rung: 2,
+    field: 'technology',
   },
   {
     id: 'journalist',
@@ -411,6 +435,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'media',
     rung: 1,
+    field: 'people',
   },
   {
     id: 'bouwkundig-ingenieur',
@@ -427,6 +452,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 4,
     family: 'bouw',
     rung: 3,
+    field: 'making',
   },
   {
     id: 'game-designer',
@@ -442,6 +468,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'ontwerp',
     rung: 2,
+    field: 'making',
   },
   {
     id: 'archeoloog',
@@ -458,6 +485,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 3,
     family: 'erfgoed',
     rung: 1,
+    field: 'nature',
   },
 
   // ── Level 4: wo ──────────────────────────────────────────────────────────
@@ -475,6 +503,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 5,
     family: 'zorg',
     rung: 3,
+    field: 'care',
   },
   {
     id: 'chirurg',
@@ -490,6 +519,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 5,
     family: 'zorg',
     rung: 4,
+    field: 'care',
   },
   {
     id: 'electrical-engineer',
@@ -506,6 +536,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 4,
     family: 'elektro',
     rung: 4,
+    field: 'nature',
   },
   {
     id: 'wetenschapper',
@@ -526,6 +557,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 4,
     family: 'machines',
     rung: 3,
+    field: 'nature',
   },
   {
     id: 'advocaat',
@@ -541,6 +573,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 5,
     family: 'recht',
     rung: 2,
+    field: 'people',
   },
   {
     id: 'architect',
@@ -556,6 +589,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 4,
     family: 'bouw',
     rung: 4,
+    field: 'making',
   },
   {
     id: 'apotheker',
@@ -571,6 +605,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 5,
     family: 'lab',
     rung: 2,
+    field: 'care',
   },
   {
     id: 'dierenarts',
@@ -586,6 +621,7 @@ export const PROFESSIONS: readonly Profession[] = [
     pay: 4,
     family: 'dierenarts',
     rung: 1,
+    field: 'nature',
   },
 ];
 

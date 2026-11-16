@@ -12,6 +12,8 @@ interface LoadOptions {
   readonly replaceThrows?: boolean;
   /** Navigation Timing type of this page load; null = no entry. */
   readonly navigation?: string | null;
+  /** Which page runs the store; the floors view by default. */
+  readonly view?: 'floors' | 'doors';
 }
 
 async function load(hash = '', options: LoadOptions = {}) {
@@ -24,7 +26,8 @@ async function load(hash = '', options: LoadOptions = {}) {
   const win = new EventTarget();
   vi.stubGlobal('location', loc);
   vi.stubGlobal('history', { state: null, replaceState });
-  vi.stubGlobal('document', { documentElement: { lang: '' }, title: '' });
+  const doc = { documentElement: { lang: '' }, title: '' };
+  vi.stubGlobal('document', doc);
   vi.stubGlobal('window', win);
   vi.stubGlobal('navigator', { languages: options.languages ?? ['de-DE'] });
   vi.stubGlobal('matchMedia', () => ({ matches: options.reducedMotion ?? false }));
@@ -35,12 +38,12 @@ async function load(hash = '', options: LoadOptions = {}) {
     getEntriesByType: (kind: string) => (kind === 'navigation' && navigation !== null ? [{ type: navigation }] : []),
   });
   const store = await import('./store');
-  store.startSync();
+  store.startSync(options.view ?? 'floors');
   const navigate = (next: string) => {
     loc.hash = next;
     win.dispatchEvent(new Event('hashchange'));
   };
-  return { store, loc, replaceState, navigate };
+  return { store, loc, doc, replaceState, navigate };
 }
 
 const uniform = (v: number) => Object.fromEntries(SUBJECT_IDS.map((s) => [s, v]));
@@ -208,5 +211,98 @@ describe('"grades from a link" notice', () => {
     expect(store.fromLink.value).toBe(false);
     navigate('#s=9999999999');
     expect(store.fromLink.value).toBe(true);
+  });
+});
+
+describe('switching views (the view-switch marker v=1)', () => {
+  it('a page opened with the marker shows the grades as the user\'s own', async () => {
+    expect((await load('#s=8888888888&v=1')).store.fromLink.value).toBe(false);
+    expect((await load('#s=8888888888&g=arts&l=nl&v=1', { view: 'doors' })).store.fromLink.value).toBe(false);
+  });
+
+  it('only the exact marker counts', async () => {
+    expect((await load('#s=8888888888&v=0')).store.fromLink.value).toBe(true);
+    expect((await load('#s=8888888888&v=11')).store.fromLink.value).toBe(true);
+    expect((await load('#s=8888888888&V=1')).store.fromLink.value).toBe(true);
+  });
+
+  it('carries no state and leaves the address on the first write', async () => {
+    const { store, loc, replaceState } = await load('#s=8888888888&g=arts&l=nl&v=1');
+    expect(store.sliders.value).toEqual(uniform(8));
+    expect(store.goal.value).toBe('arts');
+    expect(store.lang.value).toBe('nl');
+    expect(loc.hash).toBe('#s=8888888888&g=arts&l=nl&v=1');
+    vi.advanceTimersByTime(store.HASH_DELAY_MS);
+    expect(replaceState).toHaveBeenCalledTimes(1);
+    expect(loc.hash).toBe('#s=8888888888&g=arts&l=nl');
+  });
+
+  it('leaves the address also when the rest of the hash is not valid', async () => {
+    const { store, loc } = await load('#s=88888&v=1');
+    expect(store.fromLink.value).toBe(false);
+    expect(store.sliders.value).toEqual(uniform(6));
+    vi.advanceTimersByTime(store.HASH_DELAY_MS);
+    expect(loc.hash).toBe('#s=6666666666');
+  });
+
+  it('the link to the other view adds it while the grades are the user\'s own', async () => {
+    const own = await load('');
+    expect(own.store.otherViewHash.value).toBe('#s=6666666666&v=1');
+    own.store.setSlider('wiskunde', 7);
+    own.store.setLang('ua');
+    expect(own.store.otherViewHash.value).toBe('#s=7666666666&l=ua&v=1');
+
+    const opened = await load('#s=8888888888&v=1');
+    expect(opened.store.otherViewHash.value).toBe('#s=8888888888&v=1');
+  });
+
+  it('the link to the other view leaves it out while the notice shows, so the notice carries over', async () => {
+    const { store } = await load('#s=8888888888&g=arts');
+    expect(store.fromLink.value).toBe(true);
+    expect(store.otherViewHash.value).toBe('#s=8888888888&g=arts');
+    store.setSlider('wiskunde', 7);
+    expect(store.otherViewHash.value).toBe('#s=7888888888&g=arts&v=1');
+  });
+
+  it('the link to the other view adds it after the notice is dismissed', async () => {
+    const { store } = await load('#s=8888888888');
+    store.dismissFromLink();
+    expect(store.otherViewHash.value).toBe('#s=8888888888&v=1');
+  });
+
+  it('is read only when the page loads: a later hash change with other grades still shows the notice', async () => {
+    const { store, navigate, loc } = await load('');
+    navigate('#s=9999999999&v=1');
+    expect(store.fromLink.value).toBe(true);
+    vi.advanceTimersByTime(store.HASH_DELAY_MS);
+    expect(loc.hash).toBe('#s=9999999999');
+  });
+});
+
+describe('document title', () => {
+  it('the floors view keeps its title', async () => {
+    for (const [l, title] of [
+      ['nl', 'Wat word ik? · Schuif en zie welke deuren kennis opent'],
+      ['en', 'Wat word ik? · Drag the sliders - see what knowledge opens up'],
+      ['ua', 'Wat word ik? · Тягни повзунки - дивись, що відкривають знання'],
+    ] as const) {
+      expect((await load(`#s=6666666666&l=${l}`)).doc.title).toBe(title);
+    }
+  });
+
+  it('the doors view has its own title in each language', async () => {
+    for (const [l, title] of [
+      ['nl', 'Wat word ik? - Deuren'],
+      ['en', 'Wat word ik? - Doors'],
+      ['ua', 'Wat word ik? - Двері'],
+    ] as const) {
+      expect((await load(`#s=6666666666&l=${l}`, { view: 'doors' })).doc.title).toBe(title);
+    }
+  });
+
+  it('follows the language switch', async () => {
+    const { store, doc } = await load('#l=nl', { view: 'doors' });
+    store.setLang('en');
+    expect(doc.title).toBe('Wat word ik? - Doors');
   });
 });

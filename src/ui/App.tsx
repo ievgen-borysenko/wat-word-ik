@@ -3,6 +3,7 @@ import { AboutDialog } from './AboutDialog';
 import { Building, Summary } from './Building';
 import { Header } from './Header';
 import { openedBy } from './modal';
+import { OtherViewLink } from './OtherViewLink';
 import { ProfessionCard } from './ProfessionCard';
 import { SlidersPanel } from './SlidersPanel';
 import { aboutOpen, lang } from './store';
@@ -34,6 +35,8 @@ export function App() {
               >
                 {t(l, 'about.title')}
               </button>
+              {' · '}
+              <OtherViewLink to="doors" />
             </p>
           </footer>
         </div>

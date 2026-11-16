@@ -214,6 +214,15 @@ describe('check-tree', () => {
     expect(onList('src/package.json')).toBe(false);
   });
 
+  it('lists the two pages and their entries, and nothing that only looks like them', () => {
+    for (const path of ['index.html', 'deuren.html', 'src/main.tsx', 'src/doors.tsx', 'src/styles.css', 'src/doors.css']) {
+      expect(onList(path), path).toBe(true);
+    }
+    for (const path of ['src/deuren.html', 'other.html', 'src/other.tsx', 'src/doors.ts', 'src/notes.css', 'docs/deuren.html']) {
+      expect(onList(path), path).toBe(false);
+    }
+  });
+
   it('refuses an executable file', () => {
     const r = repo();
     r.git(['update-index', '--chmod=+x', 'scripts/check-tree.mjs']);

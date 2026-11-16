@@ -9,6 +9,9 @@ light up or go dark. Click a profession to see what you need to know for it.
 
 Try it: <https://ievgen-borysenko.github.io/wat-word-ik/>
 
+A second view, `deuren.html`, shows the same grades as a street of doors
+grouped by field of work; each view links to the other.
+
 It shows what is *open* with your grades, never what you *will become*.
 
 **Status: M0 prototype with demo data.** All requirements, levels and pay
@@ -41,7 +44,7 @@ npm run build            # static site in dist/, works from any sub-path
 ## What CI checks
 
 Every pull request and every push to `main` runs the same checks, so that we
-ship the page and nothing else:
+ship the pages and nothing else:
 
 - the repository, and every commit of a pull request, holds only files on an
   explicit list; every tracked file is text without an e-mail address, a path
@@ -59,15 +62,16 @@ ship the page and nothing else:
   maintainer's co-author line and Dependabot's sign-off, and no generated-by
   footers;
 - the built site is audited in a separate job that installs no dependencies,
-  so no package code can touch the audit: it holds only the page and its
-  bundles, stays within a size budget, contains no local paths, private
+  so no package code can touch the audit: it holds both pages
+  (`index.html`, the building, and `deuren.html`, the doors), their bundles
+  and nothing else, stays within a size budget, contains no local paths, private
   addresses, e-mail addresses or keys, uses no browser feature that sends or
-  stores data and no way to send data to its own host, keeps a
-  Content-Security-Policy that lets the page load its own script and
-  stylesheet and nothing else, and carries the licence notice of every
-  package bundled into it;
+  stores data and no way to send data to its own host, keeps on each page a
+  Content-Security-Policy that lets it load its own scripts and stylesheets
+  and nothing else, and carries the licence notice of every package bundled
+  into it;
 - end-to-end tests in Chromium on that same audited build: the browser asks
-  only for the page and its own files, never with a query string, nothing is
+  only for the pages and their own files, never with a query string, nothing is
   stored, no console errors, no serious accessibility findings, and the
   layout fits desktop and phone screens.
 
@@ -97,5 +101,6 @@ e2e          end-to-end tests of the built site (Playwright)
 
 ## Licence
 
-MIT, see [LICENSE](LICENSE). The built page bundles Preact and Preact Signals
-(MIT); their copyright and licence notices open the built script.
+MIT, see [LICENSE](LICENSE). The built pages bundle Preact and Preact Signals
+(MIT) into one script that both pages load; their copyright and licence
+notices open that shared script.

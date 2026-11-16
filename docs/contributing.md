@@ -124,6 +124,7 @@ inside a floor is the order of the tiles on screen.
 | `pay`    | 1 to 5, demo scale shown as euro signs |
 | `family` | ladder name; a profession that is not on a ladder uses its own id |
 | `rung`   | position on the ladder, counting from 1 |
+| `field`  | field of work, the group of its door in the doors view (`deuren.html`): `care`, `technology`, `making`, `nature` or `people` (`FIELDS` in `src/engine/types.ts`) |
 
 Rules the tests check (`src/data/data.test.ts`):
 
@@ -135,6 +136,9 @@ Rules the tests check (`src/data/data.test.ts`):
 - **Floors.** Each floor has 5 to 8 tiles. The layout shows 8 tiles per row:
   a ninth tile would start a second row and the whole building would no
   longer fit on a phone screen.
+- **Fields.** Each field holds 4 to 8 professions (one row of doors on a
+  phone) and spans at least three floors, so that no field of the doors view
+  stands for a level in disguise.
 - **Key subjects.** Every subject must be the highest requirement of at least
   two professions, so every slider matters for something.
 - **Count.** The test pins the number of professions (36). When you add or
@@ -164,7 +168,8 @@ those fall back to the default grades. Update the tests that spell out a full
    the header follows this list.
 2. Copy `src/i18n/en.json` to the new file and translate every value. Keep
    the `{placeholders}` exactly as they are. Strings with a count
-   (`tile.ariaSteps`, `card.focusAverage`) need one entry per plural category
+   (`tile.ariaSteps`, `card.focusAverage`, `doors.open`, `doors.stepOpens`,
+   `doors.next`) need one entry per plural category
    of the language, as `Intl.PluralRules` lists them (`.one`, `.few`, `.many`,
    `.other`).
 3. Register the file in `MESSAGES` and the HTML language tag in `HTML_LANG`

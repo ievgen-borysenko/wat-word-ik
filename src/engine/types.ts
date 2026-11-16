@@ -48,6 +48,13 @@ export interface Need {
 
 export type Pay = 1 | 2 | 3 | 4 | 5;
 
+/**
+ * Field of work, for the doors view: neutral groups by kind of work, never by
+ * level or pay. The order here is the order of the groups on screen.
+ */
+export const FIELDS = ['care', 'technology', 'making', 'nature', 'people'] as const;
+export type Field = (typeof FIELDS)[number];
+
 export interface Profession {
   readonly id: string;
   readonly level: Level;
@@ -62,6 +69,8 @@ export interface Profession {
   /** Professions of one family form a ladder; `rung` counts from 1. */
   readonly family: string;
   readonly rung: number;
+  /** Field of work: the group of its door in the doors view. */
+  readonly field: Field;
 }
 
 export type Sliders = Readonly<Record<SubjectId, number>>;
