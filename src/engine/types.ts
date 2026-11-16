@@ -71,8 +71,55 @@ export interface Profession {
   readonly rung: number;
   /** Field of work: the group of its door in the doors view. */
   readonly field: Field;
+  /**
+   * mbo professions (levels 1 and 2) only: the vmbo direction that fits best. A fit,
+   * not a requirement: a vmbo diploma of any direction admits to mbo.
+   */
+  readonly vmbo?: VmboDirection;
+  /** hbo and wo professions (levels 3 and 4) only: admission by havo or vwo profile. */
+  readonly admission?: ProfileAdmission;
 }
 
 export type Sliders = Readonly<Record<SubjectId, number>>;
 
 export type State = 'open' | 'near' | 'far';
+
+/*
+ * The onderbouw view (onderbouw.html): klas 1-3 of secondary school, before the
+ * profile choice. The input is the school level and the profile, not grades.
+ */
+
+/** School levels, low to high: vmbo-bb/kb, vmbo-gl/tl, havo, vwo. The order is used: a higher level never opens less. */
+export const SCHOOL_LEVELS = ['bbkb', 'gltl', 'havo', 'vwo'] as const;
+export type SchoolLevel = (typeof SCHOOL_LEVELS)[number];
+
+/** The four havo and vwo profiles: Natuur & Techniek, Natuur & Gezondheid, Economie & Maatschappij, Cultuur & Maatschappij. */
+export const HAVO_VWO_PROFILES = ['nt', 'ng', 'em', 'cm'] as const;
+export type HavoVwoProfile = (typeof HAVO_VWO_PROFILES)[number];
+
+/**
+ * Four broad vmbo directions. The real vmbo-bb/kb/gl has ten profiles; this demo
+ * groups them into four, and the page says so.
+ */
+export const VMBO_DIRECTIONS = ['techniek', 'zorg', 'economie', 'groen'] as const;
+export type VmboDirection = (typeof VMBO_DIRECTIONS)[number];
+
+export type SchoolProfile = HavoVwoProfile | VmboDirection;
+
+/** Exam subjects that an admission rule can ask for on top of a profile. */
+export const EXAM_SUBJECTS = ['wiskunde-a', 'wiskunde-b', 'natuurkunde', 'scheikunde', 'biologie'] as const;
+export type ExamSubject = (typeof EXAM_SUBJECTS)[number];
+
+/**
+ * Admission to an hbo or wo programme from havo or vwo, by profile (demo data).
+ * The same rule holds for havo and vwo; for wo, havo is one step short anyway.
+ */
+export interface ProfileAdmission {
+  /** Profiles that give direct admission. At least one. */
+  readonly direct: readonly HavoVwoProfile[];
+  /**
+   * For a profile that is not direct: the one extra subject that closes the gap.
+   * A profile that is in neither list needs a different profile.
+   */
+  readonly bridge: Readonly<Partial<Record<HavoVwoProfile, ExamSubject>>>;
+}

@@ -1,6 +1,18 @@
 import { describe, expect, it } from 'vitest';
-import { FIELDS, LANGS, LEVELS, SUBJECT_IDS, type Localized } from '../engine/types';
+import { profileCounts } from '../engine/route';
+import {
+  EXAM_SUBJECTS,
+  FIELDS,
+  HAVO_VWO_PROFILES,
+  LANGS,
+  LEVELS,
+  SCHOOL_LEVELS,
+  SUBJECT_IDS,
+  VMBO_DIRECTIONS,
+  type Localized,
+} from '../engine/types';
 import { PROFESSIONS } from './professions';
+import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from './secondary';
 import { SUBJECTS } from './subjects';
 
 function expectLocalized(l: Localized | undefined, where: string): void {
@@ -144,5 +156,71 @@ describe('professions', () => {
       for (const n of p.needs) if (n.min === top) counts.set(n.subject, (counts.get(n.subject) ?? 0) + 1);
     }
     for (const s of SUBJECT_IDS) expect(counts.get(s) ?? 0, s).toBeGreaterThanOrEqual(2);
+  });
+});
+
+describe('onderbouw data (school levels, profiles, vmbo directions)', () => {
+  it('every level, profile, direction and exam subject has a name in all three languages, and nothing more', () => {
+    expect(Object.keys(SCHOOL_LEVEL_NAMES)).toEqual([...SCHOOL_LEVELS]);
+    expect(Object.keys(PROFILE_NAMES)).toEqual([...HAVO_VWO_PROFILES]);
+    expect(Object.keys(DIRECTION_NAMES)).toEqual([...VMBO_DIRECTIONS]);
+    expect(Object.keys(EXAM_SUBJECT_NAMES)).toEqual([...EXAM_SUBJECTS]);
+    for (const [id, l] of Object.entries(SCHOOL_LEVEL_NAMES)) expectLocalized(l, `level ${id}`);
+    for (const [id, p] of Object.entries(PROFILE_NAMES)) {
+      expectLocalized(p.name, `profile ${id}.name`);
+      expectLocalized(p.short, `profile ${id}.short`);
+    }
+    for (const [id, l] of Object.entries(DIRECTION_NAMES)) expectLocalized(l, `direction ${id}`);
+    for (const [id, l] of Object.entries(EXAM_SUBJECT_NAMES)) expectLocalized(l, `exam subject ${id}`);
+  });
+
+  it('every mbo profession names the vmbo direction that fits it best, and no other profession has one', () => {
+    const known = new Set<string>(VMBO_DIRECTIONS);
+    for (const p of PROFESSIONS) {
+      if (p.level === 1 || p.level === 2) expect(known.has(p.vmbo ?? ''), `${p.id}.vmbo = ${String(p.vmbo)}`).toBe(true);
+      else expect(p.vmbo, `${p.id} is not mbo`).toBeUndefined();
+    }
+  });
+
+  it('every hbo and wo profession has at least one direct profile; only they have admission data', () => {
+    for (const p of PROFESSIONS) {
+      if (p.level === 3 || p.level === 4) {
+        expect(p.admission, p.id).toBeDefined();
+        expect(p.admission!.direct.length, `${p.id} has no direct profile`).toBeGreaterThan(0);
+      } else {
+        expect(p.admission, `${p.id} is not hbo or wo`).toBeUndefined();
+      }
+    }
+  });
+
+  it('every referenced profile and subject exists; a profile is direct or bridged, never both, and once', () => {
+    const profiles = new Set<string>(HAVO_VWO_PROFILES);
+    const subjects = new Set<string>(EXAM_SUBJECTS);
+    for (const p of PROFESSIONS) {
+      const a = p.admission;
+      if (!a) continue;
+      expect(new Set(a.direct).size, `${p.id} lists a direct profile twice`).toBe(a.direct.length);
+      for (const d of a.direct) expect(profiles.has(d), `${p.id}.direct ${d}`).toBe(true);
+      for (const [profile, subject] of Object.entries(a.bridge)) {
+        expect(profiles.has(profile), `${p.id}.bridge ${profile}`).toBe(true);
+        expect(subjects.has(subject), `${p.id}.bridge ${profile} -> ${subject}`).toBe(true);
+        expect((a.direct as readonly string[]).includes(profile), `${p.id}: ${profile} is direct and bridged`).toBe(false);
+      }
+    }
+  });
+
+  it('every vmbo direction fits at least one mbo profession', () => {
+    for (const d of VMBO_DIRECTIONS) expect(PROFESSIONS.some((p) => p.vmbo === d), d).toBe(true);
+  });
+
+  // The counts on the profile buttons. A change here is a change in the demo data:
+  // update these numbers on purpose, together with the data.
+  it('the counts per profile are stable', () => {
+    const counts = (level: (typeof SCHOOL_LEVELS)[number]) =>
+      Object.fromEntries(profileCounts(PROFESSIONS, level).map((c) => [c.profile, c.count]));
+    expect(counts('havo')).toEqual({ nt: 28, ng: 25, em: 25, cm: 23 });
+    expect(counts('vwo')).toEqual({ nt: 33, ng: 30, em: 26, cm: 24 });
+    expect(counts('gltl')).toEqual({ techniek: 9, zorg: 4, economie: 1, groen: 1 });
+    expect(counts('bbkb')).toEqual(counts('gltl'));
   });
 });

@@ -1,5 +1,16 @@
-import { DEFAULT_GRADE, LANGS, SUBJECT_IDS, type Lang, type Sliders, type SubjectId } from './types';
+import { validProfile } from './route';
 import { uniformSliders } from './scoring';
+import {
+  DEFAULT_GRADE,
+  LANGS,
+  SCHOOL_LEVELS,
+  SUBJECT_IDS,
+  type Lang,
+  type SchoolLevel,
+  type SchoolProfile,
+  type Sliders,
+  type SubjectId,
+} from './types';
 
 /**
  * URL hash state, e.g. `#s=6666666666&g=arts&l=ua`.
@@ -94,4 +105,49 @@ export function decodeHash(hash: unknown, knownIds: ReadonlySet<string>): HashSt
   const l = params.get('l');
   const lang = (LANGS as readonly string[]).includes(l ?? '') ? (l as Lang) : null;
   return { sliders, goal, lang };
+}
+
+/*
+ * The onderbouw view (onderbouw.html) has its own state, in the same style:
+ * `#n=havo&p=nt&l=nl`. `n` is the school level (SCHOOL_LEVELS), `p` the profile or
+ * vmbo direction of that level, left out while none is chosen, and `l` the language
+ * as above. Each page reads only its own keys: decodeHash ignores `n` and `p`,
+ * decodeRouteHash ignores `s`, `g` and the view-switch marker, and the first write
+ * of a page's own hash drops whatever it does not own.
+ */
+export interface RouteHashState {
+  readonly level: SchoolLevel;
+  readonly profile: SchoolProfile | null;
+  readonly lang: Lang | null;
+}
+
+/** The level shown when the link names none: havo, the middle of the four. */
+export const DEFAULT_SCHOOL_LEVEL: SchoolLevel = 'havo';
+
+export function encodeRouteHash(state: RouteHashState): string {
+  const parts = [`n=${state.level}`];
+  if (state.profile) parts.push(`p=${state.profile}`);
+  if (state.lang) parts.push(`l=${state.lang}`);
+  return `#${parts.join('&')}`;
+}
+
+/** Never throws: a level that does not parse falls back to the default, a profile that does not belong to the level to none. */
+export function decodeRouteHash(hash: unknown): RouteHashState {
+  const params = parseParams(hash);
+  if (params === null) return { level: DEFAULT_SCHOOL_LEVEL, profile: null, lang: null };
+  const n = params.get('n') ?? '';
+  const level = (SCHOOL_LEVELS as readonly string[]).includes(n) ? (n as SchoolLevel) : DEFAULT_SCHOOL_LEVEL;
+  const profile = validProfile(level, params.get('p'));
+  const l = params.get('l');
+  const lang = (LANGS as readonly string[]).includes(l ?? '') ? (l as Lang) : null;
+  return { level, profile, lang };
+}
+
+/**
+ * What a link between the onderbouw view and the grade views carries: the language,
+ * when it was chosen (as `l=` alone), and nothing else. Without a `#`, so a link
+ * template can put its own literal `#` in front.
+ */
+export function langFragment(lang: Lang | null): string {
+  return lang ? `l=${lang}` : '';
 }

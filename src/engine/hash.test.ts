@@ -1,7 +1,21 @@
 import { describe, expect, it } from 'vitest';
-import { VIEW_MARKER, decodeHash, encodeHash, hashHasSliders, hashHasViewMarker, withViewMarker, type HashState } from './hash';
+import {
+  DEFAULT_SCHOOL_LEVEL,
+  VIEW_MARKER,
+  decodeHash,
+  decodeRouteHash,
+  encodeHash,
+  encodeRouteHash,
+  hashHasSliders,
+  hashHasViewMarker,
+  langFragment,
+  withViewMarker,
+  type HashState,
+  type RouteHashState,
+} from './hash';
+import { profilesOf } from './route';
 import { uniformSliders } from './scoring';
-import { SUBJECT_IDS, type Sliders } from './types';
+import { LANGS, SCHOOL_LEVELS, SUBJECT_IDS, type Sliders } from './types';
 
 const IDS = new Set(['arts', 'journalist']);
 const DEFAULT = uniformSliders(6);
@@ -140,5 +154,66 @@ describe('view-switch marker', () => {
     for (const h of ['#s=&v=1', '#s=66666&v=1', '#%E0%A4%A&v=1', '#g=unknown&l=de&v=1', '#v=1&s=6666666660']) {
       expect(decodeHash(h, IDS), h).toEqual({ sliders: DEFAULT, goal: null, lang: null });
     }
+  });
+});
+
+describe('onderbouw hash (n = level, p = profile)', () => {
+  it('encodes the documented format and leaves out what is not chosen', () => {
+    expect(encodeRouteHash({ level: 'havo', profile: 'nt', lang: 'nl' })).toBe('#n=havo&p=nt&l=nl');
+    expect(encodeRouteHash({ level: 'gltl', profile: null, lang: null })).toBe('#n=gltl');
+    expect(encodeRouteHash({ level: 'bbkb', profile: 'zorg', lang: null })).toBe('#n=bbkb&p=zorg');
+  });
+
+  it('round-trips every level, profile and language', () => {
+    for (const level of SCHOOL_LEVELS) {
+      for (const profile of [null, ...profilesOf(level)]) {
+        for (const lang of [null, ...LANGS]) {
+          const state: RouteHashState = { level, profile, lang };
+          expect(decodeRouteHash(encodeRouteHash(state))).toEqual(state);
+        }
+      }
+    }
+  });
+
+  it('falls back to havo without a profile on garbage, and never throws', () => {
+    expect(DEFAULT_SCHOOL_LEVEL).toBe('havo');
+    for (const h of [undefined, null, 42, '', '#', '#n=', '#n=HAVO', '#n=mavo', '#n=havo%00', '#p=zorg', '#%E0%A4%A', '#__proto__=1', '#' + 'n'.repeat(100000)]) {
+      expect(decodeRouteHash(h), String(h).slice(0, 20)).toEqual({ level: 'havo', profile: null, lang: null });
+    }
+  });
+
+  it('keeps a valid profile when the level falls back to the default', () => {
+    expect(decodeRouteHash('#n=mavo&p=nt')).toEqual({ level: 'havo', profile: 'nt', lang: null });
+  });
+
+  it('drops a profile that does not belong to the level', () => {
+    expect(decodeRouteHash('#n=vwo&p=zorg')).toEqual({ level: 'vwo', profile: null, lang: null });
+    expect(decodeRouteHash('#n=gltl&p=nt&l=ua')).toEqual({ level: 'gltl', profile: null, lang: 'ua' });
+    expect(decodeRouteHash('#n=havo&p=constructor')).toEqual({ level: 'havo', profile: null, lang: null });
+  });
+
+  it('each page reads only its own keys', () => {
+    // The grade pages ignore n and p ...
+    expect(decodeHash('#n=vwo&p=ng&l=en', IDS)).toEqual({ sliders: DEFAULT, goal: null, lang: 'en' });
+    expect(decodeHash('#s=a666666661&g=arts&n=vwo&p=ng&v=1', IDS)).toEqual({
+      sliders: { ...uniformSliders(6), wiskunde: 10, kunst: 1 },
+      goal: 'arts',
+      lang: null,
+    });
+    expect(hashHasSliders('#n=vwo&p=ng')).toBe(false);
+    expect(hashHasViewMarker('#n=vwo&p=ng')).toBe(false);
+    // ... and the onderbouw page ignores s, g and the view-switch marker.
+    expect(decodeRouteHash('#s=a666666661&g=arts&l=nl&v=1')).toEqual({ level: 'havo', profile: null, lang: 'nl' });
+    expect(decodeRouteHash('#s=a666666661&n=vwo&p=em&v=1')).toEqual({ level: 'vwo', profile: 'em', lang: null });
+    // Neither writes the other's keys.
+    expect(encodeHash(decodeHash('#s=6666666666&n=vwo&p=ng', IDS))).toBe('#s=6666666666');
+    expect(encodeRouteHash(decodeRouteHash('#n=vwo&p=ng&s=6666666666&g=arts&v=1'))).toBe('#n=vwo&p=ng');
+  });
+
+  it('a link between the pages carries the language only, and only when it was chosen', () => {
+    expect(langFragment('ua')).toBe('l=ua');
+    expect(langFragment(null)).toBe('');
+    expect(decodeHash(`#${langFragment('nl')}`, IDS)).toEqual({ sliders: DEFAULT, goal: null, lang: 'nl' });
+    expect(decodeRouteHash(`#${langFragment('en')}`)).toEqual({ level: 'havo', profile: null, lang: 'en' });
   });
 });
