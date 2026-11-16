@@ -324,8 +324,8 @@ describe('deploy job', () => {
   /** @param {string} event @param {string} ref @param {{ [key: string]: Value } | null} repository */
   const deploys = (event, ref, repository) => truthy(evaluate(condition, runContext(event, ref, repository)));
 
-  it('runs only after the audit and the end-to-end jobs pass', () => {
-    expect(value(deploy, 'needs')).toBe('[audit, e2e]');
+  it('runs only after the audit, the end-to-end and the collector jobs pass', () => {
+    expect(value(deploy, 'needs')).toBe('[audit, e2e, collector]');
     // Without a status function GitHub adds success(): every needed job passed.
     expect(condition).not.toMatch(/\b(?:always|success|failure|cancelled)\s*\(/);
   });
@@ -383,11 +383,13 @@ describe('deploy job', () => {
 
   // A job without permissions of its own gets the top-level ones; without
   // those, it gets the repository's default token permissions, which can
-  // include write access.
+  // include write access. The collector job states its own: contents: read.
   it('every other job may only read the repository contents', () => {
     const top = block(LINES, (l) => l === 'permissions:', 'top-level permissions');
     expect(top.filter((l) => l.trim() !== '')).toEqual(['permissions:', '  contents: read']);
-    expect(keyLines(/^ {4}permissions\s*:/).map((k) => k.job)).toEqual(['deploy']);
+    expect(keyLines(/^ {4}permissions\s*:/).map((k) => k.job)).toEqual(['collector', 'deploy']);
+    const own = block(job('collector'), (l) => l === '    permissions:', 'collector permissions');
+    expect(own.filter((l) => l.trim() !== '')).toEqual(['    permissions:', '      contents: read']);
   });
 
   it('is never cancelled while it runs', () => {
@@ -636,5 +638,55 @@ describe('secret scan of the history in the audit job', () => {
         'gitleaks [dir] [--no-banner] [--redact] [--ignore-gitleaks-allow] [.]',
       ].join('\n'),
     });
+  });
+});
+
+describe('every action is pinned', () => {
+  // A tag can be moved to other code; a full commit hash cannot.
+  it('uses each action by a full commit hash, with its version in a comment', () => {
+    const uses = LINES.filter((l) => /^\s+(?:- )?uses\s*:/.test(l));
+    expect(uses.length).toBeGreaterThan(0);
+    for (const line of uses) expect(line, line).toMatch(/^\s+(?:- )?uses: [a-z-]+\/[a-z-]+@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
+  });
+});
+
+describe('collector job', () => {
+  const collector = job('collector');
+  const names = collector.filter((l) => l.startsWith('      - name: ')).map((l) => l.slice('      - name: '.length));
+
+  it('is named for the required checks and needs no other job', () => {
+    expect(value(collector, 'name')).toBe('Collector (offline)');
+    expect(collector.some((l) => /^\s+needs\s*:/.test(l))).toBe(false);
+  });
+
+  it('checks out, sets up the pinned Python and runs the tests, the self-test and emit --check, and nothing else', () => {
+    expect(collector.filter((l) => l.startsWith('      - ')).length).toBe(names.length);
+    expect(names).toEqual([
+      'Check out',
+      'Set up Python from collector/.python-version (no package cache)',
+      'Unit tests (standard library only)',
+      'Self-test of the gate (every planted sample refused)',
+      'Emitted fixture matches its inputs (emit --check)',
+    ]);
+    const runs = names.slice(2).map((name) => value(step(collector, name), 'run'));
+    expect(runs).toEqual([
+      'python -I -S -B -m unittest discover -s collector/tests -t collector -v',
+      'python -I -S -B collector/run.py selftest',
+      'python -I -S -B collector/run.py emit --check --set fixture',
+    ]);
+  });
+
+  it('keeps no credentials and takes the Python version from the collector, without a package cache', () => {
+    const checkout = step(collector, 'Check out');
+    expect(value(checkout, 'uses')).toBe(value(step(job('build'), 'Check out'), 'uses'));
+    expect(value(checkout, 'persist-credentials')).toBe('false');
+    const python = step(collector, 'Set up Python');
+    expect(value(python, 'uses')).toMatch(/^actions\/setup-python@[0-9a-f]{40} # v\d+\.\d+\.\d+$/);
+    const inputs = block(python, (l) => l === '        with:', 'setup-python inputs').slice(1);
+    expect(inputs.filter((l) => l.trim() !== '').map((l) => l.trim())).toEqual(['python-version-file: collector/.python-version']);
+  });
+
+  it('installs no package and fetches nothing', () => {
+    for (const line of collector) expect(line, line).not.toMatch(/\b(?:pip|pipx|uv|poetry|requirements|curl|wget)\b|https?:/);
   });
 });

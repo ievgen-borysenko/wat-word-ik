@@ -152,3 +152,11 @@ afterwards. A guard in `collector/tests/__init__.py` makes any other write
 fail the test, and each test class compares a listing of the repository before
 and after its tests, which also covers child processes.
 
+## In CI
+
+The job **Collector (offline)** runs the unit tests, the self-test and
+`emit --check` on Python 3.14 set up by the pinned `actions/setup-python`,
+with read access to the repository only and no package installed. No step
+fetches a source; setup-python itself may download the Python build from
+GitHub when the runner image does not have it. The deploy job needs this job
+to pass. What the other jobs check is in [ci.md](ci.md).

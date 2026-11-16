@@ -273,9 +273,38 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  # Runs the collector's tests with Python's standard library only: no package
+  # is installed and no step fetches a source (setup-python may download the
+  # Python build itself). See docs/collector.md.
+  collector:
+    name: Collector (offline)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - name: Check out
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up Python from collector/.python-version (no package cache)
+        uses: actions/setup-python@6d4fd22b20465ccc0f7354476588e8df7c9ca0e0 # v7.1.0
+        with:
+          python-version-file: collector/.python-version
+
+      - name: Unit tests (standard library only)
+        run: python -I -S -B -m unittest discover -s collector/tests -t collector -v
+
+      - name: Self-test of the gate (every planted sample refused)
+        run: python -I -S -B collector/run.py selftest
+
+      - name: Emitted fixture matches its inputs (emit --check)
+        run: python -I -S -B collector/run.py emit --check --set fixture
+
   deploy:
     name: Deploy to GitHub Pages
-    needs: [audit, e2e]
+    needs: [audit, e2e, collector]
     # Only a push to main, or a run started by hand on main, of a public
     # repository deploys; pull requests and other refs never do. Visibility is
     # compared with 'public' because an expression counts a missing value as
