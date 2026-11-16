@@ -5,10 +5,10 @@
 // no network requests at run time. This script checks that the files we are
 // about to ship keep that promise and carry nothing else:
 //
-//   1. paths    every shipped file is on an allow-list (the pages index.html and
-//               deuren.html and the JS and CSS bundles; no source maps, hidden
-//               files, JSON dumps, docs, tests, images) and is a regular file,
-//               and both pages are there;
+//   1. paths    every shipped file is on an allow-list (the pages index.html,
+//               deuren.html and onderbouw.html and the JS and CSS bundles; no
+//               source maps, hidden files, JSON dumps, docs, tests, images) and
+//               is a regular file, and all three pages are there;
 //   2. refs     every file except index.html is referenced by another shipped
 //               file, and every local reference in a page exists;
 //   3. size     JS, CSS and the whole tree stay within a budget;
@@ -18,8 +18,8 @@
 //   5. runtime  the JS names no browser API that talks to the network, stores
 //               data or starts a worker, and no way to send data to the page's
 //               own host without one (an image request, a navigation, a URL
-//               written into an element, a link other than the one to the other
-//               view, a string that starts a query string);
+//               written into an element, a link other than the links between
+//               the pages, a string that starts a query string);
 //   6. html     each page carries a Content-Security-Policy meta that lets the
 //               page load its own script and stylesheet and nothing else
 //               (default-src 'none'); it loads nothing from another host, has
@@ -45,16 +45,17 @@ export const REPO_URL = 'https://github.com/ievgen-borysenko/wat-word-ik';
 export const SHIPPED_PATHS = [
   /^index\.html$/,
   /^deuren\.html$/,
+  /^onderbouw\.html$/,
   /^assets\/[A-Za-z0-9_-]+\.js$/,
   /^assets\/[A-Za-z0-9_-]+\.css$/,
 ];
 
 /**
- * The HTML pages: index.html (the floors view) and deuren.html (the doors view).
- * Both are required: a tree without one of them is refused ('missing'). Each gets
- * the checks of checkPage.
+ * The HTML pages: index.html (the floors view), deuren.html (the doors view) and
+ * onderbouw.html (the onderbouw view). All are required: a tree without one of them
+ * is refused ('missing'). Each gets the checks of checkPage.
  */
-export const PAGES = ['index.html', 'deuren.html'];
+export const PAGES = ['index.html', 'deuren.html', 'onderbouw.html'];
 
 /** Size budget in bytes (1 kB = 1000 bytes, as in Vite's build report). */
 export const BUDGET = { js: 150_000, css: 40_000, total: 400_000 };
@@ -297,12 +298,13 @@ export const RUNTIME_APIS = [
  *   - links as keys of element props (href:, quoted or not, the shorthand {href},
  *     a computed literal key, a method or getter) and setAttribute("href", ...),
  *     with one exception:
- *     the link to the other view, in the exact shape the build writes it
- *     (VIEW_LINK_HREF_RE below), at most VIEW_LINK_HREFS_MAX times in all the
- *     scripts together. That shape is a template literal with a literal page
- *     (deuren.html or ./), a literal `#` and one name; everything after a `#`
- *     is the fragment, which the browser never sends to a host, so that link
- *     carries nothing off the page, whatever the name holds (see hrefProps);
+ *     the links between the pages, in the exact shape the build writes them
+ *     (VIEW_LINK_HREF_RE below), at most once per page in all the scripts
+ *     together (VIEW_LINK_PAGES), so at most VIEW_LINK_HREFS_MAX times. That shape
+ *     is a template literal with a literal page (./, deuren.html or
+ *     onderbouw.html), a literal `#` and one name; everything after a `#` is the
+ *     fragment, which the browser never sends to a host, so that link carries
+ *     nothing off the page, whatever the name holds (see hrefProps);
  *   - a string literal that starts a query string ("?key=", "/path?key=",
  *     "./x?key=", also as a template literal) where an expression begins.
  * It does NOT find a property or attribute name assembled at run time
@@ -344,23 +346,41 @@ export const HREF_PROP_RE =
   /(?<![\w$.-])(["'`]?)href\1\s*:|(?<=[{,]\s*)href(?=\s*[,}])|\[\s*(["'`])href\2\s*\]\s*:|(?<![\w$.])href\s*\(|\bsetAttribute(?:NS)?\s*(?:\?\.)?\s*\(\s*(?:null\s*,\s*)?(["'`])href\3/g;
 
 /**
- * The only `href` prop allowed, tried where HREF_PROP_RE found the key: the link
- * to the other view as the build writes it (src/ui/OtherViewLink.tsx), for example
- * href:`deuren.html#${t}`. The key unquoted, no space, a template literal that
- * holds exactly a literal page (deuren.html or ./), a literal `#` and one
- * identifier or member expression, and then the end of the value (`,` or `}`):
+ * The only `href` prop allowed, tried where HREF_PROP_RE found the key: a link
+ * between the pages as the build writes it (PageLink in src/ui/OtherViewLink.tsx),
+ * for example href:`deuren.html#${t}`. The key unquoted, no space, a template
+ * literal that holds exactly a literal page (./, deuren.html or onderbouw.html), a
+ * literal `#` and one identifier or member expression, and then the end of the value (`,` or `}`):
  * no query string, no other text, no second expression, no concatenation. The
  * minifier may rename the identifier. When a build writes the link in any other
  * shape (a changed source or minifier), this audit refuses it and the real-build
  * test in check-dist.test.mjs fails, so the new shape is reviewed before it ships.
  */
-export const VIEW_LINK_HREF_RE = /href:`(?:deuren\.html|\.\/)#\$\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\}`(?=[,}])/y;
-
-/** The links to the other view the scripts may hold in all: the real build has two, one on each page. */
-export const VIEW_LINK_HREFS_MAX = 2;
+export const VIEW_LINK_HREF_RE =
+  /href:`(?:\.\/|deuren\.html|onderbouw\.html)#\$\{[A-Za-z_$][\w$]*(?:\.[A-Za-z_$][\w$]*)*\}`(?=[,}])/y;
 
 /**
- * The `href` props of one script, by position: the links to the other view
+ * The pages a link may go to, as the template names them: the floors view (`./`, the
+ * entry), the doors view and the onderbouw view. The real build writes one template
+ * per page in one component, which every footer link renders through, so each page
+ * may be named by at most one link in all the scripts together.
+ */
+export const VIEW_LINK_PAGES = ['./', 'deuren.html', 'onderbouw.html'];
+
+/** The links between the pages the scripts may hold in all: one per page, three in the real build. */
+export const VIEW_LINK_HREFS_MAX = VIEW_LINK_PAGES.length;
+
+/**
+ * The page a link that VIEW_LINK_HREF_RE accepted at `at` goes to.
+ * @param {string} text
+ * @param {number} at
+ */
+export function viewLinkPage(text, at) {
+  return /^href:`([^#`]*)#/.exec(text.slice(at, at + 40))?.[1] ?? '';
+}
+
+/**
+ * The `href` props of one script, by position: the links between the pages
  * (VIEW_LINK_HREF_RE) and every other one, which is refused.
  * @param {string} text
  * @returns {{ viewLinks: number[], others: number[] }}
@@ -397,7 +417,7 @@ const URL_ATTRS = new Set([
  * lockfile entries without `dev`, runtimePackages in check-lockfile.mjs), and
  * their licences ask that the copyright and permission notice go with every
  * copy. The build (vite.config.ts) writes one legal comment at the top of each
- * script that bundles package code (the chunk both pages share) with
+ * script that bundles package code (the chunk the pages share) with
  * formatNotice below, from each installed package's own
  * licence file: every package with its version, licence and copyright lines,
  * then each distinct licence text once, with the packages it applies to.
@@ -786,7 +806,11 @@ export function auditDist(dir, runtime = []) {
   for (const e of entries) {
     if (e.kind !== 'file') violations.push({ file: e.path, rule: 'path', message: `${e.kind} is not allowed, ship regular files only` });
     else if (!SHIPPED_PATHS.some((re) => re.test(e.path))) {
-      violations.push({ file: e.path, rule: 'path', message: 'not on the list of shipped paths (index.html, deuren.html, assets/*.js, assets/*.css)' });
+      violations.push({
+        file: e.path,
+        rule: 'path',
+        message: 'not on the list of shipped paths (index.html, deuren.html, onderbouw.html, assets/*.js, assets/*.css)',
+      });
     }
   }
   for (const page of PAGES) {
@@ -798,7 +822,8 @@ export function auditDist(dir, runtime = []) {
   const shipped = new Set(files.map((f) => f.path));
 
   // 2. refs: every file except index.html is named by another shipped file. index.html
-  // is the entry, and the link back to it is `./`; deuren.html must be linked by name.
+  // is the entry, and the link back to it is `./`; deuren.html and onderbouw.html must
+  // be linked by name.
   for (const f of files) {
     if (f.path === 'index.html') continue;
     const named = [...texts].some(([other, text]) => other !== f.path && text.includes(f.path));
@@ -815,7 +840,8 @@ export function auditDist(dir, runtime = []) {
   }
 
   // 4. content, 5. runtime
-  let viewLinks = 0;
+  /** @type {Set<string>} */
+  const linkedPages = new Set();
   for (const [path, text] of texts) {
     /** @param {string} rule @param {string} message */
     const add = (rule, message) => violations.push({ file: path, rule, message });
@@ -844,12 +870,14 @@ export function auditDist(dir, runtime = []) {
       }
       const hrefs = hrefProps(text);
       for (const at of hrefs.others) {
-        add('request', `link in element props (href) that is not the link to the other view at ${where(text, at, 5)}`);
+        add('request', `link in element props (href) that is not a link between the pages at ${where(text, at, 5)}`);
       }
       for (const at of hrefs.viewLinks) {
-        if (++viewLinks > VIEW_LINK_HREFS_MAX) {
-          add('request', `link to the other view beyond the ${VIEW_LINK_HREFS_MAX} the pages render at ${where(text, at, 5)}`);
+        const page = viewLinkPage(text, at);
+        if (linkedPages.has(page)) {
+          add('request', `a second link to ${page}, where the pages render one link to each page, at ${where(text, at, 5)}`);
         }
+        linkedPages.add(page);
       }
     }
   }

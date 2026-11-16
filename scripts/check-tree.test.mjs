@@ -214,11 +214,34 @@ describe('check-tree', () => {
     expect(onList('src/package.json')).toBe(false);
   });
 
-  it('lists the two pages and their entries, and nothing that only looks like them', () => {
-    for (const path of ['index.html', 'deuren.html', 'src/main.tsx', 'src/doors.tsx', 'src/styles.css', 'src/doors.css']) {
+  it('lists the three pages and their entries, and nothing that only looks like them', () => {
+    for (const path of [
+      'index.html',
+      'deuren.html',
+      'onderbouw.html',
+      'src/main.tsx',
+      'src/doors.tsx',
+      'src/onderbouw.tsx',
+      'src/styles.css',
+      'src/doors.css',
+      'src/onderbouw.css',
+    ]) {
       expect(onList(path), path).toBe(true);
     }
-    for (const path of ['src/deuren.html', 'other.html', 'src/other.tsx', 'src/doors.ts', 'src/notes.css', 'docs/deuren.html']) {
+    for (const path of [
+      'src/deuren.html',
+      'other.html',
+      'src/other.tsx',
+      'src/doors.ts',
+      'src/notes.css',
+      'docs/deuren.html',
+      'src/onderbouw.html',
+      'onderbouw.htm',
+      'src/onderbouw.ts',
+      'docs/onderbouw.html',
+      'bovenbouw.html',
+      'src/bovenbouw.tsx',
+    ]) {
       expect(onList(path), path).toBe(false);
     }
   });

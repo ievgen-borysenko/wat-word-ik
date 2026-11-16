@@ -67,6 +67,7 @@ export const ROOT_FILES = [
   'SECURITY.md',
   'deuren.html',
   'index.html',
+  'onderbouw.html',
   'package-lock.json',
   'package.json',
   'playwright.config.ts',
@@ -131,7 +132,7 @@ export const DEMO_GIF_MAX_DURATION_CS = 6000;
 export const PATTERNS = [
   {
     what: 'page entries, styles and tests at the top of src/',
-    re: /^src\/(?:(?:main|doors)\.tsx|(?:styles|doors)\.css|[a-z][a-z0-9-]*\.test\.ts)$/,
+    re: /^src\/(?:(?:main|doors|onderbouw)\.tsx|(?:styles|doors|onderbouw)\.css|[a-z][a-z0-9-]*\.test\.ts)$/,
   },
   { what: 'page modules and their tests', re: /^src\/(?:data|engine|i18n|ui)\/[A-Za-z][A-Za-z0-9]*(?:\.test)?\.tsx?$/ },
   { what: 'translations', re: /^src\/i18n\/[a-z]{2}\.json$/ },

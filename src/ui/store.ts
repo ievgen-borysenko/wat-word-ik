@@ -154,14 +154,17 @@ export function dismissFromLink(): void {
 
 // ── side effects: document language and title, and the URL hash ───────────
 
-/** The two pages: the floors view (index.html) and the doors view (deuren.html). */
-export type View = 'floors' | 'doors';
+/**
+ * The three pages: the floors view (index.html), the doors view (deuren.html) and the
+ * onderbouw view (onderbouw.html, which syncs its own hash in routeStore.ts).
+ */
+export type View = 'floors' | 'doors' | 'onderbouw';
 
 /** The document title of a view in a language. */
 export function pageTitle(view: View, l: Lang): string {
-  return view === 'doors'
-    ? `${t(l, 'app.title')} - ${t(l, 'doors.title')}`
-    : `${t(l, 'app.title')} · ${t(l, 'app.subtitle')}`;
+  if (view === 'doors') return `${t(l, 'app.title')} - ${t(l, 'doors.title')}`;
+  if (view === 'onderbouw') return `${t(l, 'app.title')} - ${t(l, 'route.title')}`;
+  return `${t(l, 'app.title')} · ${t(l, 'app.subtitle')}`;
 }
 
 /** Delay before the hash follows the sliders: Safari limits how often replaceState may run. */
@@ -169,7 +172,7 @@ export const HASH_DELAY_MS = 150;
 
 let started = false;
 
-export function startSync(view: View): void {
+export function startSync(view: Exclude<View, 'onderbouw'>): void {
   if (started) return;
   started = true;
 
