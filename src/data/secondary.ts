@@ -4,7 +4,7 @@ import { L } from './subjects';
 /*
  * DEMO data (M0) for the onderbouw view: names of the school levels, profiles,
  * vmbo directions and exam subjects. The admission rules themselves are on each
- * profession (professions.ts), hand-written and approximate like the rest.
+ * profession (professions.ts), checked against the Ratho (docs/sources.md).
  */
 
 /** Button labels of the school levels. The names are Dutch school terms, kept in every language. */

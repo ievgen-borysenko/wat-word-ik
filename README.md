@@ -23,9 +23,10 @@ counts the doors it opens. All three pages link to each other.
 It shows what is *open* with your grades or your school route, never what you
 *will become*.
 
-**Status: M0 prototype with demo data.** All requirements, levels, pay
-values and admission rules by profile are approximate and made up for this
-prototype; no source has been used yet. See
+**Status: M0 prototype with demo data.** All requirements, levels and pay
+values are approximate and made up for this prototype. The one exception is
+the admission by school profile to hbo and wo on the onderbouw page, checked
+against the Dutch admission regulation (Ratho) of 1 September 2026. See
 [docs/methodology.md](docs/methodology.md) and [docs/sources.md](docs/sources.md).
 
 Languages: Dutch, English, Ukrainian.
