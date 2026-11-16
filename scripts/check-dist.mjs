@@ -294,7 +294,9 @@ export const RUNTIME_APIS = [
  *     .formAction, .poster, .ping, .search), also with a literal in brackets;
  *   - URL attributes as keys of element props (src:, srcset:, poster:, ping:,
  *     formAction:), the form that JSX compiles to;
- *   - links as keys of element props (href:, quoted or not), with one exception:
+ *   - links as keys of element props (href:, quoted or not, the shorthand {href},
+ *     a computed literal key, a method or getter) and setAttribute("href", ...),
+ *     with one exception:
  *     the link to the other view, in the exact shape the build writes it
  *     (VIEW_LINK_HREF_RE below), at most VIEW_LINK_HREFS_MAX times in all the
  *     scripts together. That shape is a template literal with a literal page
@@ -332,8 +334,14 @@ export const REQUEST_SINKS = [
   ['query string literal', /(?<=(?:^|[=(,:+[{;!&|?>]|\breturn)\s*)(["'`])(?:\.{0,2}\/[^"'`\s?]*)?\?[A-Za-z_][\w.-]*=/],
 ];
 
-/** `href` as a key of element props, quoted or not, matched as the URL attributes above are. */
-export const HREF_PROP_RE = /(?<![\w$.-])(["'`]?)href\1\s*:/g;
+/**
+ * `href` as a key of element props, in every form an object literal can define it:
+ * `href:` quoted or not (matched as the URL attributes above are), the shorthand
+ * `{href}`, a computed literal key `["href"]:`, and a method or getter `href(){}`;
+ * also `setAttribute("href", ...)`.
+ */
+export const HREF_PROP_RE =
+  /(?<![\w$.-])(["'`]?)href\1\s*:|(?<=[{,]\s*)href(?=\s*[,}])|\[\s*(["'`])href\2\s*\]\s*:|(?<![\w$.])href\s*\(|\bsetAttribute\s*\(\s*(["'`])href\3/g;
 
 /**
  * The only `href` prop allowed, tried where HREF_PROP_RE found the key: the link
