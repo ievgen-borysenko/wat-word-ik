@@ -1,0 +1,42 @@
+{
+  "format": 1,
+  "inputs": [
+    {
+      "id": "synthetic",
+      "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855",
+      "version": "1"
+    }
+  ],
+  "professions": {
+    "fixture-alpha": {
+      "biologie": {
+        "importance": 100,
+        "level": 0
+      },
+      "wiskunde": {
+        "importance": 412,
+        "level": 610
+      }
+    },
+    "fixture-beta": {
+      "biologie": {
+        "importance": 466,
+        "level": 655
+      },
+      "wiskunde": {
+        "importance": 375,
+        "level": 205
+      }
+    },
+    "fixture-gamma": {
+      "biologie": {
+        "importance": 345,
+        "level": 401
+      },
+      "wiskunde": {
+        "importance": 220,
+        "level": 310
+      }
+    }
+  }
+}
