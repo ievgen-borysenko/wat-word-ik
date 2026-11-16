@@ -19,11 +19,11 @@
 //     the animation in the README, must instead be a GIF animation in the one
 //     form that parseGif below allows. That stops the metadata blocks that
 //     tools write (comments, XMP, colour profiles, other application data)
-//     and anything appended, and caps the file at 2 MiB and 880x880 pixels.
-//     It does not stop data hidden on purpose in the pixels, in unused
-//     colour-table entries or in the fields the format leaves free: that is
-//     for the reviewer, who sees the animation, and for the size cap. The file
-//     gets no text checks;
+//     and anything appended, and caps the file at 2 MiB, 880x880 pixels, 400
+//     frames and 60 s. It does not stop data hidden on purpose in the pixels,
+//     in unused colour-table entries or in the fields the format leaves free
+//     (parseGif lists them): that is for the reviewer, who sees the
+//     animation, and for the caps. The file gets no text checks;
 //   - in every tracked text file: e-mail addresses (none at all), absolute paths
 //     from a developer's machine, private key headers and private network
 //     addresses (RFC 1918). Tests that need such strings put them together at
@@ -110,6 +110,21 @@ export const DEMO_GIF_MAX_SIDE = 880;
  * written, and other viewers skip a frame with no delay at all.
  */
 export const DEMO_GIF_MIN_DELAY_CS = 2;
+
+/**
+ * The most frames DEMO_GIF may have. Every frame brings fields that the parse
+ * leaves free (its delay, its place on the screen) and has to be decoded by
+ * every viewer, and the size cap alone would let in over 80,000 frames of one
+ * pixel each. The recording at about 11 frames per second has under a fifth of
+ * this.
+ */
+export const DEMO_GIF_MAX_FRAMES = 400;
+
+/**
+ * The longest DEMO_GIF may run once through, the sum of its frame delays, in
+ * hundredths of a second: 60 s. The recording runs under a third of this.
+ */
+export const DEMO_GIF_MAX_DURATION_CS = 6000;
 
 /** Patterns for the folders that grow with the program. */
 export const PATTERNS = [
@@ -239,26 +254,32 @@ function utf8(bytes) {
  *     high, without a pixel aspect ratio, and its global colour table;
  *   - one NETSCAPE2.0 application extension, before the first image, holding
  *     only the loop count 0 (forever);
- *   - one or more frames, each a graphic control extension (a delay of at
- *     least DEMO_GIF_MIN_DELAY_CS, transparency, disposal 0 to 3, no wait for
- *     user input) directly followed by an image descriptor inside the screen,
- *     without a local colour table, and its LZW data. The data must decode to
- *     exactly width x height pixels of the global colour table and end with the
- *     end code, followed by zero bits only, at most one byte past the end
- *     code's own;
+ *   - one to DEMO_GIF_MAX_FRAMES frames, each a graphic control extension (a
+ *     delay of at least DEMO_GIF_MIN_DELAY_CS, transparency, disposal 0 to 3,
+ *     no wait for user input) directly followed by an image descriptor inside
+ *     the screen, without a local colour table, and its LZW data. The data
+ *     must decode to exactly width x height pixels of the global colour table
+ *     and end with the end code, followed by zero bits only, at most one byte
+ *     past the end code's own. The delays add up to at most
+ *     DEMO_GIF_MAX_DURATION_CS;
  *   - the trailer, as the last byte of the file;
  * and the file is at most `maxBytes` long.
  *
  * What this stops: the blocks that tools add to a GIF on their own (comments,
  * plain text, XMP and other metadata, colour profiles, any other application
  * data), anything appended after an image's data or after the trailer, a
- * truncated file, colour tables per frame, and files or screens larger than
- * the caps. What it does not stop: data hidden on purpose where the format
- * leaves room, in the pixels, in global colour-table entries that no pixel
- * uses, in free fields (frame delays, the transparent and background colour
- * index, the disposal method) or in how the encoder codes the pixels (where
- * it puts clear codes). That is for the reviewer, who sees the animation, and
- * for the size cap.
+ * truncated file, colour tables per frame, and files, screens, frame counts or
+ * running times larger than the caps. What it does not stop: data hidden on
+ * purpose where the format leaves room. That is in the pixels; in global
+ * colour-table entries that no pixel uses; in the fields this parse leaves
+ * free: in the screen descriptor the background colour index, the colour
+ * resolution, the sort flag and the size of the global colour table, and in
+ * each frame the delay (within the caps), the transparency flag and the
+ * transparent colour index, the disposal method, the image's position and size
+ * inside the screen, the interlace flag and the LZW code size; and in how the
+ * encoder codes the pixels (where it puts clear codes, how it splits the data
+ * into sub-blocks, whether one zero byte follows the end code). That is for
+ * the reviewer, who sees the animation, and for the caps.
  * @param {Uint8Array} bytes
  * @param {number} [maxBytes]
  * @returns {GifInfo}
@@ -317,6 +338,10 @@ export function parseGif(bytes, maxBytes = DEMO_GIF_MAX_BYTES) {
     if (block === 0x2c) {
       if (!looping) fail('the NETSCAPE2.0 extension that makes the animation loop must come before the first image');
       if (pendingDelay === null) fail(`image ${frames + 1} has no graphic control extension (frame delay) before it`);
+      if (frames === DEMO_GIF_MAX_FRAMES) fail(`the animation has more than ${DEMO_GIF_MAX_FRAMES} frames`);
+      if (durationCs + pendingDelay > DEMO_GIF_MAX_DURATION_CS) {
+        fail(`the frame delays add up to more than ${DEMO_GIF_MAX_DURATION_CS} hundredths of a second`);
+      }
       const left = u16('an image descriptor');
       const top = u16('an image descriptor');
       const w = u16('an image descriptor');
@@ -466,6 +491,26 @@ function lzwProblem(data, minCodeSize, pixels, colours) {
 }
 
 /**
+ * What `git ls-tree` lists at DEMO_GIF in a commit for which git cat-file
+ * reports the path missing: nothing (null), or a submodule entry (mode 160000).
+ * Any other entry means its object is not in the repository, and the check
+ * cannot read it.
+ * @param {string} root
+ * @param {string} sha
+ * @param {NodeJS.ProcessEnv} env
+ * @returns {{ object: string, type: string, size: number } | null}
+ */
+function submoduleEntry(root, sha, env) {
+  const records = git(['ls-tree', '-z', sha, '--', DEMO_GIF], root, env)
+    .split('\0')
+    .filter((r) => r !== '');
+  if (records.length === 0) return null;
+  const m = /^(\d{6}) (\S+) ([0-9a-f]{40,64})\t(.*)$/s.exec(records[0] ?? '');
+  if (records.length === 1 && m && m[4] === DEMO_GIF && m[1] === '160000') return { object: m[3] ?? '', type: 'submodule', size: 0 };
+  throw new Error(`git cat-file reports ${sha}:${DEMO_GIF} missing, but git ls-tree lists: ${records.join(' | ')}`);
+}
+
+/**
  * Every version of DEMO_GIF that a commit in base..head writes: the object at
  * that path in the commit's tree when none of the commit's parents has the same
  * object there. That is a commit that adds, changes, copies or renames a file
@@ -490,15 +535,21 @@ export function demoGifVersionsInHistory(root, range, env) {
     });
   const shas = [...new Set(commits.flatMap((c) => [c.sha, ...c.parents]))];
   if (shas.length === 0) return [];
-  // One line per `<commit>:<path>`: "<object> <type> <size>", or "<name> missing" when the path is not there.
+  // One line per `<commit>:<path>`: "<object> <type> <size>"; "<object> submodule" for a submodule
+  // entry whose commit is not in this repository (it has no type or size here); or "<commit>:<path>
+  // missing". Older git prints "missing" for such a submodule entry too, so a "missing" is confirmed
+  // with git ls-tree, which lists the entry with its mode on every git version.
   const lines = git(['cat-file', '--batch-check'], root, env, shas.map((sha) => `${sha}:${DEMO_GIF}\n`).join('')).split('\n');
   /** @type {Map<string, { object: string, type: string, size: number } | null>} */
   const at = new Map();
   shas.forEach((sha, i) => {
     const line = lines[i] ?? '';
     const m = /^([0-9a-f]{40,64}) (\S+) (\d+)$/.exec(line);
-    if (!m && !line.endsWith(' missing')) throw new Error(`git cat-file gave an unexpected line for ${sha}:${DEMO_GIF}: ${line}`);
-    at.set(sha, m ? { object: m[1] ?? '', type: m[2] ?? '', size: Number(m[3]) } : null);
+    const submodule = /^([0-9a-f]{40,64}) submodule$/.exec(line);
+    if (m) at.set(sha, { object: m[1] ?? '', type: m[2] ?? '', size: Number(m[3]) });
+    else if (submodule) at.set(sha, { object: submodule[1] ?? '', type: 'submodule', size: 0 });
+    else if (line === `${sha}:${DEMO_GIF} missing`) at.set(sha, submoduleEntry(root, sha, env));
+    else throw new Error(`git cat-file gave an unexpected line for ${sha}:${DEMO_GIF}: ${line}`);
   });
   /** @type {Set<string>} */
   const seen = new Set();

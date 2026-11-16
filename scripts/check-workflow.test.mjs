@@ -250,13 +250,16 @@ const PRIVATE = { private: true, visibility: 'private' };
  * Runs a step's script as GitHub runs `shell: bash`, with only the given
  * environment (none of the test runner's own GITHUB_* variables), an `npm`
  * that prints its arguments instead of running, a `gitleaks` that prints each
- * of its arguments in brackets, and a `gh` that prints its arguments to stderr,
+ * of its arguments in brackets, a `node` that does the same and exits with
+ * $NODE_EXIT (default 0), and a `gh` that prints its arguments to stderr,
  * then $GH_OUTPUT to stdout, and exits with $GH_EXIT (default 0).
  * @param {string} script
  * @param {Record<string, string>} env
+ * @param {string} [cwd] the folder it runs in (default: this process's)
  */
-function runStep(script, env) {
+function runStep(script, env, cwd) {
   const res = spawnSync('bash', ['--noprofile', '--norc', '-eo', 'pipefail', '-c', script], {
+    cwd,
     env: { PATH: `${stubDir()}:${process.env.PATH ?? ''}`, ...env },
     encoding: 'utf8',
   });
@@ -270,6 +273,7 @@ function stubDir() {
     stub = mkdtempSync(join(tmpdir(), 'check-workflow-'));
     writeFileSync(join(stub, 'npm'), '#!/bin/sh\necho "npm $*"\n', { mode: 0o755 });
     writeFileSync(join(stub, 'gitleaks'), '#!/bin/sh\nprintf gitleaks\nprintf \' [%s]\' "$@"\necho\n', { mode: 0o755 });
+    writeFileSync(join(stub, 'node'), '#!/bin/sh\nprintf node\nprintf \' [%s]\' "$@"\necho\nexit "${NODE_EXIT:-0}"\n', { mode: 0o755 });
     writeFileSync(join(stub, 'gh'), '#!/bin/sh\n{ printf gh; printf \' [%s]\' "$@"; echo; } >&2\nprintf \'%s\' "$GH_OUTPUT"\nexit "${GH_EXIT:-0}"\n', {
       mode: 0o755,
     });
@@ -377,6 +381,15 @@ describe('deploy job', () => {
     expect(WORKFLOW).not.toMatch(/\bactions:\s*write\b/);
   });
 
+  // A job without permissions of its own gets the top-level ones; without
+  // those, it gets the repository's default token permissions, which can
+  // include write access.
+  it('every other job may only read the repository contents', () => {
+    const top = block(LINES, (l) => l === 'permissions:', 'top-level permissions');
+    expect(top.filter((l) => l.trim() !== '')).toEqual(['permissions:', '  contents: read']);
+    expect(keyLines(/^ {4}permissions\s*:/).map((k) => k.job)).toEqual(['deploy']);
+  });
+
   it('is never cancelled while it runs', () => {
     const concurrency = block(deploy, (l) => l === '    concurrency:', 'deploy concurrency');
     expect(value(concurrency, 'cancel-in-progress')).toBe('false');
@@ -405,6 +418,91 @@ describe('a failing check stops the deploy', () => {
     expect(keyLines(/^\s*(?:- )?if\s*:/)).toEqual([
       { job: 'e2e', step: 'Keep the Playwright report of a failed run', value: 'failure()' },
       { job: 'deploy', step: null, value: condition },
+    ]);
+  });
+
+  // `|| true` and its like turn a failed command into a passing step.
+  it('no script swallows a failure', () => {
+    // The word must end where the shell ends it: at a blank, the end of the line, an operator or a redirection.
+    const swallows = /\|\|\s*(?:true|:|exit\s+0)(?=\s|$|[;&|)}#\\<>])|\bset\s+\+[a-z]*e|\bset\s+\+o\s+errexit\b/;
+    const caught = [
+      'x || true',
+      'x ||true',
+      'x ||:',
+      'x || :',
+      'x || exit 0',
+      'x || exit 0 # done',
+      '{ x || true; }',
+      'x || true && y',
+      'x || true | tee log',
+      'x ||true|tee log',
+      'x || true &',
+      'x || true \\',
+      'x || true\\',
+      'x || true>failed.log',
+      'x || true<input',
+      'x ||:>failed.log',
+      'x || exit 0>failed.log',
+      'set +e',
+      'set +eo pipefail',
+      'set +o errexit',
+    ];
+    for (const sample of caught) expect(sample, sample).toMatch(swallows);
+    for (const sample of ['x || trueish', 'x || exit 1', 'x || exit 01', 'x || rc=$?', 'x || { echo failed; exit 1; }', 'set -e', 'set +x']) {
+      expect(sample, sample).not.toMatch(swallows);
+    }
+    expect(LINES.filter((l) => swallows.test(l))).toEqual([]);
+  });
+
+  describe('the audit of the built site', () => {
+    const script = runScript(step(job('audit'), 'Audit the built site'));
+    const RUN = 'node [scripts/check-dist.mjs] [runner-temp/site] [package-lock.json]';
+    /** @param {string} exit what check-dist exits with */
+    const audit = (exit) => runStep(script, { RUNNER_TEMP: 'runner-temp', NODE_EXIT: exit }, stubDir());
+
+    it('runs check-dist on the downloaded site with the lockfile of the checkout', () => {
+      expect(audit('0')).toEqual({ status: 0, out: RUN });
+    });
+
+    it('fails when check-dist fails', () => {
+      expect(audit('1')).toEqual({ status: 1, out: RUN });
+    });
+  });
+
+  // The check compares the run's github-pages artifact with the id that the
+  // audit job reported for its own upload. An id taken from any other job
+  // would let that job choose what is deployed.
+  it('compares with the id of the upload in the audit job', () => {
+    const audit = job('audit');
+    const outputs = block(audit, (l) => l === '    outputs:', 'audit outputs').filter((l) => l.trim() !== '');
+    expect(outputs).toEqual(['    outputs:', '      pages-artifact-id: ${{ steps.pages-artifact.outputs.artifact_id }}']);
+    const upload = step(audit, 'Upload the audited site as the Pages artifact');
+    expect(value(upload, 'id')).toBe('pages-artifact');
+    expect(value(upload, 'uses')).toMatch(/^actions\/upload-pages-artifact@[0-9a-f]{40} /);
+    expect(LINES.filter((l) => /^\s+id:\s*pages-artifact\s*$/.test(l))).toHaveLength(1);
+    expect(value(step(deploy, ARTIFACT_CHECK), 'EXPECTED_ID')).toBe('${{ needs.audit.outputs.pages-artifact-id }}');
+  });
+
+  // deploy-pages deploys the artifact its artifact_name input names, by default
+  // github-pages: the name the check lists. Any other name would deploy an
+  // artifact that the check never compared.
+  it('deploys the artifact that the check compared: deploy-pages gets no inputs', () => {
+    const lines = step(deploy, 'Deploy the artifact').filter((l) => l.trim() !== '');
+    expect(lines.slice(1).map((l) => l.trim().replace(/:.*/, ''))).toEqual(['id', 'uses']);
+    expect(value(lines, 'uses')).toMatch(/^actions\/deploy-pages@[0-9a-f]{40} /);
+  });
+
+  // The end-to-end tests must run on the files that are deployed. By name, the
+  // download could get an artifact that another job of the run uploaded.
+  it('the end-to-end job downloads the audited artifact by its id', () => {
+    const e2e = job('e2e');
+    expect(value(e2e, 'needs')).toBe('audit');
+    const download = step(e2e, 'Download the audited site');
+    expect(value(download, 'uses')).toMatch(/^actions\/download-artifact@[0-9a-f]{40} /);
+    const inputs = block(download, (l) => l === '        with:', 'download inputs').slice(1);
+    expect(inputs.filter((l) => l.trim() !== '').map((l) => l.trim())).toEqual([
+      'artifact-ids: ${{ needs.audit.outputs.pages-artifact-id }}',
+      'path: ${{ runner.temp }}/pages',
     ]);
   });
 

@@ -15,3 +15,5 @@ coverage/
 *.tsbuildinfo
 .vite/
 .eslintcache
+*.db-wal
+*.db-shm

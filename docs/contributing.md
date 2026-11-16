@@ -58,6 +58,23 @@ keys, private network addresses or local host names in any tracked file. Keep
 personal settings, notes and scratch files out of the repository; your global
 git ignore file is the place for their patterns.
 
+## Check before every push
+
+Rewriting a branch does not take back what you have already pushed. CI checks
+the commits that a pull request holds when its run starts. A version of your
+branch that no CI run got to check, and that you then force-pushed away, is
+never checked: for example one pushed before you opened the pull request (CI
+does not run on pushes to branches other than `main`), one pushed while the
+pull request had a merge conflict (GitHub runs no `pull_request` workflow
+then), or one whose run your next push cancelled before the checks. Its
+commits can stay on GitHub all the same, reachable by their hash. So run the
+history checks yourself before every push:
+
+```sh
+npm run check:tree -- --range origin/main HEAD
+npm run check:commits -- origin/main HEAD
+```
+
 ## Re-record the animation
 
 `docs/demo.gif`, the animation at the top of the README, is recorded from the
@@ -80,14 +97,15 @@ what it is meant to (more professions open after Maths, fewer after Dutch, a
 gap for Dutch on the card; after a data change, adjust the grades and the
 profession at the top of the script), or when the result does not pass the
 parse of `npm run check:tree`. That parse keeps out the metadata that tools
-write and anything appended, and caps the file at 2 MiB and 880x880 pixels;
-it does not see what the pixels show, nor data hidden on purpose in them, in
-the colour table or in the format's free fields. Look at the new file before
-you commit it, and update the description of the animation in the README if
-the scenario changed. In a pull request every version of the file that a
-commit writes is parsed as well, so if one fails, rewrite the branch rather
-than committing a fix on top. Ctrl-C stops the script and removes its
-screenshots.
+write and anything appended, and caps the file at 2 MiB, 880x880 pixels, 400
+frames and 60 s for one pass; it does not see what the pixels show, nor data
+hidden on purpose in them, in the colour table or in the format's free
+fields. Look at the new file before you commit it, and update the description
+of the animation in the README if the scenario changed. In a pull request
+every version of the file that a commit writes is parsed as well, so if one
+fails, rewrite the branch rather than committing a fix on top, and run the
+check before you push (see "Check before every push"). Ctrl-C stops the
+script and removes its screenshots.
 
 ## Add a profession
 
