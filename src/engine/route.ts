@@ -12,7 +12,7 @@ import {
 } from './types';
 
 /*
- * The onderbouw view: what is open from a school level and a profile (demo rules).
+ * The onderbouw view: what is open from a school level and a profile.
  *
  *   open    this level and profile lead there directly;
  *   detour  reachable with one extra step, and the step is named;
@@ -32,7 +32,9 @@ import {
  *   4 (wo)                      from vwo by profile, as hbo. From havo with a direct
  *                               profile a detour via vwo 5 or an hbo first year
  *                               (propedeuse); with another profile closed. From vmbo
- *                               closed: from havo up.
+ *                               closed: from havo up. When no profile is direct (every
+ *                               admitting profile needs an extra subject), havo is two
+ *                               steps short as well: closed from vwo up.
  *
  * A vmbo direction never closes anything: a vmbo diploma of any direction admits
  * to mbo. It only says which mbo professions fit it best (fitOf).
@@ -110,13 +112,18 @@ function admissionOf(p: Profession): ProfileAdmission {
   return p.admission ?? ANY_PROFILE;
 }
 
+/** The profiles a closed door names: the direct ones, or, when none is direct, those with one extra subject. */
+export function admittingProfiles(a: ProfileAdmission): readonly HavoVwoProfile[] {
+  return a.direct.length > 0 ? a.direct : HAVO_VWO_PROFILES.filter((pr) => a.bridge[pr] !== undefined);
+}
+
 /** hbo from havo or vwo, and wo from vwo: by the profile. */
 function byAdmission(p: Profession, profile: HavoVwoProfile): RouteView {
   const a = admissionOf(p);
   if (a.direct.includes(profile)) return OPEN;
   const subject = a.bridge[profile];
   if (subject !== undefined) return { state: 'detour', steps: [{ kind: 'subject', subject }], profiles: null };
-  return { state: 'closed', need: { kind: 'profile', profiles: a.direct } };
+  return { state: 'closed', need: { kind: 'profile', profiles: admittingProfiles(a) } };
 }
 
 /** wo from havo: one step via vwo 5 or an hbo first year, with a direct profile only. */
@@ -125,6 +132,8 @@ function woFromHavo(p: Profession, profile: HavoVwoProfile): RouteView {
   if (a.direct.includes(profile)) {
     return { state: 'detour', steps: [{ kind: 'vwo5' }, { kind: 'propedeuse' }], profiles: null };
   }
+  // No direct profile: from havo every profile is two steps short, so name the level.
+  if (a.direct.length === 0) return { state: 'closed', need: { kind: 'level', from: 'vwo' } };
   return { state: 'closed', need: { kind: 'profile', profiles: a.direct } };
 }
 
@@ -168,7 +177,9 @@ export function routeOf(p: Profession, level: SchoolLevel, profile: SchoolProfil
       if (level === 'gltl') return { state: 'detour', steps: [{ kind: 'mbo4' }, { kind: 'havo4' }], profiles: null };
       return pick((pr) => byAdmission(p, pr));
     case 4:
-      if (isVmbo(level)) return { state: 'closed', need: { kind: 'level', from: 'havo' } };
+      if (isVmbo(level)) {
+        return { state: 'closed', need: { kind: 'level', from: admissionOf(p).direct.length > 0 ? 'havo' : 'vwo' } };
+      }
       if (level === 'havo') return pick((pr) => woFromHavo(p, pr));
       return pick((pr) => byAdmission(p, pr));
   }

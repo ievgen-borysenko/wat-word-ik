@@ -1,4 +1,4 @@
-import type { Need, Profession, SubjectId } from '../engine/types';
+import type { AdmissionSource, Need, Profession, SubjectId } from '../engine/types';
 import { L } from './subjects';
 
 /*
@@ -7,13 +7,48 @@ import { L } from './subjects';
  * picture readable, not real admission rules. Real sources are planned for M1
  * (see docs/sources.md).
  *
- * The same holds for `vmbo` and `admission`, which only the onderbouw view reads:
- * which vmbo direction fits an mbo profession best, and which havo or vwo profile
- * admits to an hbo or wo programme. Where a rule was not certain, the stricter
- * reading was written down.
+ * The same holds for `vmbo`, which only the onderbouw view reads: which vmbo
+ * direction fits an mbo profession best.
+ *
+ * `admission` is the exception: which havo or vwo profile admits to an hbo or wo
+ * programme was checked against the Dutch admission regulation (Ratho, version
+ * in force from 1 September 2026), and each row names its programme and the
+ * cells as written in `source`. Which programme stands for a profession is an
+ * editorial choice. Where a row asks for more than the data can hold (two extra
+ * subjects, or one of several), the data holds the stricter reading and the
+ * note says so. docs/sources.md lists every row.
  *
  * Order inside a floor is the fixed tile order on screen.
  */
+
+/** The version of the Ratho (BWBR0035059) that the `admission` rows were checked against. */
+export const RATHO_VERSION = '2026-09-01';
+export const RATHO_URL = `https://wetten.overheid.nl/BWBR0035059/${RATHO_VERSION}/0`;
+
+/** The hbo table for havo pupils that the hbo rows come from. */
+const HBO_TECHNIEK = '3. Bachelorinstroom met havo-diploma: Techniek (instroom met havo-diploma)';
+const WISA_OR_B = 'C&M: wiskunde A or wiskunde B; the data names wiskunde A.';
+const TWO_SUBJECTS = 'Two extra subjects for N&G, E&M and C&M: more than one step, so the data closes those profiles.';
+const TECHNIEK_FOOTNOTE = 'Footnote 1 of the table: the institution may let an N&G pupil meet nat and wisB by the end of the first year.';
+const HASH = '#: no right to admission; the institution may still admit after a test of comparable requirements.';
+
+/** A programme with a row in Bijlage A or B; `cells` are NT, NG, EM, CM as written. */
+function ratho(
+  bijlage: 'A' | 'B',
+  table: string,
+  programme: string,
+  [nt, ng, em, cm]: readonly [string, string, string, string],
+  note?: string,
+): AdmissionSource {
+  const cells = { nt, ng, em, cm };
+  return { bijlage, table, programme, cells, version: RATHO_VERSION, verified: true, ...(note === undefined ? {} : { note }) };
+}
+
+/** A programme without a row in the bijlage: no extra requirements, every profile admits. */
+function notListed(bijlage: 'A' | 'B', programme: string, note?: string): AdmissionSource {
+  const base = { bijlage, table: null, programme, cells: null, version: RATHO_VERSION, verified: true };
+  return note === undefined ? base : { ...base, note };
+}
 
 const n = (subject: SubjectId, min: number): Need => ({ subject, min });
 
@@ -390,7 +425,11 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'elektro',
     rung: 3,
     field: 'technology',
-    admission: { direct: ['nt'], bridge: { ng: 'natuurkunde' } },
+    admission: {
+      direct: ['nt', 'ng', 'em'],
+      bridge: { cm: 'wiskunde-a' },
+      source: ratho('B', HBO_TECHNIEK, 'Elektrotechniek', ['*', '*', '*', 'wisA of wisB'], WISA_OR_B),
+    },
   },
   {
     id: 'mechatronica-engineer',
@@ -408,7 +447,17 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'machines',
     rung: 2,
     field: 'technology',
-    admission: { direct: ['nt'], bridge: { ng: 'natuurkunde' } },
+    admission: {
+      direct: ['nt'],
+      bridge: { ng: 'natuurkunde', em: 'natuurkunde' },
+      source: ratho(
+        'B',
+        HBO_TECHNIEK,
+        'Mechatronica',
+        ['*', 'nat of nlt of o&o of PgP-T', 'nat of nlt of o&o of PgP-T', '(wisA of wisB) + (nat of nlt of o&o of PgP-T)'],
+        'N&G and E&M: physics, or nlt, o&o or PgP-T instead; the data names physics. C&M needs two extra subjects: more than one step, so the data closes it.',
+      ),
+    },
   },
   {
     id: 'leraar-basisonderwijs',
@@ -426,7 +475,15 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'onderwijs',
     rung: 1,
     field: 'people',
-    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {} },
+    admission: {
+      direct: ['nt', 'ng', 'em', 'cm'],
+      bridge: {},
+      source: notListed(
+        'B',
+        'Opleiding tot leraar basisonderwijs',
+        'Not a profile rule: Bijlage F and article 2.6 ask for knowledge of geography, history, and nature and technology, met with those exam subjects or else shown in a test.',
+      ),
+    },
   },
   {
     id: 'software-engineer',
@@ -443,7 +500,11 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'software',
     rung: 2,
     field: 'technology',
-    admission: { direct: ['nt', 'ng', 'em'], bridge: { cm: 'wiskunde-a' } },
+    admission: {
+      direct: ['nt', 'ng', 'em'],
+      bridge: { cm: 'wiskunde-a' },
+      source: ratho('B', HBO_TECHNIEK, 'Technische Informatica', ['*', '*', '*', 'wisA of wisB'], WISA_OR_B),
+    },
   },
   {
     id: 'journalist',
@@ -460,7 +521,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'media',
     rung: 1,
     field: 'people',
-    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {} },
+    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {}, source: notListed('B', 'Journalistiek') },
   },
   {
     id: 'bouwkundig-ingenieur',
@@ -478,7 +539,11 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'bouw',
     rung: 3,
     field: 'making',
-    admission: { direct: ['nt'], bridge: { ng: 'natuurkunde' } },
+    admission: {
+      direct: ['nt', 'ng', 'em'],
+      bridge: { cm: 'wiskunde-a' },
+      source: ratho('B', HBO_TECHNIEK, 'Built Environment', ['*', '*', '*', 'wisA of wisB'], WISA_OR_B),
+    },
   },
   {
     id: 'game-designer',
@@ -495,7 +560,17 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'ontwerp',
     rung: 2,
     field: 'making',
-    admission: { direct: ['nt', 'ng', 'em'], bridge: { cm: 'wiskunde-a' } },
+    admission: {
+      direct: ['nt', 'ng', 'em'],
+      bridge: { cm: 'wiskunde-a' },
+      source: ratho(
+        'B',
+        HBO_TECHNIEK,
+        'Creative Media and Game Technologies',
+        ['*', '*', '*', 'wisA of wisB'],
+        `${WISA_OR_B} Footnote 1: extra requirements under article 7.26 or 7.26a of the law (WHW).`,
+      ),
+    },
   },
   {
     id: 'archeoloog',
@@ -513,7 +588,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'erfgoed',
     rung: 1,
     field: 'nature',
-    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {} },
+    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {}, source: notListed('B', 'Archeologie') },
   },
 
   // ── Level 4: wo ──────────────────────────────────────────────────────────
@@ -532,7 +607,11 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'zorg',
     rung: 3,
     field: 'care',
-    admission: { direct: ['ng'], bridge: { nt: 'biologie' } },
+    admission: {
+      direct: [],
+      bridge: { nt: 'biologie', ng: 'natuurkunde' },
+      source: ratho('A', 'Gezondheidszorg', 'Geneeskunde', ['biol', 'nat', '#', '#'], HASH),
+    },
   },
   {
     id: 'chirurg',
@@ -549,7 +628,11 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'zorg',
     rung: 4,
     field: 'care',
-    admission: { direct: ['ng'], bridge: { nt: 'biologie' } },
+    admission: {
+      direct: [],
+      bridge: { nt: 'biologie', ng: 'natuurkunde' },
+      source: ratho('A', 'Gezondheidszorg', 'Geneeskunde', ['biol', 'nat', '#', '#'], HASH),
+    },
   },
   {
     id: 'electrical-engineer',
@@ -567,7 +650,17 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'elektro',
     rung: 4,
     field: 'nature',
-    admission: { direct: ['nt'], bridge: {} },
+    admission: {
+      direct: ['nt'],
+      bridge: {},
+      source: ratho(
+        'A',
+        'Techniek',
+        'Electrical Engineering',
+        ['*', 'nat + wisB', 'nat + wisB', 'nat + wisB'],
+        `${TWO_SUBJECTS} ${TECHNIEK_FOOTNOTE}`,
+      ),
+    },
   },
   {
     id: 'wetenschapper',
@@ -589,7 +682,11 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'machines',
     rung: 3,
     field: 'nature',
-    admission: { direct: ['nt'], bridge: {} },
+    admission: {
+      direct: ['nt'],
+      bridge: {},
+      source: ratho('A', 'Natuur', 'Natuurkunde', ['*', 'nat + wisB', 'nat + wisB', 'nat + wisB'], TWO_SUBJECTS),
+    },
   },
   {
     id: 'advocaat',
@@ -606,7 +703,7 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'recht',
     rung: 2,
     field: 'people',
-    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {} },
+    admission: { direct: ['nt', 'ng', 'em', 'cm'], bridge: {}, source: notListed('A', 'Rechtsgeleerdheid') },
   },
   {
     id: 'architect',
@@ -623,7 +720,17 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'bouw',
     rung: 4,
     field: 'making',
-    admission: { direct: ['nt'], bridge: {} },
+    admission: {
+      direct: ['nt'],
+      bridge: {},
+      source: ratho(
+        'A',
+        'Techniek',
+        'Bouwkunde',
+        ['*', 'nat + wisB', 'nat + wisB', 'nat + wisB'],
+        `${TWO_SUBJECTS} ${TECHNIEK_FOOTNOTE}`,
+      ),
+    },
   },
   {
     id: 'apotheker',
@@ -640,7 +747,17 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'lab',
     rung: 2,
     field: 'care',
-    admission: { direct: ['nt', 'ng'], bridge: {} },
+    admission: {
+      direct: ['nt'],
+      bridge: { ng: 'natuurkunde' },
+      source: ratho(
+        'A',
+        'Natuur',
+        'Farmacie',
+        ['*', 'nat', 'nat + schk', 'nat + schk + (wisA of wisB)'],
+        'E&M and C&M need two or more extra subjects: more than one step, so the data closes them.',
+      ),
+    },
   },
   {
     id: 'dierenarts',
@@ -657,7 +774,11 @@ export const PROFESSIONS: readonly Profession[] = [
     family: 'dierenarts',
     rung: 1,
     field: 'nature',
-    admission: { direct: ['ng'], bridge: { nt: 'biologie' } },
+    admission: {
+      direct: [],
+      bridge: { nt: 'biologie', ng: 'natuurkunde' },
+      source: ratho('A', 'Gezondheidszorg', 'Diergeneeskunde', ['biol', 'nat', '#', '#'], HASH),
+    },
   },
 ];
 

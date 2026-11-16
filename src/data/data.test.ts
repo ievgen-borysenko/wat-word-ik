@@ -11,7 +11,7 @@ import {
   VMBO_DIRECTIONS,
   type Localized,
 } from '../engine/types';
-import { PROFESSIONS } from './professions';
+import { PROFESSIONS, RATHO_VERSION } from './professions';
 import { DIRECTION_NAMES, EXAM_SUBJECT_NAMES, PROFILE_NAMES, SCHOOL_LEVEL_NAMES } from './secondary';
 import { SUBJECTS } from './subjects';
 
@@ -182,11 +182,12 @@ describe('onderbouw data (school levels, profiles, vmbo directions)', () => {
     }
   });
 
-  it('every hbo and wo profession has at least one direct profile; only they have admission data', () => {
+  it('every hbo and wo profession has a profile that admits, directly or with one subject; only they have admission data', () => {
     for (const p of PROFESSIONS) {
       if (p.level === 3 || p.level === 4) {
         expect(p.admission, p.id).toBeDefined();
-        expect(p.admission!.direct.length, `${p.id} has no direct profile`).toBeGreaterThan(0);
+        const admitting = p.admission!.direct.length + Object.keys(p.admission!.bridge).length;
+        expect(admitting, `${p.id} has no profile that admits`).toBeGreaterThan(0);
       } else {
         expect(p.admission, `${p.id} is not hbo or wo`).toBeUndefined();
       }
@@ -209,17 +210,52 @@ describe('onderbouw data (school levels, profiles, vmbo directions)', () => {
     }
   });
 
+  it('every admission row has a source: a Ratho bijlage, a programme and the version read', () => {
+    for (const p of PROFESSIONS) {
+      const a = p.admission;
+      if (!a) continue;
+      const src = a.source;
+      expect(src, `${p.id} has no source`).toBeDefined();
+      expect(src!.version, p.id).toBe(RATHO_VERSION);
+      if (src!.verified) {
+        // Bijlage A is wo, Bijlage B is hbo.
+        expect(src!.bijlage, p.id).toBe(p.level === 4 ? 'A' : 'B');
+        expect(src!.programme.trim().length, `${p.id} names no programme`).toBeGreaterThan(0);
+      }
+    }
+  });
+
+  it('the data agrees with the cells it cites: * is direct, # is closed; no row means every profile', () => {
+    for (const p of PROFESSIONS) {
+      const a = p.admission;
+      const cells = a?.source?.cells;
+      if (!a || cells === undefined) continue;
+      if (cells === null) {
+        expect(a.direct, `${p.id} has no row, so every profile admits`).toEqual([...HAVO_VWO_PROFILES]);
+        expect(a.source!.table, p.id).toBeNull();
+        continue;
+      }
+      expect(a.source!.table, p.id).not.toBeNull();
+      for (const profile of HAVO_VWO_PROFILES) {
+        const cell = cells[profile];
+        const where = `${p.id} ${profile} "${cell}"`;
+        expect(a.direct.includes(profile), where).toBe(cell === '*');
+        if (cell === '#') expect(a.bridge[profile], where).toBeUndefined();
+      }
+    }
+  });
+
   it('every vmbo direction fits at least one mbo profession', () => {
     for (const d of VMBO_DIRECTIONS) expect(PROFESSIONS.some((p) => p.vmbo === d), d).toBe(true);
   });
 
-  // The counts on the profile buttons. A change here is a change in the demo data:
+  // The counts on the profile buttons. A change here is a change in the data:
   // update these numbers on purpose, together with the data.
   it('the counts per profile are stable', () => {
     const counts = (level: (typeof SCHOOL_LEVELS)[number]) =>
       Object.fromEntries(profileCounts(PROFESSIONS, level).map((c) => [c.profile, c.count]));
-    expect(counts('havo')).toEqual({ nt: 28, ng: 25, em: 25, cm: 23 });
-    expect(counts('vwo')).toEqual({ nt: 33, ng: 30, em: 26, cm: 24 });
+    expect(counts('havo')).toEqual({ nt: 28, ng: 27, em: 27, cm: 23 });
+    expect(counts('vwo')).toEqual({ nt: 33, ng: 28, em: 28, cm: 24 });
     expect(counts('gltl')).toEqual({ techniek: 9, zorg: 4, economie: 1, groen: 1 });
     expect(counts('bbkb')).toEqual(counts('gltl'));
   });

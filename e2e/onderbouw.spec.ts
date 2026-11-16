@@ -25,14 +25,16 @@ test('loads on havo without a profile: what the level alone decides, with a coun
   await expect(page).toHaveTitle('Wat word ik? - Onderbouw');
   await expect(level(page, 'havo')).toHaveAttribute('aria-checked', 'true');
   await expect(profile(page, 'none')).toHaveAttribute('aria-checked', 'true');
-  await expect(summary(page)).toHaveText('Open: 23 · met een extra stap: 13 · niet op deze route: 0');
-  for (const [key, n] of [['nt', 28], ['ng', 25], ['em', 25], ['cm', 23]] as const) {
+  await expect(summary(page)).toHaveText('Open: 23 · met een extra stap: 10 · niet op deze route: 3');
+  for (const [key, n] of [['nt', 28], ['ng', 27], ['em', 27], ['cm', 23]] as const) {
     await expect(profile(page, key).locator('.choice-note')).toHaveText(`opent ${n} van 36`);
   }
   // Five groups by field, as on the doors view; never floors.
   await expect(page.locator('.block')).toHaveCount(5);
   await expect(page.locator('.floor')).toHaveCount(0);
-  await expectDoor(page, 'arts', 'ajar', /^via vwo 5 of via hbo-propedeuse · met N&G$/);
+  // Geneeskunde has no direct profile (Ratho 2026): from havo it is two steps.
+  await expectDoor(page, 'arts', 'closed', 'vanaf vwo');
+  await expectDoor(page, 'apotheker', 'ajar', /^via vwo 5 of via hbo-propedeuse · met N&T$/);
   await expectDoor(page, 'journalist', 'open');
 });
 
@@ -40,15 +42,16 @@ test('the level and profile buttons change the doors, and the hash follows', asy
   await openRoute(page, '#l=nl');
   await level(page, 'vwo').click();
   await profile(page, 'cm').click();
-  await expectDoor(page, 'arts', 'closed', 'met N&G');
+  await expectDoor(page, 'arts', 'closed', 'met N&T of N&G');
   await expectDoor(page, 'advocaat', 'open');
   await expectDoor(page, 'software-engineer', 'ajar', 'extra vak wiskunde A');
   await expect(page.locator('.route-chosen')).toHaveText('Met C&M zijn 24 van de 36 deuren open.');
   await expect.poll(() => hash(page)).toBe('#n=vwo&p=cm&l=nl');
 
   await profile(page, 'ng').click();
-  await expectDoor(page, 'arts', 'open');
-  await expect(door(page, 'arts')).toHaveAttribute('aria-label', 'Arts: open');
+  await expectDoor(page, 'arts', 'ajar', 'extra vak natuurkunde');
+  await expectDoor(page, 'advocaat', 'open');
+  await expect(door(page, 'advocaat')).toHaveAttribute('aria-label', 'Advocaat: open');
   await expect.poll(() => hash(page)).toBe('#n=vwo&p=ng&l=nl');
 
   // vmbo-bb/kb: the profile goes, mbo 4 is one step away, hbo and wo are not on this route.
@@ -57,7 +60,8 @@ test('the level and profile buttons change the doors, and the hash follows', asy
   await expect(page.locator('.choice-profile .choice-title')).toHaveText('Mijn richting');
   await expectDoor(page, 'verpleegkundige', 'ajar', 'eerst mbo 2 (met kb direct)');
   await expectDoor(page, 'journalist', 'closed', 'vanaf vmbo-gl/tl');
-  await expectDoor(page, 'arts', 'closed', 'vanaf havo');
+  await expectDoor(page, 'arts', 'closed', 'vanaf vwo');
+  await expectDoor(page, 'advocaat', 'closed', 'vanaf havo');
   await expect.poll(() => hash(page)).toBe('#n=bbkb&l=nl');
 });
 
@@ -138,7 +142,13 @@ test('a door opens the card; Escape and the close button give focus back to the 
   await expect(card.locator('.card-close')).toBeFocused();
   await expect(card.locator('.state-pill')).toHaveText('met een extra stap: extra vak biologie');
   await expect(card.locator('.card-floor')).toContainText('wo');
-  await expect(card.locator('.admission-lines li')).toHaveText(['Direct met N&G.', 'Met N&T: extra vak biologie.', 'Met E&M of C&M: een ander profiel nodig.']);
+  await expect(card.locator('.admission-lines li')).toHaveText([
+    'Zonder extra vak geeft geen enkel profiel toegang.',
+    'Met N&T: extra vak biologie.',
+    'Met N&G: extra vak natuurkunde.',
+    'Met E&M of C&M: een ander profiel nodig.',
+    'Gecontroleerd met de toelatingsregeling (Ratho) van 1 september 2026, opleiding Geneeskunde.',
+  ]);
   await expect(card.locator('.card-pay')).toBeVisible();
   await page.keyboard.press('Escape');
   await expect(card).toBeHidden();
@@ -274,39 +284,44 @@ test('arrowing through the levels keeps the havo/vwo profile while it passes vmb
 });
 
 test('a havo or vwo profile without admission closes an hbo door; only vmbo cards name the mbo 4 route', async ({ page }) => {
-  await openRoute(page, '#n=havo&p=em&l=en');
-  await expectDoor(page, 'elektrotechnisch-ingenieur', 'closed', 'with N&T');
-  await door(page, 'elektrotechnisch-ingenieur').click();
+  await openRoute(page, '#n=havo&p=cm&l=en');
+  await expectDoor(page, 'mechatronica-engineer', 'closed', 'with N&T');
+  await door(page, 'mechatronica-engineer').click();
   const card = page.getByRole('dialog');
   await expect(card.locator('.admission-lines li')).toHaveText([
     'Directly with N&T.',
     'With N&G: extra subject physics.',
-    'With E&M or C&M: another profile is needed.',
+    'With E&M: extra subject physics.',
+    'With C&M: another profile is needed.',
+    'Checked against the Dutch admission regulation (Ratho) of 1 September 2026, programme Mechatronica.',
   ]);
   await expect(card).not.toContainText('Via mbo 4');
   await page.keyboard.press('Escape');
 
   await level(page, 'gltl').click();
-  await expectDoor(page, 'elektrotechnisch-ingenieur', 'ajar', 'via mbo 4 or via havo 4');
-  await door(page, 'elektrotechnisch-ingenieur').click();
+  await expectDoor(page, 'mechatronica-engineer', 'ajar', 'via mbo 4 or via havo 4');
+  await door(page, 'mechatronica-engineer').click();
   await expect(card.locator('.admission-lines li').last()).toHaveText('Via mbo 4 the profile rules do not apply.');
 });
 
 test('a wo card says the vwo rule, and at havo that vwo 5 or an hbo first year comes first', async ({ page }) => {
-  await openRoute(page, '#n=havo&p=ng&l=en');
-  await expectDoor(page, 'arts', 'ajar', 'via vwo 5 or via hbo year 1');
-  await door(page, 'arts').click();
+  await openRoute(page, '#n=havo&p=nt&l=en');
+  await expectDoor(page, 'apotheker', 'ajar', 'via vwo 5 or via hbo year 1');
+  await door(page, 'apotheker').click();
   const card = page.getByRole('dialog');
-  await expect(card.getByRole('heading', { level: 3, name: 'Admission from vwo (demo)' })).toBeVisible();
+  await expect(card.getByRole('heading', { level: 3, name: 'Admission from vwo' })).toBeVisible();
   await expect(card.locator('.admission-lines li').first()).toHaveText(
     'From havo, vwo 5 or a first year of hbo comes first; then this rule applies.',
   );
   await page.keyboard.press('Escape');
 
   await level(page, 'vwo').click();
-  await door(page, 'arts').click();
-  await expect(card.locator('.admission-lines li').first()).toHaveText('Directly with N&G.');
+  await door(page, 'apotheker').click();
+  await expect(card.locator('.admission-lines li').first()).toHaveText('Directly with N&T.');
   await page.keyboard.press('Escape');
   await door(page, 'journalist').click();
-  await expect(card.getByRole('heading', { level: 3, name: 'Admission from havo and vwo (demo)' })).toBeVisible();
+  await expect(card.getByRole('heading', { level: 3, name: 'Admission from havo and vwo' })).toBeVisible();
+  await expect(card.locator('.admission-lines li').last()).toHaveText(
+    'Checked against the Dutch admission regulation (Ratho) of 1 September 2026: it has no extra profile rules for Journalistiek.',
+  );
 });

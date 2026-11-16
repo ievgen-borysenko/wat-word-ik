@@ -275,7 +275,7 @@ function routeLines(p: Profession, view: RouteView, l: (typeof lang)['value']): 
 
 /**
  * The admission data of an hbo or wo profession, by profile: the rule from havo and
- * vwo for hbo, from vwo for wo. At havo a wo card first says that vwo 5 or an hbo
+ * vwo for hbo, from vwo for wo, and the regulation row it was checked against. At havo a wo card first says that vwo 5 or an hbo
  * first year comes before it, so the card and the door say the same. The mbo 4 route,
  * where the profile rules do not apply, is named at vmbo levels only: for a havo or
  * vwo pupil it is not one extra step (see engine/route.ts).
@@ -286,6 +286,7 @@ function admissionLines(p: Profession, lv: SchoolLevel, l: (typeof lang)['value'
   const lines: string[] = [];
   if (p.level === 4 && lv === 'havo') lines.push(t(l, 'route.card.woFromHavo'));
   if (a.direct.length === HAVO_VWO_PROFILES.length) lines.push(t(l, 'route.card.directAll'));
+  else if (a.direct.length === 0) lines.push(t(l, 'route.card.directNone'));
   else lines.push(t(l, 'route.card.direct', { list: profileList(a.direct, l) }));
   for (const pr of HAVO_VWO_PROFILES) {
     const subject = a.bridge[pr];
@@ -293,6 +294,13 @@ function admissionLines(p: Profession, lv: SchoolLevel, l: (typeof lang)['value'
   }
   const other = HAVO_VWO_PROFILES.filter((pr) => !a.direct.includes(pr) && a.bridge[pr] === undefined);
   if (other.length > 0) lines.push(t(l, 'route.card.otherProfile', { list: profileList(other, l) }));
+  const src = a.source;
+  if (src?.verified) {
+    const key = src.cells === null ? 'route.card.admissionNoRow' : 'route.card.admissionChecked';
+    lines.push(t(l, key, { programme: src.programme }));
+  } else {
+    lines.push(t(l, 'route.card.admissionUnchecked'));
+  }
   if (p.level === 3 && isVmbo(lv)) lines.push(t(l, 'route.card.viaMbo'));
   return lines;
 }
@@ -437,7 +445,7 @@ function RouteAbout() {
             </li>
           ))}
         </ul>
-        <p>{t(l, 'about.demo')}</p>
+        <p>{t(l, 'route.about.demo')}</p>
         <p>{t(l, 'route.about.privacy')}</p>
       </div>
     </dialog>

@@ -1,10 +1,12 @@
 # How it works
 
-> **Status: M0 demo.** Every number and rule on the pages (requirements,
-> levels, pay, and the admission by school profile on the onderbouw page) was
-> made up for this prototype to make the picture readable; no source has been
-> used yet. It is approximate demo data, not real admission rules and not
-> career advice.
+> **Status: M0 demo, one exception.** Every number and rule on the pages
+> (requirements, levels, pay, the vmbo directions) was made up for this
+> prototype to make the picture readable. It is approximate demo data, not
+> real admission rules and not career advice. The exception is the admission
+> by school profile to hbo and wo on the onderbouw page: it was checked
+> against the Dutch admission regulation (Ratho) of 1 September 2026; see
+> [sources.md](sources.md).
 
 ## What the pages show
 
@@ -129,6 +131,11 @@ The profession's floor stays the source of its diploma level:
 | 3 (hbo) | closed: from vmbo-gl/tl up | one step: via mbo 4 or havo 4 | by profile | by profile |
 | 4 (wo) | closed: from havo up | closed: from havo up | direct profile: one step via vwo 5 or an hbo first year (propedeuse); else closed | by profile |
 
+A wo programme where no profile admits without an extra subject
+(Geneeskunde, Diergeneeskunde) is closed from vmbo and from havo "from vwo
+up": from havo every profile is two steps short. At vwo such a door names the
+profiles that admit with one extra subject.
+
 "By profile" uses the admission data of each hbo and wo profession: the
 profiles that admit directly are **open**; a profile that one extra exam
 subject brings up to the rule is **one step more**, and the door names the
@@ -145,7 +152,8 @@ Two simplifications, both the stricter reading:
 - vmbo-bb/kb is one button, and the page follows bb, the stricter half:
   with bb, mbo 4 comes after mbo 2 and hbo is two steps away. With kb, mbo 4
   is direct and hbo is one step via mbo 4; "How it works" says so.
-- Where an admission rule was not certain, the data holds the stricter one.
+- Where an admission row asks for more than one extra subject, the data
+  holds the stricter reading: that profile is closed.
 
 A vmbo direction never closes a door: a vmbo diploma of any direction admits
 to mbo. For mbo professions the direction is only a **fit**: the door says
@@ -167,9 +175,13 @@ several years, not one extra step, and showing it would erase what the
 profile choice changes. Every closed door names a level or profile that does
 reach it. Unit tests check all of this for every profession.
 
-The data per profession (`vmbo`, `admission` in `src/data/professions.ts`)
-is hand-written demo data like the rest of the file; see
-[sources.md](sources.md).
+The data per profession is in `src/data/professions.ts`. `vmbo` is
+hand-written demo data like the rest of the file. `admission` follows the
+Ratho row of one programme per profession, and `admission.source` names it;
+[sources.md](sources.md) lists every row and how a cell becomes data. Which
+programme stands for a profession (Built Environment for the construction
+engineer, Technische Informatica for the software engineer, Natuurkunde for
+the scientist) is our own editorial choice, not part of the regulation.
 
 ## Privacy
 

@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { PROFESSIONS, PROFESSION_BY_ID } from '../data/professions';
 import {
+  admittingProfiles,
   fitOf,
   isVmbo,
   levelRank,
@@ -32,6 +33,8 @@ function prof(level: Profession['level'], extra: Partial<Profession> = {}): Prof
 
 const HBO = prof(3, { admission: { direct: ['nt'], bridge: { ng: 'natuurkunde' } } });
 const WO = prof(4, { admission: { direct: ['ng'], bridge: { nt: 'biologie' } } });
+/** No direct profile: every profile that admits needs an extra subject, like wo Geneeskunde. */
+const WO_NO_DIRECT = prof(4, { admission: { direct: [], bridge: { nt: 'biologie', ng: 'natuurkunde' } } });
 const RANK = { closed: 0, detour: 1, open: 2 } as const;
 const byId = (id: string) => PROFESSION_BY_ID.get(id)!;
 
@@ -122,6 +125,26 @@ describe('routeOf', () => {
     }
   });
 
+  it('wo without a direct profile: one subject from vwo, closed from vwo up below it, other profiles name the bridged ones', () => {
+    expect(routeOf(WO_NO_DIRECT, 'vwo', 'nt')).toEqual({ state: 'detour', steps: [{ kind: 'subject', subject: 'biologie' }], profiles: null });
+    expect(routeOf(WO_NO_DIRECT, 'vwo', 'ng')).toEqual({ state: 'detour', steps: [{ kind: 'subject', subject: 'natuurkunde' }], profiles: null });
+    expect(routeOf(WO_NO_DIRECT, 'vwo', 'em')).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt', 'ng'] } });
+    expect(routeOf(WO_NO_DIRECT, 'vwo', null)).toEqual({
+      state: 'detour',
+      steps: [
+        { kind: 'subject', subject: 'biologie' },
+        { kind: 'subject', subject: 'natuurkunde' },
+      ],
+      profiles: ['nt', 'ng'],
+    });
+    for (const profile of [null, ...HAVO_VWO_PROFILES]) {
+      expect(routeOf(WO_NO_DIRECT, 'havo', profile)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
+    }
+    for (const level of ['bbkb', 'gltl'] as const) {
+      expect(routeOf(WO_NO_DIRECT, level, null)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
+    }
+  });
+
   it('without a profile: what the level alone decides, and which profiles reach it', () => {
     expect(routeOf(HBO, 'havo', null)).toEqual({ state: 'detour', steps: [], profiles: ['nt'] });
     expect(routeOf(WO, 'havo', null)).toEqual({
@@ -176,10 +199,12 @@ describe('routeOf', () => {
       for (const profile of HAVO_VWO_PROFILES) {
         if (admits(p, profile)) continue;
         for (const level of ['havo', 'vwo'] as const) {
-          expect(routeOf(p, level, profile), `${p.id} ${level} ${profile}`).toEqual({
-            state: 'closed',
-            need: { kind: 'profile', profiles: p.admission!.direct },
-          });
+          // wo without a direct profile is two steps from havo for every profile: it names vwo.
+          const need =
+            p.level === 4 && level === 'havo' && p.admission!.direct.length === 0
+              ? { kind: 'level', from: 'vwo' }
+              : { kind: 'profile', profiles: admittingProfiles(p.admission!) };
+          expect(routeOf(p, level, profile), `${p.id} ${level} ${profile}`).toEqual({ state: 'closed', need });
         }
         if (p.level === 3) {
           expect(routeOf(p, 'gltl', null).state, p.id).toBe('detour');
@@ -199,12 +224,12 @@ describe('routeOf', () => {
       steps: [{ kind: 'mbo4' }, { kind: 'havo4' }],
       profiles: null,
     });
-    // The same in the demo data.
-    expect(routeOf(byId('elektrotechnisch-ingenieur'), 'havo', 'em')).toEqual({
+    // The same in the data: hbo Mechatronica asks two extra subjects of C&M.
+    expect(routeOf(byId('mechatronica-engineer'), 'havo', 'cm')).toEqual({
       state: 'closed',
       need: { kind: 'profile', profiles: ['nt'] },
     });
-    expect(routeOf(byId('elektrotechnisch-ingenieur'), 'gltl', null).state).toBe('detour');
+    expect(routeOf(byId('mechatronica-engineer'), 'gltl', null).state).toBe('detour');
   });
 
   it('"not chosen yet" is open only when every profile opens it, else the best a profile reaches, as a step', () => {
@@ -252,10 +277,11 @@ describe('routeOf', () => {
     }
   });
 
-  it('the demo data: medicine from vwo N&G, N&T plus biology, not E&M; the lawyer from every profile', () => {
-    expect(routeOf(byId('arts'), 'vwo', 'ng').state).toBe('open');
+  it('the data (Ratho 2026): Geneeskunde from vwo N&T plus biology or N&G plus physics, not E&M; the lawyer from every profile', () => {
     expect(routeOf(byId('arts'), 'vwo', 'nt')).toMatchObject({ state: 'detour', steps: [{ kind: 'subject', subject: 'biologie' }] });
-    expect(routeOf(byId('arts'), 'vwo', 'em')).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['ng'] } });
+    expect(routeOf(byId('arts'), 'vwo', 'ng')).toMatchObject({ state: 'detour', steps: [{ kind: 'subject', subject: 'natuurkunde' }] });
+    expect(routeOf(byId('arts'), 'vwo', 'em')).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt', 'ng'] } });
+    expect(routeOf(byId('arts'), 'havo', null)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
     for (const profile of HAVO_VWO_PROFILES) expect(routeOf(byId('advocaat'), 'vwo', profile).state).toBe('open');
   });
 });

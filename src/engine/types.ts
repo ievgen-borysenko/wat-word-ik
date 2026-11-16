@@ -116,15 +116,43 @@ export const EXAM_SUBJECTS = ['wiskunde-a', 'wiskunde-b', 'natuurkunde', 'scheik
 export type ExamSubject = (typeof EXAM_SUBJECTS)[number];
 
 /**
- * Admission to an hbo or wo programme from havo or vwo, by profile (demo data).
- * The same rule holds for havo and vwo; for wo, havo is one step short anyway.
+ * Admission to an hbo or wo programme from havo or vwo, by profile. The same rule
+ * holds for havo and vwo; for wo, havo is one step short anyway.
  */
 export interface ProfileAdmission {
-  /** Profiles that give direct admission. At least one. */
+  /**
+   * Profiles that give direct admission. Empty only when every profile that admits
+   * needs an extra subject (wo Geneeskunde: N&T with biology, N&G with physics).
+   */
   readonly direct: readonly HavoVwoProfile[];
   /**
    * For a profile that is not direct: the one extra subject that closes the gap.
    * A profile that is in neither list needs a different profile.
    */
   readonly bridge: Readonly<Partial<Record<HavoVwoProfile, ExamSubject>>>;
+  /** Where the rule comes from. The engine does not read it; the data test requires it. */
+  readonly source?: AdmissionSource;
+}
+
+/**
+ * One programme in the Dutch admission regulation, the Regeling aanmelding en
+ * toelating hoger onderwijs (Ratho, BWBR0035059): Bijlage A lists the extra
+ * requirements of wo programmes for vwo profiles, Bijlage B those of hbo
+ * programmes for havo and vwo profiles. A programme without a row there has no
+ * extra requirements: every profile admits.
+ */
+export interface AdmissionSource {
+  readonly bijlage: 'A' | 'B';
+  /** The table the row is in, as headed in the bijlage; null for a programme without a row. */
+  readonly table: string | null;
+  /** The programme as written in the bijlage, or its usual name when it has no row there. */
+  readonly programme: string;
+  /** The cells NT, NG, EM, CM as written; null when the bijlage has no row for the programme. */
+  readonly cells: Readonly<Record<HavoVwoProfile, string>> | null;
+  /** The version of the regulation that was read (the date it is in force from). */
+  readonly version: string;
+  /** True when the row (or its absence) was read twice and both readings agreed. */
+  readonly verified: boolean;
+  /** What the row says that the data cannot hold, such as a footnote. */
+  readonly note?: string;
 }
