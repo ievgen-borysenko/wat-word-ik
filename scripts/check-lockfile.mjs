@@ -9,8 +9,11 @@
 //     without `dev`: an entry with `devOptional` (a dev dependency that is also
 //     an optional dependency of a runtime package) counts as runtime too.
 // The same set of runtime packages (runtimePackages below) decides which
-// licence notices the built script carries: the build writes them, and
-// scripts/check-dist.mjs requires one for each package.
+// licence notices the built site carries: the build (vite.config.ts) writes
+// one notice for all of them at the top of each built script that bundles
+// package code (with four pages, the shared chunk that holds that code, not
+// the page scripts), and scripts/check-dist.mjs requires one for each package
+// in the shipped scripts taken together.
 //
 // Usage: node scripts/check-lockfile.mjs [package-lock.json]
 // Exit codes: 0 clean, 1 violations found (all listed), 2 the file could not be read.
@@ -96,9 +99,11 @@ const isRuntime = (entry) => !entry.dev;
 
 /**
  * The runtime packages of the lockfile, as the licence check above sees them:
- * the build writes a licence notice for each of them into the built script, and
- * check:dist requires one for each. `path` is the lockfile key, the folder the
- * package is installed in.
+ * the build writes a licence notice for each of them at the top of each built
+ * script that bundles package code (the shared chunk that holds that code, not
+ * the page scripts), and check:dist requires one for each in the shipped scripts
+ * taken together. `path` is the lockfile key, the folder the package is
+ * installed in.
  * @param {Lockfile} lock
  * @returns {{ path: string, name: string, version: string, license: string }[]}
  */
