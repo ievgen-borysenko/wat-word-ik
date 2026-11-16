@@ -142,7 +142,7 @@ describe('routeOf', () => {
     expect(routeOf(byId('software-engineer'), 'vwo', 'cm').state).toBe('open');
   });
 
-  it('wo without a direct profile: one subject from vwo, closed from vwo up below it, other profiles name the bridged ones', () => {
+  it('wo without a direct profile: one subject from vwo, closed from vwo up below it for the bridged profiles, other profiles name them', () => {
     expect(routeOf(WO_NO_DIRECT, 'vwo', 'nt')).toEqual({ state: 'detour', steps: [{ kind: 'subject', subject: 'biologie' }], profiles: null });
     expect(routeOf(WO_NO_DIRECT, 'vwo', 'ng')).toEqual({ state: 'detour', steps: [{ kind: 'subject', subject: 'natuurkunde' }], profiles: null });
     expect(routeOf(WO_NO_DIRECT, 'vwo', 'em')).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt', 'ng'] } });
@@ -154,8 +154,12 @@ describe('routeOf', () => {
       ],
       profiles: ['nt', 'ng'],
     });
-    for (const profile of [null, ...HAVO_VWO_PROFILES]) {
+    for (const profile of [null, 'nt', 'ng'] as const) {
       expect(routeOf(WO_NO_DIRECT, 'havo', profile)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
+    }
+    // A profile without admission: vwo would not open it, so the door names the profiles, as at vwo.
+    for (const profile of ['em', 'cm'] as const) {
+      expect(routeOf(WO_NO_DIRECT, 'havo', profile)).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt', 'ng'] } });
     }
     for (const level of ['bbkb', 'gltl'] as const) {
       expect(routeOf(WO_NO_DIRECT, level, null)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
@@ -219,11 +223,8 @@ describe('routeOf', () => {
           // hbo at vwo uses its vwo rule, which may admit this profile.
           const rule = admissionAt(p, level);
           if (rule.direct.includes(profile) || rule.bridge[profile] !== undefined) continue;
-          // wo without a direct profile is two steps from havo for every profile: it names vwo.
-          const need =
-            p.level === 4 && level === 'havo' && rule.direct.length === 0
-              ? { kind: 'level', from: 'vwo' }
-              : { kind: 'profile', profiles: admittingProfiles(rule) };
+          // From havo too: vwo would not open it for this profile, so the door names the profiles.
+          const need = { kind: 'profile', profiles: admittingProfiles(rule) };
           expect(routeOf(p, level, profile), `${p.id} ${level} ${profile}`).toEqual({ state: 'closed', need });
         }
         if (p.level === 3) {
@@ -263,7 +264,7 @@ describe('routeOf', () => {
     }
   });
 
-  it('a closed door names a level or profiles that do reach it', () => {
+  it('a closed door names a level or profiles that do reach it (wo from havo: profiles that reach it from vwo up)', () => {
     const check = (p: Profession, level: SchoolLevel, profile: SchoolProfile | null, view: RouteView) => {
       if (view.state !== 'closed') return;
       const where = `${p.id} ${level} ${String(profile)}`;
@@ -276,7 +277,13 @@ describe('routeOf', () => {
         }
       } else if (view.need.kind === 'profile') {
         expect(view.need.profiles.length, where).toBeGreaterThan(0);
-        for (const other of view.need.profiles) expect(routeOf(p, level, other).state, `${where} -> ${other}`).not.toBe('closed');
+        for (const other of view.need.profiles) {
+          const theirs = routeOf(p, level, other);
+          if (theirs.state !== 'closed') continue;
+          // wo without a direct profile, from havo: the named profiles get there from vwo up.
+          expect(theirs.need, `${where} -> ${other}`).toEqual({ kind: 'level', from: 'vwo' });
+          expect(routeOf(p, 'vwo', other).state, `${where} -> ${other} at vwo`).not.toBe('closed');
+        }
       } else {
         expect.fail(`${where}: the onderbouw view never names subjects for a closed door`);
       }
@@ -304,6 +311,15 @@ describe('routeOf', () => {
     expect(routeOf(byId('arts'), 'vwo', 'ng')).toMatchObject({ state: 'detour', steps: [{ kind: 'subject', subject: 'natuurkunde' }] });
     expect(routeOf(byId('arts'), 'vwo', 'em')).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt', 'ng'] } });
     expect(routeOf(byId('arts'), 'havo', null)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
+    // From havo: N&T and N&G are two steps short (vwo and a subject), E&M and C&M have no right to admission.
+    for (const id of ['arts', 'chirurg', 'dierenarts']) {
+      for (const profile of ['nt', 'ng'] as const) {
+        expect(routeOf(byId(id), 'havo', profile), `${id} ${profile}`).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
+      }
+      for (const profile of ['em', 'cm'] as const) {
+        expect(routeOf(byId(id), 'havo', profile), `${id} ${profile}`).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt', 'ng'] } });
+      }
+    }
     for (const profile of HAVO_VWO_PROFILES) expect(routeOf(byId('advocaat'), 'vwo', profile).state).toBe('open');
   });
 });

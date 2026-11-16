@@ -35,10 +35,12 @@ import {
  *                               or havo 4. From vmbo-bb/kb closed: from vmbo-gl/tl up;
  *   4 (wo)                      from vwo by profile, as hbo. From havo with a direct
  *                               profile a detour via vwo 5 or an hbo first year
- *                               (propedeuse); with another profile closed. From vmbo
- *                               closed: from havo up. When no profile is direct (every
- *                               admitting profile needs an extra subject), havo is two
- *                               steps short as well: closed from vwo up.
+ *                               (propedeuse); with another profile closed, naming the
+ *                               profiles that admit. From vmbo closed: from havo up.
+ *                               When no profile is direct (every admitting profile
+ *                               needs an extra subject), havo is two steps short for
+ *                               those profiles: closed from vwo up; a profile without
+ *                               admission names the profiles that admit.
  *
  * A vmbo direction never closes anything: a vmbo diploma of any direction admits
  * to mbo. It only says which mbo professions fit it best (fitOf).
@@ -137,6 +139,8 @@ export function admittingProfiles(a: ProfileRule): readonly HavoVwoProfile[] {
   return a.direct.length > 0 ? a.direct : HAVO_VWO_PROFILES.filter((pr) => a.bridge[pr] !== undefined);
 }
 
+const FROM_VWO: ClosedNeed = { kind: 'level', from: 'vwo' };
+
 /** hbo from havo or vwo, and wo from vwo: by the profile, with the rule of that level. */
 function byAdmission(a: ProfileRule, profile: HavoVwoProfile): RouteView {
   if (a.direct.includes(profile)) return OPEN;
@@ -154,25 +158,35 @@ function byAdmission(a: ProfileRule, profile: HavoVwoProfile): RouteView {
 export interface ProfileJudge {
   /** hbo from havo or vwo, and wo from vwo: the door for this profile under the rule of that level. */
   readonly atLevel: (rule: ProfileRule, profile: HavoVwoProfile) => RouteView;
-  /** wo from havo: true when this profile meets the vwo rule, so that vwo 5 or an hbo first year is the one step. */
-  readonly meetsFromHavo: (rule: ProfileRule, profile: HavoVwoProfile) => boolean;
+  /**
+   * wo from havo, with this profile and the vwo rule: null when the profile meets the
+   * rule, so that vwo 5 or an hbo first year is the one step; otherwise what the closed
+   * door names. A profile without admission names the profiles that admit, never the
+   * level: vwo would not open the door for it.
+   */
+  readonly fromHavo: (rule: ProfileRule, profile: HavoVwoProfile) => ClosedNeed | null;
 }
 
-/** The onderbouw judgement: the profile alone, before any subject is chosen. */
+/**
+ * The onderbouw judgement: the profile alone, before any subject is chosen. From havo,
+ * a direct profile is one step; a profile that admits with an extra subject is two
+ * steps short, which the door says as "from vwo up" when no profile is direct (else it
+ * names the direct ones); a profile in neither list names the profiles that admit.
+ */
 export const PROFILE_ONLY: ProfileJudge = {
   atLevel: byAdmission,
-  meetsFromHavo: (rule, profile) => rule.direct.includes(profile),
+  fromHavo: (rule, profile) => {
+    if (rule.direct.includes(profile)) return null;
+    if (rule.direct.length === 0 && rule.bridge[profile] !== undefined) return FROM_VWO;
+    return { kind: 'profile', profiles: admittingProfiles(rule) };
+  },
 };
 
-/** wo from havo: one step via vwo 5 or an hbo first year, when the profile meets the vwo rule (onderbouw: a direct profile). */
+/** wo from havo: one step via vwo 5 or an hbo first year when the profile meets the vwo rule, else closed with what the judge names. */
 function woFromHavo(judge: ProfileJudge, p: Profession, profile: HavoVwoProfile): RouteView {
-  const a = admissionOf(p);
-  if (judge.meetsFromHavo(a, profile)) {
-    return { state: 'detour', steps: [{ kind: 'vwo5' }, { kind: 'propedeuse' }], profiles: null };
-  }
-  // No direct profile: from havo every profile is two steps short, so name the level.
-  if (a.direct.length === 0) return { state: 'closed', need: { kind: 'level', from: 'vwo' } };
-  return { state: 'closed', need: { kind: 'profile', profiles: a.direct } };
+  const need = judge.fromHavo(admissionOf(p), profile);
+  if (need === null) return { state: 'detour', steps: [{ kind: 'vwo5' }, { kind: 'propedeuse' }], profiles: null };
+  return { state: 'closed', need };
 }
 
 function sameStep(a: RouteStep, b: RouteStep): boolean {
@@ -227,7 +241,12 @@ export function routeWith(judge: ProfileJudge, p: Profession, level: SchoolLevel
       if (isVmbo(level)) {
         return { state: 'closed', need: { kind: 'level', from: admissionOf(p).direct.length > 0 ? 'havo' : 'vwo' } };
       }
-      if (level === 'havo') return pick((pr) => woFromHavo(judge, p, pr));
+      if (level === 'havo') {
+        if (chosen !== null) return woFromHavo(judge, p, chosen);
+        // No profile yet, and no profile reaches it in one step: what is missing is the level.
+        const view = overProfiles((pr) => woFromHavo(judge, p, pr));
+        return view.state === 'closed' ? { state: 'closed', need: FROM_VWO } : view;
+      }
       return pick((pr) => judge.atLevel(admissionAt(p, level), pr));
   }
 }

@@ -329,13 +329,23 @@ test('a wo card says the vwo rule, and at havo that vwo 5 or an hbo first year c
   );
 });
 
-test('with no direct profile, a wo card at havo does not promise one step: Geneeskunde', async ({ page }) => {
+test('with no direct profile, a wo card at havo does not promise one step, and E&M or C&M names the profiles: Geneeskunde', async ({ page }) => {
   await openRoute(page, '#n=havo&p=ng&l=en');
   await expectDoor(page, 'arts', 'closed', 'from vwo up');
   await door(page, 'arts').click();
   const card = page.getByRole('dialog');
   await expect(card.locator('.admission-lines li').first()).toHaveText('No profile gets you in without an extra subject.');
   await expect(card.locator('.admission-lines')).not.toContainText('From havo');
+  await page.keyboard.press('Escape');
+
+  // E&M and C&M have no right to admission: from havo too the door names the profiles that admit, as the card does.
+  for (const key of ['em', 'cm']) {
+    await profile(page, key).click();
+    for (const id of ['arts', 'chirurg', 'dierenarts']) await expectDoor(page, id, 'closed', 'with N&T or N&G');
+  }
+  await door(page, 'arts').click();
+  await expect(card.locator('.route-lines li').first()).toHaveText('Not on this route for now. With N&T or N&G it can be done.');
+  await expect(card.locator('.admission-lines')).toContainText('With E&M or C&M: another profile is needed.');
 });
 
 test('an hbo card shows the havo rule at havo and the vwo rule at vwo, each with its own row', async ({ page }) => {

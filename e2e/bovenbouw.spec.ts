@@ -69,12 +69,36 @@ test('a # cell names the profiles that admit; wo from havo is one step when the 
   await expectDoor(page, 'apotheker', 'open');
   await expectDoor(page, 'electrical-engineer', 'ajar', 'extra vak wiskunde B');
 
+  // From havo the same # cell names the same profiles: vwo would not open it for E&M.
   await level(page, 'havo').click();
+  await expectDoor(page, 'arts', 'closed', 'met N&T of N&G');
+  await door(page, 'arts').click();
+  await expect(page.getByRole('dialog').locator('.route-lines li').first()).toHaveText('Nu niet op deze route. Met N&T of N&G kan het wel.');
+  await page.keyboard.press('Escape');
+
   await profile(page, 'nt').click();
   await expectDoor(page, 'arts', 'ajar', 'via vwo 5 of via hbo-propedeuse');
   await box(page, 'biologie').uncheck();
-  await expectDoor(page, 'arts', 'closed', 'vanaf vwo');
+  // What the vwo rule still misses, not "from vwo": ticking it brings the one step back.
+  await expectDoor(page, 'arts', 'closed', 'nog nodig: biologie');
   await expect.poll(() => hash(page)).toBe('#n=havo&p=nt&x=na.sk&l=nl');
+
+  // Without a profile: N&G with natuurkunde reaches it in one step; with no such
+  // profile left, the level is what is missing.
+  await profile(page, 'none').click();
+  await expectDoor(page, 'arts', 'ajar', 'via vwo 5 of via hbo-propedeuse · met N&G');
+  await box(page, 'natuurkunde').uncheck();
+  await expectDoor(page, 'arts', 'closed', 'vanaf vwo');
+});
+
+test('from havo, a wo door names the subjects its vwo cell still asks: Natuurkunde with N&G', async ({ page }) => {
+  await openExam(page, '#n=havo&p=ng&l=en');
+  await expectDoor(page, 'wetenschapper', 'closed', 'still needs physics and maths B');
+  await box(page, 'natuurkunde').check();
+  await expectDoor(page, 'wetenschapper', 'closed', 'still needs maths B');
+  await box(page, 'wiskunde-b').check();
+  await expectDoor(page, 'wetenschapper', 'ajar', 'via vwo 5 or via hbo year 1');
+  await expect.poll(() => hash(page)).toBe('#n=havo&p=ng&x=wb.na&l=en');
 });
 
 test('a vmbo level has no boxes and the onderbouw doors; the subjects stay in memory and out of the address', async ({ page }) => {

@@ -1,4 +1,4 @@
-import { isVmbo, profileCounts, routeWith, type ProfileCount, type ProfileJudge, type RouteView } from './route';
+import { isVmbo, profileCounts, routeWith, type ClosedNeed, type ProfileCount, type ProfileJudge, type RouteView } from './route';
 import {
   EXAM_SUBJECTS,
   HAVO_VWO_PROFILES,
@@ -28,8 +28,11 @@ import {
  * card names the others in words. Everything else is the routing of engine/route.ts,
  * shared with the onderbouw view: hbo at havo follows the havo rule, at vwo the vwo
  * rule (admissionAt); below the programme's level the steps are mbo 2, mbo 4, havo 4,
- * vwo 5 and an hbo first year, and wo from havo is one step when the pupil meets the
- * vwo rule. The vmbo levels have no boxes, and their doors are the onderbouw doors.
+ * vwo 5 and an hbo first year. wo from havo is one step when the pupil meets the vwo
+ * rule; otherwise the door names what the vwo rule still misses (the subjects), or for
+ * `#` the profiles that admit, as at vwo. Only without a profile does a closed wo door
+ * at havo say "from vwo up". The vmbo levels have no boxes, and their doors are the
+ * onderbouw doors.
  */
 
 const OPEN: RouteView = { state: 'open' };
@@ -89,24 +92,37 @@ export function admittingCells(rule: ProfileRule): readonly HavoVwoProfile[] {
   return direct.length > 0 ? direct : cells.filter((c) => c.cell.kind === 'subjects').map((c) => c.pr);
 }
 
+/** What a closed door names for a verdict that is not met: the profiles that admit for `#`, else the missing groups. */
+function closedNeed(rule: ProfileRule, v: Exclude<Verdict, { kind: 'met' }>): ClosedNeed {
+  return v.kind === 'noRight' ? { kind: 'profile', profiles: admittingCells(rule) } : { kind: 'subjects', groups: v.missing };
+}
+
 /** The door for a profile and the pupil's subjects under the rule of the pupil's own level. */
 function atLevel(rule: ProfileRule, profile: HavoVwoProfile, extras: ReadonlySet<ExamSubject>): RouteView {
   const v = judgeCell(cellRuleOf(rule, profile), extras);
   if (v.kind === 'met') return OPEN;
-  if (v.kind === 'noRight') return { state: 'closed', need: { kind: 'profile', profiles: admittingCells(rule) } };
+  if (v.kind === 'noRight') return { state: 'closed', need: closedNeed(rule, v) };
   const [only] = v.missing;
   const options = only === undefined ? [] : only.filter(isExamSubject);
   if (v.missing.length === 1 && options.length > 0) {
     return { state: 'detour', steps: options.map((subject) => ({ kind: 'subject', subject })), profiles: null };
   }
-  return { state: 'closed', need: { kind: 'subjects', groups: v.missing } };
+  return { state: 'closed', need: closedNeed(rule, v) };
 }
 
-/** The bovenbouw judgement: the profile with the pupil's exam subjects. */
+/**
+ * The bovenbouw judgement: the profile with the pupil's exam subjects. wo from havo is
+ * one step when they meet the vwo rule; otherwise the door names the subjects the rule
+ * still misses (all of them: from havo even one is a second step), or for `#` the
+ * profiles that admit.
+ */
 export function examJudge(extras: ReadonlySet<ExamSubject>): ProfileJudge {
   return {
     atLevel: (rule, profile) => atLevel(rule, profile, extras),
-    meetsFromHavo: (rule, profile) => judgeCell(cellRuleOf(rule, profile), extras).kind === 'met',
+    fromHavo: (rule, profile) => {
+      const v = judgeCell(cellRuleOf(rule, profile), extras);
+      return v.kind === 'met' ? null : closedNeed(rule, v);
+    },
   };
 }
 

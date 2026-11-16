@@ -136,9 +136,14 @@ The profession's floor stays the source of its diploma level:
 | 4 (wo) | closed: from havo up | closed: from havo up | direct profile: one step via vwo 5 or an hbo first year (propedeuse); else closed | by profile |
 
 A wo programme where no profile admits without an extra subject
-(Geneeskunde, Diergeneeskunde) is closed from vmbo and from havo "from vwo
-up": from havo every profile is two steps short. At vwo such a door names the
-profiles that admit with one extra subject.
+(Geneeskunde, Diergeneeskunde) is closed from vmbo "from vwo up". From havo,
+the profiles that admit with one extra subject (N&T, N&G) are two steps short,
+and so is the level alone without a profile: the door says "from vwo up". A
+profile that the regulation gives no right to admission (`#`: E&M and C&M
+there) names the profiles that admit ("with N&T or N&G"), from havo as at vwo,
+because vwo would not open the door for it; the card says the same ("another
+profile is needed"). At vwo such a door names the profiles that admit with one
+extra subject.
 
 "By profile" uses the admission data of each hbo and wo profession: the
 profiles that admit directly are **open**; a profile that one extra exam
@@ -150,8 +155,8 @@ levels below). From havo to wo with a profile that would also need an extra
 subject is two steps, so closed. The card's admission section follows the
 profession and the level: "from havo" for hbo below vwo, "from vwo" for hbo
 at vwo and for wo; at havo a wo card with a direct profile adds that vwo 5 or
-an hbo first year comes first (with no direct profile the door is closed
-"from vwo up" and the card leaves that line out).
+an hbo first year comes first (with no direct profile the card leaves that
+line out).
 
 Two simplifications, both the stricter reading:
 
@@ -179,7 +184,8 @@ vmbo-gl/tl shows the same hbo door one step away via mbo 4. From vmbo-gl/tl,
 mbo 4 is the normal next school; for a havo or vwo pupil it is a route of
 several years, not one extra step, and showing it would erase what the
 profile choice changes. Every closed door names a level or profile that does
-reach it. Unit tests check all of this for every profession.
+reach it; from havo, for Geneeskunde and Diergeneeskunde, the profiles named
+reach it from vwo up. Unit tests check all of this for every profession.
 
 An hbo programme has two rules, because the regulation has a table for
 havo pupils and one for vwo pupils: at havo (and on the card at the vmbo
@@ -247,8 +253,12 @@ as on the onderbouw page; wo follows the vwo rule. Below the programme's level
 the page keeps the onderbouw routing, shared in one function
 (`routeWith` in `src/engine/route.ts`): mbo 2 first from vmbo-bb/kb, via mbo
 4 or havo 4 from vmbo-gl/tl. wo from havo is one step (vwo 5 or an hbo first
-year) when the profile with the pupil's subjects meets the vwo rule; otherwise
-it is closed as on the onderbouw page. The vmbo levels have no boxes and show
+year) when the profile with the pupil's subjects meets the vwo rule.
+Otherwise the door is closed and names what the vwo rule still misses: the
+subjects, even a single one, since a subject and vwo 5 are two steps
+(Natuurkunde with N&G: "nog nodig: natuurkunde en wiskunde B"; ticking both
+makes it the one step), or for `#` the profiles that admit. Only without a
+profile does a closed wo door at havo say "from vwo up". The vmbo levels have no boxes and show
 the onderbouw doors; the subjects ticked at havo or vwo stay in memory, out of
 the address, and come back when the level does.
 
@@ -256,8 +266,10 @@ Without a profile, havo and vwo show what the level alone decides, as on the
 onderbouw page, now with the pupil's subjects: open when every profile opens
 it, else one step more "with N&T or N&G". Each profile button counts the
 doors it opens with the ticked subjects. Without any subject ticked every door
-is in the same state as on the onderbouw page; ticking a subject never closes
-a door. Unit tests check both for every profession, level and profile.
+is in the same state as on the onderbouw page (from havo a closed wo door may
+name subjects where the onderbouw page names a profile or the level); ticking
+a subject never closes a door. Unit tests check both for every profession,
+level and profile.
 
 **The card** names the profession, the programme of the Ratho row, the
 pupil's own line ("Met C&M en wiskunde A heb je nog nodig: natuurkunde"), the

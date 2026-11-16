@@ -189,12 +189,21 @@ describe('examRouteOf at the programme level', () => {
       steps: [{ kind: 'vwo5' }, { kind: 'propedeuse' }],
       profiles: null,
     });
-    // Otherwise the onderbouw door: no direct profile, so from vwo up.
-    expect(examRouteOf(WO, 'havo', 'nt', NONE)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
-    expect(examRouteOf(WO, 'havo', 'em', ALL_SUBJECTS)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
+    // Otherwise closed: the door names what the vwo rule still misses (even one subject
+    // is a second step from havo), or for # the profiles that admit; never the level.
+    expect(examRouteOf(WO, 'havo', 'nt', NONE)).toEqual({ state: 'closed', need: { kind: 'subjects', groups: [['biologie']] } });
+    expect(examRouteOf(WO, 'havo', 'em', ALL_SUBJECTS)).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt', 'ng'] } });
     const WO_DIRECT = prof(4, rule(STAR, needs(['natuurkunde']), NO, NO));
     expect(examRouteOf(WO_DIRECT, 'havo', 'ng', set('natuurkunde')).state).toBe('detour');
-    expect(examRouteOf(WO_DIRECT, 'havo', 'ng', NONE)).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt'] } });
+    expect(examRouteOf(WO_DIRECT, 'havo', 'ng', NONE)).toEqual({ state: 'closed', need: { kind: 'subjects', groups: [['natuurkunde']] } });
+    expect(examRouteOf(WO_DIRECT, 'havo', 'em', ALL_SUBJECTS)).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt'] } });
+    // Without a profile, when no profile reaches it in one step, what is missing is the level.
+    expect(examRouteOf(WO, 'havo', null, NONE)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
+    expect(examRouteOf(WO, 'havo', null, set('biologie'))).toEqual({
+      state: 'detour',
+      steps: [{ kind: 'vwo5' }, { kind: 'propedeuse' }],
+      profiles: ['nt'],
+    });
   });
 
   it('without a profile: open when every profile opens it with these subjects, else the best a profile reaches', () => {
@@ -287,17 +296,20 @@ describe('examRouteOf on the data', () => {
             const v = examRouteOf(p, level, profile, extras);
             if (v.state !== 'closed') continue;
             const where = `${p.id} ${level} ${profile} [${[...extras].join(',')}]`;
+            // wo from havo: with every subject the vwo rule asks, it is the one step via vwo 5.
+            const woFromHavo = p.level === 4 && level === 'havo';
             if (v.need.kind === 'subjects') {
               subjects++;
-              expect(v.need.groups.length, where).toBeGreaterThan(1);
+              if (!woFromHavo) expect(v.need.groups.length, where).toBeGreaterThan(1);
               const add = v.need.groups.map((g) => g.find((s): s is ExamSubject => (EXAM_SUBJECTS as readonly string[]).includes(s))!);
-              expect(examRouteOf(p, level, profile, set(...extras, ...add)), where).toEqual(OPEN);
+              expect(examRouteOf(p, level, profile, set(...extras, ...add)).state, where).toBe(woFromHavo ? 'detour' : 'open');
             } else if (v.need.kind === 'profile') {
               expect(v.need.profiles.length, where).toBeGreaterThan(0);
-              for (const other of v.need.profiles) expect(examRouteOf(p, level, other, extras).state, `${where} -> ${other}`).not.toBe('closed');
+              // From havo a named profile reaches it with the subjects its rule asks.
+              const theirs = woFromHavo ? ALL_SUBJECTS : extras;
+              for (const other of v.need.profiles) expect(examRouteOf(p, level, other, theirs).state, `${where} -> ${other}`).not.toBe('closed');
             } else {
-              expect(level, where).toBe('havo');
-              expect(routeOf(p, v.need.from, null).state, where).not.toBe('closed');
+              expect.fail(`${where}: with a profile chosen, no door at havo or vwo names a level`);
             }
           }
         }
@@ -337,7 +349,22 @@ describe('examRouteOf on the data', () => {
     expect(examRouteOf(arts, 'vwo', 'em', ALL_SUBJECTS)).toEqual({ state: 'closed', need: { kind: 'profile', profiles: ['nt', 'ng'] } });
     expect(examRouteOf(arts, 'vwo', 'nt', set('biologie'))).toEqual(OPEN);
     expect(examRouteOf(arts, 'havo', 'nt', set('biologie')).state).toBe('detour');
-    expect(examRouteOf(arts, 'havo', 'nt', NONE)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
+    expect(examRouteOf(arts, 'havo', 'nt', NONE)).toEqual({ state: 'closed', need: { kind: 'subjects', groups: [['biologie']] } });
+    expect(examRouteOf(arts, 'havo', null, NONE)).toEqual({ state: 'closed', need: { kind: 'level', from: 'vwo' } });
+    // # from havo too: the profiles that admit, as at vwo (arts, chirurg and dierenarts share the cells).
+    for (const id of ['arts', 'chirurg', 'dierenarts']) {
+      for (const profile of ['em', 'cm'] as const) {
+        expect(examRouteOf(byId(id), 'havo', profile, ALL_SUBJECTS), `${id} ${profile}`).toEqual({
+          state: 'closed',
+          need: { kind: 'profile', profiles: ['nt', 'ng'] },
+        });
+      }
+    }
+    // A wo row with a direct profile: from havo, N&G names the subjects of its vwo cell (Natuurkunde: nat + wisB).
+    const sci = byId('wetenschapper');
+    expect(examRouteOf(sci, 'havo', 'ng', NONE)).toEqual({ state: 'closed', need: { kind: 'subjects', groups: [['natuurkunde'], ['wiskunde-b']] } });
+    expect(examRouteOf(sci, 'havo', 'ng', set('natuurkunde'))).toEqual({ state: 'closed', need: { kind: 'subjects', groups: [['wiskunde-b']] } });
+    expect(examRouteOf(sci, 'havo', 'ng', set('natuurkunde', 'wiskunde-b')).state).toBe('detour');
   });
 });
 
