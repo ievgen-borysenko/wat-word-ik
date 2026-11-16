@@ -127,10 +127,14 @@ whatever it is used for; who may author commits is decided in review.
   from text at run time. Nor may it send data to the page's own host without
   them: no `Image` or `Audio` objects, no writes to `location` or calls of
   `open()`, no direct writes of URL properties (`src`, `href`, `srcset` and the
-  like), no such URL attributes in element props, and no string that starts a
-  query string (`"?key="`, `"/page?key="`). What this scan cannot see is listed
-  in the comment above `REQUEST_SINKS` in `scripts/check-dist.mjs`: names
-  assembled at run time, aliases of `open` or `location`, a query written with
+  like), no `src`, `srcset`, `poster`, `ping` or `formAction` in element props,
+  and no string that starts a query string (`"?key="`, `"/page?key="`). An
+  `href` in element props is allowed: each page renders one link, to the
+  other view, whose address it builds at run time from its own hash. Links
+  the user clicks are covered by the end-to-end request guard (Job 3 below),
+  for the links the tests follow. What this scan cannot see is listed in the
+  comment above `REQUEST_SINKS` in `scripts/check-dist.mjs`: names assembled
+  at run time, aliases of `open` or `location`, a query written with
   `history.replaceState`, a link the user clicks.
 - **Locked-down pages:** each page must carry a Content-Security-Policy that
   lets the page load its own script and stylesheet and nothing else:
@@ -138,7 +142,7 @@ whatever it is used for; who may author commits is decided in review.
   only as `data:` URLs (the icon), `base-uri 'none'` and `form-action 'none'`,
   and no other source anywhere. It must load nothing from another site, have
   no inline scripts or event handlers, and no local URL with a query string.
-- **Licence notices:** the built script bundles the code of the runtime
+- **Licence notices:** the built site bundles the code of the runtime
   packages (Preact and Preact Signals, all MIT), whose licences ask that their
   copyright and permission notice go with every copy. The build writes them as
   one comment at the top of the script that holds that code (the chunk both
@@ -197,15 +201,18 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
   the other view keeps the address after `#`, both ways.
 - **Grades from a link:** the notice appears when a link with grades is opened,
   not after a reload, and goes away when a slider moves; closing it moves focus
-  to the first preset.
+  to the first preset. Switching views keeps it when the grades came from a
+  link and does not bring it up for the user's own grades, both ways; the
+  view-switch marker (`v=1`) is gone from the address once the page has loaded.
 - **Accessible:** no serious or critical findings (axe) on the main view, an
   open card, the "How it works" dialog and the link notice, in Dutch, English
   and Ukrainian, on both views.
-- **Fits the screen:** never any sideways scrolling, also with a wide system
-  font. On desktop (1280x800 and 1366x768) neither the page nor the slider
-  column scrolls. On phones (375x812, 375x667, 360x640, 320x568) the ground
-  floor of the building, and the last group of doors, stay above the slider
-  panel.
+- **Fits the screen:** never any sideways scrolling. On desktop (1280x800
+  and 1366x768) neither the page nor the slider column scrolls. On phones
+  (375x812, 375x667, 360x640, 320x568) the ground floor of the building, and
+  the last group of doors, stay above the slider panel; the phone checks run
+  on both views a second time with a wide system font (Verdana or DejaVu
+  Sans).
 
 Data sent to the page's own host (for example the grades in the query string
 of an image request, which the host's logs would keep) is stopped in three

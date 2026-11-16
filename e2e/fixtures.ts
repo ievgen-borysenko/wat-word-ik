@@ -180,6 +180,43 @@ export const fromLinkNotice = (page: Page): Locator => page.locator('.from-link'
 /** The current URL hash, as the page wrote it. */
 export const hash = (page: Page): Promise<string> => page.evaluate(() => location.hash);
 
+/** Wide sans-serif fonts: Verdana on macOS and Windows, DejaVu Sans on Linux. */
+const WIDE_FONTS = 'Verdana, "DejaVu Sans", sans-serif';
+/** Arial-width fonts, for comparison. */
+const NARROW_FONTS = 'Arial, "Liberation Sans", Helvetica, sans-serif';
+
+/**
+ * Makes every page loaded from now on use a wide system font, through the CSSOM before
+ * the page's scripts run (the page's CSP refuses a <style> tag). The layout must not
+ * depend on the machine's default font: CI once failed at 320px with a wider system
+ * font than the one the layout was tuned on.
+ */
+export async function useWideFont(page: Page): Promise<void> {
+  await page.addInitScript((fonts) => {
+    const apply = () => document.documentElement?.style.setProperty('font-family', fonts, 'important');
+    apply();
+    document.addEventListener('DOMContentLoaded', apply);
+  }, WIDE_FONTS);
+}
+
+/** On a loaded page after useWideFont: the variant only proves something when a wide font is really installed. */
+export async function expectWideFont(page: Page): Promise<void> {
+  const ratio = await page.evaluate(
+    ([wide, narrow]) => {
+      const ctx = document.createElement('canvas').getContext('2d');
+      if (!ctx) return 0;
+      const width = (fonts: string) => {
+        ctx.font = `16px ${fonts}`;
+        return ctx.measureText('Wat word ik? NL EN UA Demodata').width;
+      };
+      return width(wide ?? '') / width(narrow ?? '');
+    },
+    [WIDE_FONTS, NARROW_FONTS],
+  );
+  expect(ratio, 'a wide font (Verdana or DejaVu Sans) must be installed for this test').toBeGreaterThan(1.08);
+  await expect(page.locator('html')).toHaveCSS('font-family', /Verdana|DejaVu Sans/);
+}
+
 /**
  * Serious and critical axe findings, one readable line each. Runs after the
  * animations settle: colour contrast measured mid-fade is not the real contrast.

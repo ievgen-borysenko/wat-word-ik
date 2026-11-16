@@ -66,7 +66,7 @@ random slider sets.
 
 ## Ladders
 
-Some professions form a ladder in one field, for example
+Some professions form a ladder in one line of work, for example
 electrical installer → electrical technician → electrical engineer (hbo) →
 electrical engineer (wo). Each rung asks a bit more.
 
@@ -89,7 +89,8 @@ The counter reads "N doors open, M almost open". The line under it names one
 step: the +1 that opens the most doors, with how many (ties: the first subject
 in slider order); if no single +1 opens a door, the door with the smallest
 "+N" (ties: alphabetical by id) and that number; with every door open, a plain
-sentence. The two views link to each other with the same address after `#`.
+sentence. The two views link to each other with the same address after `#`;
+each link is named after where it goes ("View as doors", "View as building").
 
 ## Privacy
 
@@ -100,7 +101,9 @@ browser.
 The state lives only in the part of the address after `#`
 (`#s=6666666666&g=arts`), so a link can be shared. The language is added
 (`&l=en`) only when it came with the link or was picked on the page;
-otherwise each visitor gets their own browser language.
+otherwise each visitor gets their own browser language. The link to the other
+view adds `&v=1`, the view-switch marker, when the grades are the user's own;
+it carries no data, and the page it opens drops it from the address.
 
 The hosting provider serves the files and sees an ordinary page request, like
 for any web page, but never the grades or the goal: browsers do not send the
@@ -109,7 +112,9 @@ any other page.
 
 When a fresh visit (not a reload or a back step) opens the page with grades
 in the link, it says so in one line ("these grades came from a link"), until
-the first slider change or preset.
+the first slider change or preset. Switching to the other view keeps that line
+while it shows; with the user's own grades the switch carries the marker, so
+the other view does not show it.
 
 ## Limits
 
@@ -124,7 +129,8 @@ the first slider change or preset.
   from 1 to 10, one goal from the list of professions and one of the three
   languages. Anything else falls back to the defaults
   (`src/engine/hash.ts` and its tests). A link cannot put text or code on the
-  page.
+  page. A link that carries the view-switch marker by hand hides the "came
+  from a link" line for that visit; it changes nothing else.
 
 ## Contributing
 

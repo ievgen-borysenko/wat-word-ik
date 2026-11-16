@@ -336,11 +336,12 @@ const URL_ATTRS = new Set([
 ]);
 
 /*
- * Licence notices. The page bundles the code of its runtime dependencies (the
+ * Licence notices. The pages bundle the code of their runtime dependencies (the
  * lockfile entries without `dev`, runtimePackages in check-lockfile.mjs), and
  * their licences ask that the copyright and permission notice go with every
- * copy. The build (vite.config.ts) writes one legal comment at the top of the
- * entry script with formatNotice below, from each installed package's own
+ * copy. The build (vite.config.ts) writes one legal comment at the top of each
+ * script that bundles package code (the chunk both pages share) with
+ * formatNotice below, from each installed package's own
  * licence file: every package with its version, licence and copyright lines,
  * then each distinct licence text once, with the packages it applies to.
  *
@@ -404,7 +405,7 @@ export function splitLicence(file) {
 }
 
 /**
- * The legal comment for the top of the entry script; empty without entries.
+ * The legal comment for the top of each script that bundles package code; empty without entries.
  * Throws when an entry has no copyright line or no text, or when a text would
  * end the comment early.
  * @param {NoticeEntry[]} entries

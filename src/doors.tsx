@@ -4,6 +4,6 @@ import { startSync } from './ui/store';
 import './styles.css';
 import './doors.css';
 
-startSync();
+startSync('doors');
 const root = document.getElementById('app');
 if (root) render(<DoorsApp />, root);

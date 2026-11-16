@@ -1,5 +1,17 @@
 import type { Page } from '@playwright/test';
-import { TOTAL_TILES, applyPreset, expect, hash, seriousA11yIssues, sliders, test } from './fixtures';
+import {
+  TOTAL_TILES,
+  applyPreset,
+  expect,
+  expectWideFont,
+  fromLinkNotice,
+  hash,
+  openApp,
+  seriousA11yIssues,
+  sliders,
+  test,
+  useWideFont,
+} from './fixtures';
 
 // The doors view (deuren.html): the same sliders, data and engine as the floors view,
 // shown as a street of doors grouped by field.
@@ -108,29 +120,66 @@ test('the language switch changes the words and the order inside a group', async
   await expect(first).toHaveAttribute('data-id', 'apotheker');
 });
 
+// Own grades travel with the view-switch marker (&v=1), which the page that opens drops
+// from its address; grades from a shared link travel without it and keep their notice.
 test('the link to the other view keeps the hash, both ways', async ({ page }) => {
-  const state = `#s=${MID}&g=kok&l=nl`;
-  await openDoors(page, state);
+  // Grades from a shared link first; a slider move makes them the user's own.
+  await openDoors(page, `#s=${MID}&g=kok&l=nl`);
+  await expect(fromLinkNotice(page)).toHaveCount(1);
+  await sliders(page).nth(0).focus();
+  await page.keyboard.press('ArrowRight');
+  await expect(page.locator('.from-link')).toHaveCount(0);
+  const own = `#s=8${MID.slice(1)}&g=kok&l=nl`;
   const toFloors = page.locator('a.other-view');
-  await expect(toFloors).toHaveText('Andere weergave');
-  await expect(toFloors).toHaveAttribute('href', `./${state}`);
+  await expect(toFloors).toHaveText('Bekijk als gebouw');
+  await expect(toFloors).toHaveAttribute('href', `./${own}&v=1`);
   await toFloors.click();
   await expect(page.locator('.tile')).toHaveCount(TOTAL_TILES);
   expect(new URL(page.url()).pathname).toBe('/');
-  expect(await hash(page)).toBe(state);
+  await expect(page.locator('.from-link')).toHaveCount(0);
+  await expect.poll(() => hash(page)).toBe(own);
+  await expect(sliders(page).nth(0)).toHaveValue('8');
   await expect(sliders(page).nth(9)).toHaveValue('4');
   await expect(page.locator('.tile.is-goal')).toHaveCount(1);
 
   // A slider change on the floors view travels back too.
   await sliders(page).nth(9).focus();
   await page.keyboard.press('ArrowRight');
-  const moved = `#s=${MID.slice(0, 9)}5&g=kok&l=nl`;
-  await expect(page.locator('a.other-view')).toHaveAttribute('href', `deuren.html${moved}`);
-  await page.locator('a.other-view').click();
+  const moved = `#s=8${MID.slice(1, 9)}5&g=kok&l=nl`;
+  const toDoors = page.locator('a.other-view');
+  await expect(toDoors).toHaveText('Bekijk als deuren');
+  await expect(toDoors).toHaveAttribute('href', `deuren.html${moved}&v=1`);
+  await toDoors.click();
   await expect(page.locator('.door')).toHaveCount(TOTAL_TILES);
   expect(new URL(page.url()).pathname).toBe('/deuren.html');
-  expect(await hash(page)).toBe(moved);
+  await expect(page.locator('.from-link')).toHaveCount(0);
+  await expect.poll(() => hash(page)).toBe(moved);
   await expect(page.locator('.door[data-id="kok"]')).toHaveClass(/is-open/);
+});
+
+test('grades from a shared link keep their notice across the switch, both ways', async ({ page }) => {
+  const state = `#s=${MID}&g=kok&l=nl`;
+  await openApp(page, state);
+  await expect(fromLinkNotice(page)).toHaveCount(1);
+  await expect(page.locator('a.other-view')).toHaveAttribute('href', `deuren.html${state}`);
+  await page.locator('a.other-view').click();
+  await expect(page.locator('.door')).toHaveCount(TOTAL_TILES);
+  await expect(fromLinkNotice(page)).toHaveCount(1);
+  expect(await hash(page)).toBe(state);
+
+  await expect(page.locator('a.other-view')).toHaveAttribute('href', `./${state}`);
+  await page.locator('a.other-view').click();
+  await expect(page.locator('.tile')).toHaveCount(TOTAL_TILES);
+  await expect(fromLinkNotice(page)).toHaveCount(1);
+  expect(await hash(page)).toBe(state);
+
+  // Once dismissed, the grades count as the user's own and the marker goes along.
+  await fromLinkNotice(page).locator('.from-link-close').click();
+  await expect(page.locator('a.other-view')).toHaveAttribute('href', `deuren.html${state}&v=1`);
+  await page.locator('a.other-view').click();
+  await expect(page.locator('.door')).toHaveCount(TOTAL_TILES);
+  await expect(page.locator('.from-link')).toHaveCount(0);
+  await expect.poll(() => hash(page)).toBe(state);
 });
 
 test('reduced motion: the doors do not swing', async ({ page }) => {
@@ -158,8 +207,7 @@ for (const lang of ['nl', 'en', 'ua'] as const) {
 
 // Desktop: nothing scrolls. Phones: the whole street stays above the slider panel,
 // as the building does in the floors view, and nothing scrolls sideways.
-test('the doors view fits the screen', async ({ page }, testInfo) => {
-  const desktop = testInfo.project.name === 'desktop';
+async function checkDoorsFit(page: Page, desktop: boolean, font: string): Promise<void> {
   const sizes = desktop
     ? [{ width: 1280, height: 800 }, { width: 1366, height: 768 }]
     : [{ width: 390, height: 844 }, { width: 375, height: 812 }, { width: 375, height: 667 }, { width: 360, height: 640 }, { width: 320, height: 568 }];
@@ -181,7 +229,7 @@ test('the doors view fits the screen', async ({ page }, testInfo) => {
             panelTop: column?.getBoundingClientRect().top ?? -Infinity,
           };
         });
-        const where = `${size.width}x${size.height}, ${state}`;
+        const where = `${size.width}x${size.height}, ${state}, ${font}`;
         expect(m.scrollWidth, `horizontal scroll (${where})`).toBeLessThanOrEqual(m.clientWidth);
         if (desktop) {
           expect(m.scrollHeight, `page scroll (${where})`).toBeLessThanOrEqual(m.clientHeight);
@@ -192,4 +240,18 @@ test('the doors view fits the screen', async ({ page }, testInfo) => {
       }
     }
   }
+}
+
+test('the doors view fits the screen', async ({ page }, testInfo) => {
+  await checkDoorsFit(page, testInfo.project.name === 'desktop', 'system font');
+});
+
+// As for the floors view (e2e/a11y-layout.spec.ts): the layout must not depend on the
+// machine's default font.
+test('phones with a wide system font: the doors view fits too', async ({ page }, testInfo) => {
+  test.skip(testInfo.project.name !== 'mobile', 'phone sizes only');
+  await useWideFont(page);
+  await openDoors(page);
+  await expectWideFont(page);
+  await checkDoorsFit(page, false, 'wide font');
 });
