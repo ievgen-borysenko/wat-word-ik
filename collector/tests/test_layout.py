@@ -1,9 +1,12 @@
 """The collector's files: what they import, what they hold, how its tests run."""
 
+import _io
 import ast
 import importlib
+import io
 import os
 import re
+import shutil
 import stat
 import sys
 import unittest
@@ -108,22 +111,65 @@ class Layout(GuardedCase):
 
 
 class Guard(GuardedCase):
-    def test_a_write_into_the_repository_fails_the_test(self):
-        target = COLLECTOR / 'guard-probe.txt'
-        attempts = [
-            lambda: open(target, 'w'),
-            lambda: open(target, 'ab'),
-            lambda: target.write_text('x'),
-            lambda: os.open(target, os.O_CREAT | os.O_WRONLY),
-            lambda: os.mkdir(COLLECTOR / 'guard-probe'),
-            lambda: os.replace(COLLECTOR / 'run.py', COLLECTOR / 'guard-probe.txt'),
-            lambda: os.remove(COLLECTOR / 'run.py'),
-        ]
-        for attempt in attempts:
-            with self.assertRaises(WriteRefused):
-                attempt()
-        self.assertFalse(target.exists())
-        self.assertTrue((COLLECTOR / 'run.py').exists())
+    # Every way to write that the guard names (tests/__init__.py). The targets
+    # sit in folders that do not exist, so a guard that let one through would
+    # fail on the missing folder instead of writing anything.
+    WAYS = [
+        ('open, write', lambda t: open(t, 'w')),
+        ('open, append', lambda t: open(t, 'ab')),
+        ('io.open', lambda t: io.open(t, 'x')),
+        ('_io.open', lambda t: _io.open(t, 'w')),
+        ('io.FileIO', lambda t: io.FileIO(t, 'w')),
+        ('_io.FileIO', lambda t: _io.FileIO(t, 'a')),
+        ('io.FileIO, read and write', lambda t: io.FileIO(t, 'r+')),
+        ('pathlib', lambda t: t.write_bytes(b'x')),
+        ('shutil.copyfile', lambda t: shutil.copyfile(COLLECTOR / 'run.py', t)),
+        ('os.open', lambda t: os.open(t, os.O_CREAT | os.O_WRONLY)),
+        ('os.open, append', lambda t: os.open(t, os.O_APPEND)),
+        ('os.mkdir', lambda t: os.mkdir(t)),
+        ('os.makedirs', lambda t: os.makedirs(t)),
+        ('os.rmdir', lambda t: os.rmdir(t)),
+        ('os.remove', lambda t: os.remove(t)),
+        ('os.unlink', lambda t: os.unlink(t)),
+        ('os.truncate', lambda t: os.truncate(t, 0)),
+        ('os.chmod', lambda t: os.chmod(t, 0o600)),
+        ('os.chown', lambda t: os.chown(t, -1, -1)),
+        ('os.utime', lambda t: os.utime(t)),
+        ('os.mkfifo', lambda t: os.mkfifo(t)),
+        ('os.mknod', lambda t: os.mknod(t)),
+        ('os.rename', lambda t: os.rename(t, t.with_name('other'))),
+        ('os.replace', lambda t: os.replace(t, t.with_name('other'))),
+        ('os.link', lambda t: os.link(t, t.with_name('other'))),
+        ('os.symlink', lambda t: os.symlink('other', t)),
+    ] + [
+        (f'os.{name}', way)
+        for name, way in (
+            ('chflags', lambda t: os.chflags(t, 0)),
+            ('lchflags', lambda t: os.lchflags(t, 0)),
+            ('lchmod', lambda t: os.lchmod(t, 0o600)),
+            ('lchown', lambda t: os.lchown(t, -1, -1)),
+        )
+        if hasattr(os, name)
+    ]
+
+    def test_every_way_to_write_into_the_repository_fails_the_test(self):
+        # dist/ and node_modules/ are ignored folders that the listing skips: only this guard covers them.
+        targets = [REPO / folder / 'guard-probe-missing' / 'probe' for folder in ('collector', 'dist', 'node_modules')]
+        for name, way in self.WAYS:
+            for target in targets:
+                with self.subTest(way=name, target=str(target.relative_to(REPO))), self.assertRaises(WriteRefused):
+                    way(target)
+        for target in targets:
+            self.assertFalse(target.parent.exists())
+
+    def test_the_replaced_file_object_still_reads_and_writes_where_allowed(self):
+        folder = self.make_temp()
+        with io.FileIO(folder / 'a.bin', 'w') as handle:
+            handle.write(b'x')
+        with _io.FileIO(folder / 'a.bin', 'r') as handle:
+            self.assertEqual(handle.read(), b'x')
+        with io.FileIO(COLLECTOR / 'run.py', 'r') as handle:
+            self.assertTrue(handle.read(1))
 
     def test_a_write_outside_the_tests_own_folders_fails_too(self):
         other = self.make_temp().parent / 'collector-guard-probe'

@@ -372,12 +372,14 @@ The collector (`collector/`, see [collector.md](collector.md)) is Python with
 the standard library only. This job checks out the repository without keeping
 its credentials, sets up the Python version in `collector/.python-version`
 with the pinned `actions/setup-python` (no package cache), and runs, each with
-`python -I -S -B` (no environment variables, no site-packages, no bytecode
-files):
+`python -I -S -B` (`-I`: Python ignores its own `PYTHON*` environment
+variables and keeps the user's site-packages and the script's folder off the
+path, while other variables such as `TMPDIR`, `HOME` or the locale are still
+read; `-S`: no site-packages; `-B`: no bytecode files):
 
 | Step | What it protects against |
 |------|--------------------------|
-| Unit tests (`unittest`) | A gate that lets a planted sample through or reports the planted text, an `emit` whose output depends on row order or the hash seed, a collector module that imports anything beyond the standard library it needs or a network module, and tests that write outside their own temporary folders. |
+| Unit tests (`unittest`) | A gate that lets a planted sample through or reports the planted text, an `emit` whose output depends on row order or the hash seed, a collector module that imports anything beyond the standard library it needs or a network module, and tests that write outside their own temporary folders (in the ways that [collector.md](collector.md) lists under "Run it"). |
 | Self-test | A gate rule that no longer refuses its planted samples: if one gets through, or the clean sample is refused, the gate refuses everything and the step fails. |
 | `emit --check` | An emitted file that is not what its tracked inputs give, byte for byte (in this version the synthetic fixture). |
 
@@ -385,7 +387,8 @@ It installs no package and no step fetches a source; setup-python itself may
 download the Python build from GitHub when the runner image lacks it. The job
 needs no other job and has only `contents: read`. The deploy job needs it, so a
 failure stops the deploy; it stops a merge only once **Collector (offline)** is
-a required status check of `main`, which is a repository setting (see
+a required status check of `main`, a repository setting that the maintainer
+adds after the pull request that brings this job has merged (step 4 of
 "Settings for the switch to public").
 
 ## Dependency updates
@@ -437,6 +440,9 @@ On the day of the switch, in this order:
 4. **Branch protection for `main`.** Require a **pull request** before merging
    (no direct pushes), and require the status checks **Build and unit tests**,
    **Audit (no dependencies installed)** and **End-to-end (built site)**.
+   After the pull request that adds the collector job has merged and the job
+   has passed on `main`, add **Collector (offline)** to the required checks
+   too; until then a failure of that job stops the deploy but not a merge.
    Pull requests: allow **squash merging only** (no merge commits, no rebase
    merging), so `main` gets one commit per pull request and none of the
    intermediate ones. Keep the default commit message, not the pull request

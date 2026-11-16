@@ -137,9 +137,11 @@ expected file byte for byte.
 
 ## Run it
 
-Python 3.14, the standard library only, isolated from the environment (`-I`:
-no environment variables, no user or script folder on the path; `-S`: no
-site-packages; `-B`: no bytecode files):
+Python 3.14, the standard library only. `-I` makes Python ignore its own
+environment variables (those starting with `PYTHON`) and keeps the user's
+site-packages and the script's folder off the path; other variables, such as
+`TMPDIR`, `HOME` or the locale (`LC_*`, `LANG`), are still read. `-S`: no
+site-packages; `-B`: no bytecode files.
 
 ```sh
 python3.14 -I -S -B -m unittest discover -s collector/tests -t collector
@@ -154,9 +156,23 @@ file and says where. Exit codes: 0 passed, 1 refused or different, 2 usage or
 a file that cannot be read or written, 3 the self-test failed.
 
 The tests write only into temporary folders they make themselves and remove
-afterwards. A guard in `collector/tests/__init__.py` makes any other write
-fail the test, and each test class compares a listing of the repository before
-and after its tests, which also covers child processes.
+afterwards. Two checks in `collector/tests/__init__.py` hold them to that:
+
+- In the test's own process, a guard fails the test on any write outside
+  those folders through `open` (also `io.open` and `_io.open`), `io.FileIO`
+  (also `_io.FileIO`), `os.open` with a flag that writes, or the `os`
+  functions that create, change or remove files (`mkdir`, `rmdir`, `remove`,
+  `unlink`, `truncate`, `chmod`, `chown`, `utime`, `mkfifo`, `mknod`,
+  `rename`, `replace`, `link`, `symlink`, and where the system has them
+  `chflags`, `lchflags`, `lchmod`, `lchown`), and so through what is built on
+  them (`pathlib`, `os.makedirs`, `shutil`). It does not see a write through
+  a file descriptor opened before the test, or code that reaches the system
+  some other way (a C extension). A unit test tries each of these ways.
+- For child processes, each test class compares a listing of the
+  repository's files (path, size, modification time) before its first test
+  and after its last. The listing skips `.git`, `node_modules`, `dist`,
+  `__pycache__` and the other ignored output folders, so a child process that
+  writes there goes unnoticed.
 
 ## In CI
 

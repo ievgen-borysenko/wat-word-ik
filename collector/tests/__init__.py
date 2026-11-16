@@ -4,15 +4,30 @@ Run the tests from anywhere with the standard library only:
 
   python3.14 -I -S -B -m unittest discover -s collector/tests -t collector
 
-GuardedCase keeps the tests out of the repository. While a test runs, the
-functions that create, change or remove files refuse every path outside the
-temporary folders the test made itself (make_temp), and the test fails; the
-folders are removed after it. A subprocess is not covered by that, so each test
-class also lists the repository's files (path, size, modification time) before
-its first test and after its last, and fails when anything changed.
-test_layout.py checks that every test case derives from GuardedCase.
+GuardedCase keeps the tests out of the repository, in two ways.
+
+In the test's own process, while a test runs, these refuse every path outside
+the temporary folders the test made itself (make_temp), and the test fails:
+open (the built-in, io.open and _io.open) and io.FileIO (also _io.FileIO) in
+any mode that writes, os.open with a flag that writes, and os.mkdir, rmdir,
+remove, unlink, truncate, chmod, chown, utime, mkfifo, mknod, rename, replace,
+link and symlink (with chflags, lchflags, lchmod and lchown where the system
+has them). What is built on them is covered too: pathlib, os.makedirs,
+shutil, tempfile. Not covered: a write through a file descriptor opened
+before the test, and code that reaches the system without these functions (a
+C extension). The folders are removed after the test.
+
+Child processes are not covered by that. For them, each test class lists the
+repository's files (path, size, modification time) before its first test and
+after its last, and fails when anything changed. The listing skips the folders
+in NOT_LISTED (.git, node_modules, dist and other ignored output), so a child
+process that writes there goes unnoticed.
+
+test_layout.py checks that every test case derives from GuardedCase and that
+the guard refuses each of these ways to write.
 """
 
+import _io
 import builtins
 import io
 import os
@@ -110,12 +125,18 @@ class GuardedCase(unittest.TestCase):
 
     def _guard(self):
         allowed = self._allowed
-        real_open, real_os_open = builtins.open, os.open
+        real_open, real_os_open, real_file_io = builtins.open, os.open, io.FileIO
 
         def guarded_open(file, mode='r', *args, **kwargs):
             if any(flag in mode for flag in 'wax+'):
                 allowed(file)
             return real_open(file, mode, *args, **kwargs)
+
+        class GuardedFileIO(real_file_io):
+            def __init__(self, file, mode='r', *args, **kwargs):
+                if any(flag in mode for flag in 'wax+'):
+                    allowed(file)
+                super().__init__(file, mode, *args, **kwargs)
 
         def guarded_os_open(path, flags, *args, dir_fd=None, **kwargs):
             if flags & _WRITE_FLAGS:
@@ -140,10 +161,15 @@ class GuardedCase(unittest.TestCase):
         patches = [
             mock.patch.object(builtins, 'open', guarded_open),
             mock.patch.object(io, 'open', guarded_open),
+            mock.patch.object(_io, 'open', guarded_open),
+            mock.patch.object(io, 'FileIO', GuardedFileIO),
+            mock.patch.object(_io, 'FileIO', GuardedFileIO),
             mock.patch.object(os, 'open', guarded_os_open),
         ]
-        for name in ('mkdir', 'rmdir', 'remove', 'unlink', 'truncate', 'chmod', 'utime', 'mkfifo'):
-            patches.append(mock.patch.object(os, name, one_path(getattr(os, name))))
+        one_path_names = ('mkdir', 'rmdir', 'remove', 'unlink', 'truncate', 'chmod', 'chown', 'utime', 'mkfifo', 'mknod')
+        for name in one_path_names + ('chflags', 'lchflags', 'lchmod', 'lchown'):
+            if hasattr(os, name):
+                patches.append(mock.patch.object(os, name, one_path(getattr(os, name))))
         for name in ('rename', 'replace', 'link', 'symlink'):
             patches.append(mock.patch.object(os, name, two_paths(getattr(os, name))))
         for patch in patches:

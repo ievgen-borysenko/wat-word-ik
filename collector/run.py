@@ -1,6 +1,7 @@
 """The collector's command line.
 
-Run it with the standard library only, isolated from the environment:
+Run it with the standard library only, without Python's own environment
+variables (-I), site-packages (-S) or bytecode files (-B):
 
   python3.14 -I -S -B collector/run.py selftest
   python3.14 -I -S -B collector/run.py gate --set fixture
