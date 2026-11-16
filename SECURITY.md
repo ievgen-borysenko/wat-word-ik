@@ -2,9 +2,10 @@
 
 ## Supported versions
 
-Only the current version is supported: the page deployed on GitHub Pages and
-the `main` branch it is built from. There are no releases and no older
-versions to patch; a fix lands on `main` and is deployed from there.
+Only the current version is supported: the site deployed on GitHub Pages (two
+pages, `index.html` and `deuren.html`) and the `main` branch it is built from.
+There are no releases and no older versions to patch; a fix lands on `main`
+and is deployed from there.
 
 Known advisories: none.
 
@@ -16,12 +17,12 @@ security advisory on this repository: open the **Security** tab and choose
 
 Examples of what we want to hear about:
 
-- the page sends any request (to its own host too, for example with data in a
+- a page sends any request (to its own host too, for example with data in a
   query string), or stores anything (cookies, local storage, IndexedDB) in the
   browser;
 - something in the published site or in the repository history that should not
   be there: a secret, a personal address, a private file;
-- a way to make the page run code or load content from another site;
+- a way to make a page run code or load content from another site;
 - a way for a dependency to change what CI audits or deploys.
 
 There is no e-mail address for reports; the advisory form is the only channel.
@@ -31,5 +32,6 @@ private vulnerability reporting is enabled in the repository settings; see
 
 ## Scope
 
-This is a static page with no backend, no accounts and no data collection.
+This is a static site of two pages that show the same data in two views. It
+has no backend, no accounts and no data collection.
 What CI checks on every change is described in [docs/ci.md](docs/ci.md).
