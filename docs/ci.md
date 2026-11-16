@@ -235,7 +235,8 @@ Playwright, at desktop size (1280x800) and phone size (375x812):
   no slider panel and may scroll down; on desktop, on a tablet (768x1024) and
   on phones nothing on it reaches past the right edge. The phone checks run on
   all three views a second time with a wide system font (Verdana or DejaVu
-  Sans).
+  Sans); on the onderbouw view the desktop sizes do too, since a wider Linux
+  font once pushed it past the edge at 900px.
 
 Data sent to the page's own host (for example the grades in the query string
 of an image request, which the host's logs would keep) is stopped in three

@@ -17,8 +17,17 @@
     grid-area: sliders;
     min-width: 0;
   }
+  /*
+   * As many groups to a row as fit at 260px or more (three at 1280px, one under the other at 900px),
+   * and as many doors to a row as fit at 64px or more: a narrow desktop window gets
+   * fewer, wider doors instead of doors too narrow for their words.
+   */
   .route-app .street {
     grid-auto-rows: auto;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  }
+  .route-app .doors {
+    grid-template-columns: repeat(auto-fill, minmax(64px, 1fr));
   }
 }
 
@@ -122,6 +131,25 @@
 }
 
 /* ── doors: the line under a door says the step or what is needed ─────── */
+
+/*
+ * Nothing on this page may widen it, whatever the font: a word longer than its door
+ * or its group (a Ukrainian state word in a wide system font, as on Linux) breaks
+ * instead of spilling over the right edge.
+ */
+.route-app .street,
+.route-app .block,
+.route-app .door {
+  min-width: 0;
+}
+
+.route-app .door-state,
+.route-app .door-key,
+.route-app .block-head h3,
+.route-app .summary-counts,
+.route-app .choice-note {
+  overflow-wrap: anywhere;
+}
 
 .route-app .door.is-closed .door-leaf {
   transform: rotateY(0deg);

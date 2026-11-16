@@ -241,12 +241,14 @@ test('the onderbouw view fits the screen without sideways scrolling', async ({ p
   await checkRouteFit(page, testInfo.project.name === 'desktop', 'system font');
 });
 
-test('phones with a wide system font: the onderbouw view fits too', async ({ page }, testInfo) => {
-  test.skip(testInfo.project.name !== 'mobile', 'phone sizes only');
+// As for the other views: the layout must not depend on the machine's default font.
+// CI on Linux has a wider system font than macOS, and once overflowed at 900px here.
+// Unlike the other views, this one runs at the desktop sizes too.
+test('with a wide system font the onderbouw view fits too, on desktop and on phones', async ({ page }, testInfo) => {
   await useWideFont(page);
   await openRoute(page);
   await expectWideFont(page);
-  await checkRouteFit(page, false, 'wide font');
+  await checkRouteFit(page, testInfo.project.name === 'desktop', 'wide font');
 });
 
 test('arrowing through the levels keeps the havo/vwo profile while it passes vmbo', async ({ page }) => {
