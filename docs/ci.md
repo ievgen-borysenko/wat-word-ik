@@ -9,16 +9,18 @@ secrets, no passwords, no personal details, no files that do not belong there.
 The workflow is [.github/workflows/ci.yml](../.github/workflows/ci.yml). It runs
 on every pull request, on every push to `main` and when a maintainer starts it
 by hand, with read-only access to the repository. Every third-party action is
-pinned to a full commit hash. Four jobs, each starting on a fresh machine:
+pinned to a full commit hash. Five jobs, each starting on a fresh machine:
 
 ```text
 build ──> audit ──> e2e ──> deploy
-            │                 ^
-            └─────────────────┘
+            │                 ^ ^
+            └─────────────────┘ │
+collector ──────────────────────┘
 ```
 
-The deploy job needs both the audit and the end-to-end job, and runs only for a
-push to `main`, or a run started by hand on `main`, of a public repository.
+The deploy job needs the audit, the end-to-end and the collector job, and runs
+only for a push to `main`, or a run started by hand on `main`, of a public
+repository.
 
 ## Who trusts what
 
@@ -54,13 +56,18 @@ What this does not cover:
   page that keeps every one of these rules. The end-to-end tests check the
   page's behaviour, not every word on it.
 
+The collector job (Job 5) runs the collector's own tests with Python's
+standard library and installs nothing. It takes nothing from the other jobs
+and hands nothing on; its result only decides, with the others, whether the
+deploy job runs.
+
 ## Job 1: build and unit tests
 
 | Step | What it protects against |
 |------|--------------------------|
 | Show what decides the deploy | A deploy decision nobody can see: before anything is installed, the step prints the event, the ref and the repository's visibility, the three values the deploy job's condition reads (Job 4). |
 | `npm ci --ignore-scripts` | Dependencies that differ from the reviewed lockfile, and install scripts running code on the build machine. |
-| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script, and `scripts/check-workflow.test.mjs` reads this workflow and pins: when the deploy job runs; that only the deploy job may write, every other job gets only `contents: read` from the top-level `permissions`, and no job may start a run; that nothing cancels a run on `main`; which history range each event checks; that the secret scan reads merge commits; that no step continues on error except the report-only audit of all dependencies (`continue-on-error: true`), that no condition runs a step after a failure except the one on the step that keeps the Playwright report of a failed run (`if: failure()`), and that no condition skips a check; that no line swallows a failure with `\|\| true`, `\|\| :`, `\|\| exit 0` or `set +e`, and the audit of the built site fails when `check-dist.mjs` fails; and that the id of the audited artifact goes from the audit job's upload to the end-to-end job, which downloads the artifact by that id, and to the deploy job's check, while deploy-pages gets no inputs, so it deploys the `github-pages` artifact that the check compared. A step that hides a failure in any other way is left to review. |
+| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script, and `scripts/check-workflow.test.mjs` reads this workflow and pins: when the deploy job runs; that only the deploy job may write, every other job gets only `contents: read` (from the top-level `permissions`, or its own for the collector job), and no job may start a run; that every action is used by a full commit hash with its version in a comment; the collector job's steps, its pinned setup-python without a package cache, and that it installs and fetches nothing; that nothing cancels a run on `main`; which history range each event checks; that the secret scan reads merge commits; that no step continues on error except the report-only audit of all dependencies (`continue-on-error: true`), that no condition runs a step after a failure except the one on the step that keeps the Playwright report of a failed run (`if: failure()`), and that no condition skips a check; that no line swallows a failure with `\|\| true`, `\|\| :`, `\|\| exit 0` or `set +e`, and the audit of the built site fails when `check-dist.mjs` fails; and that the id of the audited artifact goes from the audit job's upload to the end-to-end job, which downloads the artifact by that id, and to the deploy job's check, while deploy-pages gets no inputs, so it deploys the `github-pages` artifact that the check compared. A step that hides a failure in any other way is left to review. |
 | `npm run build` | |
 | Upload as `site-candidate` | Hands the built site, hidden files included, to the audit job. |
 
@@ -279,13 +286,14 @@ the one the audit job uploaded (see below).
 
 ## Job 4: deploy
 
-Only after the audit and the end-to-end tests pass, only for a push to `main`
-or a run started by hand on `main`, and only while the repository is public,
-the artifact is deployed to GitHub Pages. The job first checks that the run is
-for `refs/heads/main` exactly, then that the run's `github-pages` artifact has
-the id that the audit job reported for its upload, so exactly the audited and
-tested files go out. This job alone may write to Pages, and it signs in with a
-short-lived token from GitHub, not a stored secret.
+Only after the audit, the end-to-end tests and the collector job pass, only
+for a push to `main` or a run started by hand on `main`, and only while the
+repository is public, the artifact is deployed to GitHub Pages. The job first
+checks that the run is for `refs/heads/main` exactly, then that the run's
+`github-pages` artifact has the id that the audit job reported for its upload,
+so exactly the audited and tested files go out. This job alone may write to
+Pages, and it signs in with a short-lived token from GitHub, not a stored
+secret.
 
 The job's condition reads the event name, the ref and the repository's
 visibility from the run's event; the build job prints all three. Two rules of
@@ -358,9 +366,35 @@ browser risk above), if GitHub still accepts it then, could swap the artifact
 inside that window. The check turns a swap at any time before the deploy into a
 swap within those few seconds; it does not make it impossible.
 
+## Job 5: collector (offline)
+
+The collector (`collector/`, see [collector.md](collector.md)) is Python with
+the standard library only. This job checks out the repository without keeping
+its credentials, sets up the Python version in `collector/.python-version`
+with the pinned `actions/setup-python` (no package cache), and runs, each with
+`python -I -S -B` (`-I`: Python ignores its own `PYTHON*` environment
+variables and keeps the user's site-packages and the script's folder off the
+path, while other variables such as `TMPDIR`, `HOME` or the locale are still
+read; `-S`: no site-packages; `-B`: no bytecode files):
+
+| Step | What it protects against |
+|------|--------------------------|
+| Unit tests (`unittest`) | A gate that lets a planted sample through or reports the planted text, an `emit` whose output depends on row order or the hash seed, a collector module that imports anything beyond the standard library it needs or a network module, and tests that write outside their own temporary folders (in the ways that [collector.md](collector.md) lists under "Run it"). |
+| Self-test | A gate rule that no longer refuses its planted samples: if one gets through, or the clean sample is refused, the gate refuses everything and the step fails. |
+| `emit --check` | An emitted file that is not what its tracked inputs give, byte for byte (in this version the synthetic fixture). |
+
+It installs no package and no step fetches a source; setup-python itself may
+download the Python build from GitHub when the runner image lacks it. The job
+needs no other job and has only `contents: read`. The deploy job needs it, so a
+failure stops the deploy; it stops a merge only once **Collector (offline)** is
+a required status check of `main`, a repository setting that the maintainer
+adds after the pull request that brings this job has merged (step 4 of
+"Settings for the switch to public").
+
 ## Dependency updates
 
-Dependabot proposes updates weekly for npm packages and for the pinned actions,
+Dependabot proposes updates weekly for npm packages and for the pinned actions
+(setup-python of the collector job among them),
 grouped and few at a time. A new release waits 7 days before it is proposed
 (security updates do not wait), so a broken or malicious release has time to be
 noticed and withdrawn. Each update is a pull request and goes through all of
@@ -406,6 +440,9 @@ On the day of the switch, in this order:
 4. **Branch protection for `main`.** Require a **pull request** before merging
    (no direct pushes), and require the status checks **Build and unit tests**,
    **Audit (no dependencies installed)** and **End-to-end (built site)**.
+   After the pull request that adds the collector job has merged and the job
+   has passed on `main`, add **Collector (offline)** to the required checks
+   too; until then a failure of that job stops the deploy but not a merge.
    Pull requests: allow **squash merging only** (no merge commits, no rebase
    merging), so `main` gets one commit per pull request and none of the
    intermediate ones. Keep the default commit message, not the pull request
@@ -432,4 +469,7 @@ npm run check:commits -- origin/main HEAD
 npm run build && npm run check:dist
 npx playwright install chromium   # once
 npm run e2e                       # tests the built site in dist/
+python3.14 -I -S -B -m unittest discover -s collector/tests -t collector
+python3.14 -I -S -B collector/run.py selftest
+python3.14 -I -S -B collector/run.py emit --check --set fixture
 ```

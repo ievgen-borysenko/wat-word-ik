@@ -4,7 +4,8 @@
 // Every tracked file (`git ls-files`) must match an entry of the allow-list
 // below: the page's source and tests, the check scripts, the end-to-end tests,
 // the listed docs and the demo animation with its recording script, the two
-// files under .github/ and a few root files by exact name. Anything else
+// files under .github/, the collector's Python modules, tests and synthetic
+// fixture (text only), and a few root files by exact name. Anything else
 // fails: personal tool settings, editor folders, notes, dumps and scratch
 // files stay out without being named one by one. Adding a file to the
 // repository means adding its path to this list in the same pull request,
@@ -30,7 +31,9 @@
 //     run time;
 //   - in every tracked text file except code (.js, .mjs, .ts, .tsx): host names
 //     in a private namespace (*.local, *.lan, *.internal). In code, `x.local` is
-//     usually a property, as in the built bundle.
+//     usually a property, as in the built bundle. Python files (collector/) are
+//     held to this rule on purpose: the collector handles data from outside, so
+//     no attribute there may be named local, lan or internal.
 // Loopback addresses (localhost, 127.0.0.1, ::1) are not looked for here: they
 // are the same on every machine, reveal nothing about a person, and the test
 // setup needs them (playwright.config.ts serves the built site on 127.0.0.1).
@@ -81,7 +84,9 @@ export const ROOT_FILES = [
 export const EXACT_PATHS = [
   '.github/dependabot.yml',
   '.github/workflows/ci.yml',
+  'collector/.python-version',
   'docs/ci.md',
+  'docs/collector.md',
   'docs/contributing.md',
   'docs/demo.gif',
   'docs/methodology.md',
@@ -139,6 +144,10 @@ export const PATTERNS = [
   { what: 'translations', re: /^src\/i18n\/[a-z]{2}\.json$/ },
   { what: 'CI check scripts and their tests', re: /^scripts\/check-[a-z]+(?:\.test)?\.mjs$/ },
   { what: 'end-to-end tests', re: /^e2e\/[a-z][a-z0-9-]*(?:\.spec)?\.ts$/ },
+  // Flat modules only; collector/tests/test_layout.py checks that none shares a name with the standard library.
+  { what: 'collector modules (Python, standard library only)', re: /^collector\/[a-z]+\.py$/ },
+  { what: 'collector unit tests', re: /^collector\/tests\/(?:__init__|test_[a-z]+)\.py$/ },
+  { what: 'the synthetic collector fixture (text only)', re: /^collector\/fixtures\/synthetic\/[a-z]+\.(?:tsv|json)$/ },
 ];
 
 const ALLOWED_EXACT = new Set([...ROOT_FILES, ...EXACT_PATHS]);
