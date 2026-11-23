@@ -17,7 +17,7 @@ emit      writes the emitted file from the extract, the mappings and the lock
 A named set (--set) gives every path, relative to the repository; instead,
 each path can be given with its own option (--extract and so on). gate and
 emit run the self-test first, and refuse everything when it fails. Two sets:
-`fixture`, the synthetic fixture, and `site`, the file the site reads
+`fixture`, the synthetic fixture, and `site`, the file the site will read
 (src/data/sourced.json). The site's set has no inputs until the first source
 is collected: emit gives it the empty file (emit.empty), and gate checks the
 emitted file alone.

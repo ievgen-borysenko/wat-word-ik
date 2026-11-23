@@ -1,6 +1,6 @@
 #!/usr/bin/env node
-// The data the site reads holds only its grammar: the second check of the
-// files that the collector's emit writes (docs/collector.md).
+// The data the site will read holds only its grammar: the second check of
+// the files that the collector's emit writes (docs/collector.md).
 //
 // The collector's gate (collector/gate.py) holds every file the collector
 // writes to a closed grammar before the file enters the repository. This

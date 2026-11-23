@@ -656,7 +656,7 @@ describe('every action is pinned', () => {
 describe('the data check in the audit job', () => {
   const audit = job('audit');
   const names = audit.filter((l) => l.startsWith('      - name: ')).map((l) => l.slice('      - name: '.length));
-  const NAME = 'Data the site reads holds only its grammar (check:data)';
+  const NAME = 'Data the site will read holds only its grammar (check:data)';
 
   it('runs check:data, and nothing else, in a step of its own', () => {
     expect(value(step(audit, NAME), 'run')).toBe('npm run check:data');

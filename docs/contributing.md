@@ -72,8 +72,8 @@ does not run on pushes to branches other than `main`), one pushed while the
 pull request had a merge conflict (GitHub runs no `pull_request` workflow
 then), or one whose run your next push cancelled before the checks. Its
 commits can stay on GitHub all the same, reachable by their hash. So run the
-history checks, and the check of the data the site reads, yourself before
-every push:
+history checks, and the check of the data the site will read, yourself
+before every push:
 
 ```sh
 npm run check:tree -- --range origin/main HEAD

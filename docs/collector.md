@@ -40,8 +40,8 @@ collector/fixtures/synthetic/
                         subjects.tsv, lock.json and expected.json, the file
                         that emit must give for them
 collector/.python-version   the Python version (3.14)
-src/data/sourced.json   the emitted file the site reads (the set `site`);
-                        empty in this version
+src/data/sourced.json   the emitted file the site will read (the set
+                        `site`); empty in this version
 src/data/sourced.ts     its typed loader, which no page imports yet (+ test)
 scripts/check-data.mjs  the second check of the emitted files, in Node
                         (+ test)
@@ -184,9 +184,23 @@ Where they can still differ:
 
 - On a sample that neither side's tests plant: no test runs the gate's
   samples through this check, or the other way round.
-- On nesting deeper than 512 levels: this check stops reading with
-  `json-syntax`, while the gate's reader reads on and refuses with
-  `json-shape` and `canonical`. Both refuse; only the rule differs.
+- On the rule for deep nesting. This check reads a value at most 512 levels
+  below the top level and stops deeper with `json-syntax`. The gate's reader
+  reads on, and the gate refuses such a file with `json-shape` and
+  `canonical`, up to Python's recursion limit (it depends on the machine:
+  about 116,000 levels where this was measured); past that limit the gate
+  refuses with `json-syntax` too. So the rule names differ only between those
+  two depths, and both refuse at every depth past 512.
+- On where a `json-syntax` finding points. The gate names line 0 for a key
+  that appears twice, a fraction or an exponent, NaN or infinity, an integer
+  with too many digits and nesting past Python's recursion limit, where this
+  check names the place. Where both name a place, they can point at
+  different characters of the same error: a file that starts with a lone
+  minus sign is refused at 1:1 by the gate, where the value starts, and at
+  1:2 here, where a digit was expected.
+
+Neither of the last two changes whether a file is refused: only the rule or
+the place that a finding names differs.
 
 What it does not do: it does not check the tables (the extract and the
 mappings) or the lock, which the gate checks; it does not compare the file

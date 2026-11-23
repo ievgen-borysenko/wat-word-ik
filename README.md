@@ -82,7 +82,7 @@ ship the pages and nothing else:
 - commits carry only GitHub noreply addresses, no trailers but the
   maintainer's co-author line, Dependabot's sign-off and Dependabot's
   co-author line on its own commits, and no generated-by footers;
-- the data file the site reads (`src/data/sourced.json`, written by the
+- the data file the site will read (`src/data/sourced.json`, written by the
   collector, still empty) holds only its closed grammar: the collector's gate
   checks it in Python, and a second check written apart from it checks it
   again in the job that installs no dependencies;
