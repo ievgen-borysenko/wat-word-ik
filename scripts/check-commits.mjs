@@ -13,8 +13,11 @@
 //   - trailers: only two are accepted, each with exactly one value. A
 //     Co-Authored-By trailer must name the maintainer's own co-author account
 //     (CO_AUTHOR below); a Signed-off-by trailer must be Dependabot's sign-off.
-//     Any other key, a trailer without an address, or any other value is
-//     refused. Trailers are parsed by git itself (`git interpret-trailers
+//     One exception: the Co-Authored-By trailer that GitHub adds when it
+//     squashes a Dependabot pull request (DEPENDABOT_CO_AUTHOR below) is
+//     accepted on a commit whose author address is Dependabot's, and on no
+//     other. Any other key, a trailer without an address, or any other value
+//     is refused. Trailers are parsed by git itself (`git interpret-trailers
 //     --parse --no-divider`), so a "key: value" line inside the body, such as
 //     the YAML block of a Dependabot message, is not mistaken for a trailer;
 //     a Co-Authored-By or Signed-off-by line anywhere else in the message must
@@ -65,6 +68,12 @@ export const DEPENDABOT_ADDRESS = noreplyAddress('49699333', 'dependabot[bot]');
 
 /** The one Co-Authored-By value accepted: the maintainer's co-author account (id 310343018). */
 export const CO_AUTHOR = `xevbor <${noreplyAddress('310343018', 'xevbor')}>`;
+
+/**
+ * The Co-Authored-By value GitHub adds when it squashes a Dependabot pull request;
+ * accepted only on a commit whose author address is exactly DEPENDABOT_ADDRESS.
+ */
+export const DEPENDABOT_CO_AUTHOR = `dependabot[bot] <${DEPENDABOT_ADDRESS}>`;
 
 /** The sign-off Dependabot writes; the only place GitHub's support address may appear. */
 export const DEPENDABOT_SIGN_OFF = `dependabot[bot] <support${AT}github.com>`;
@@ -199,6 +208,10 @@ export function checkCommit(c, trailers) {
     const rule = m && TRAILERS.find((t) => t.key.toLowerCase() === (m[1] ?? '').toLowerCase());
     return m && rule ? [{ key: m[1] ?? '', value: m[2] ?? '' }] : [];
   });
+  // GitHub's squash of a Dependabot pull request names Dependabot as co-author:
+  // that one value, on a commit Dependabot authored, and nowhere else.
+  const isDependabotCoAuthor = (/** @type {Trailer} */ t) =>
+    c.authorEmail === DEPENDABOT_ADDRESS && t.key.toLowerCase() === 'co-authored-by' && t.value === DEPENDABOT_CO_AUTHOR;
   const seen = new Set();
   for (const t of [...trailers, ...keyed]) {
     const id = `${t.key.toLowerCase()}\n${t.value}`;
@@ -209,7 +222,7 @@ export function checkCommit(c, trailers) {
       add('trailer', `trailer "${t.key}" is not allowed (only ${TRAILERS.map((r) => r.key).join(' and ')})`);
     } else if (!/<[^<>\s]+@[^<>\s]+>/.test(t.value)) {
       add('trailer', `trailer "${t.key}: ${clip(t.value)}" has no address`);
-    } else if (t.value !== rule.value) {
+    } else if (t.value !== rule.value && !isDependabotCoAuthor(t)) {
       add('trailer', `trailer "${t.key}: ${clip(t.value)}" is not accepted: ${rule.refusal}`);
     }
   }

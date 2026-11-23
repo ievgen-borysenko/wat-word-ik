@@ -80,8 +80,8 @@ ship the pages and nothing else:
 - dependencies only from the npm registry, with integrity hashes and
   permissive licences; no known high or critical vulnerabilities at run time;
 - commits carry only GitHub noreply addresses, no trailers but the
-  maintainer's co-author line and Dependabot's sign-off, and no generated-by
-  footers;
+  maintainer's co-author line, Dependabot's sign-off and Dependabot's
+  co-author line on its own commits, and no generated-by footers;
 - the built site is audited in a separate job that installs no dependencies,
   so no package code can touch the audit: it holds the four pages
   (`index.html`, the building, `deuren.html`, the doors, `onderbouw.html`,
