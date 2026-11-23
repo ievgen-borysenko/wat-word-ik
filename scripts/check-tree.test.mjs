@@ -215,6 +215,9 @@ describe('check-tree', () => {
       'collector/tests/__init__.py',
       'collector/tests/test_gate.py',
       'collector/fixtures/synthetic/extract.tsv',
+      'collector/fixtures/synthetic/professions.tsv',
+      'collector/fixtures/synthetic/subjects.tsv',
+      'collector/fixtures/synthetic/lock.json',
       'collector/fixtures/synthetic/expected.json',
       'docs/collector.md',
     ];
@@ -241,6 +244,10 @@ describe('check-tree', () => {
       'collector/fixtures/real/extract.tsv',
       'collector/fixtures/synthetic/raw.xlsx',
       'collector/fixtures/synthetic/notes.md',
+      // The fixture's five files are listed by name: another name of the same shape is not.
+      'collector/fixtures/synthetic/notes.json',
+      'collector/fixtures/synthetic/extra.tsv',
+      'collector/fixtures/synthetic/extract.json',
       'collector/fixtures/synthetic/sub/extract.tsv',
       'collector/extract/knowledge.tsv',
       'collector/sandbox/fetch.sb',
@@ -260,12 +267,12 @@ describe('check-tree', () => {
     it('refuses an executable collector file, a binary fixture and a local path in a test', () => {
       const r = repo({
         'collector/run.py': 'print(1)\n',
-        'collector/fixtures/synthetic/extract.json': Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]),
+        'collector/fixtures/synthetic/lock.json': Uint8Array.from([0x50, 0x4b, 0x03, 0x04, 0x00, 0x00]),
         'collector/tests/test_gate.py': `HOME = '/${'Users'}/someone/dev'\n`,
       });
       r.git(['update-index', '--chmod=+x', 'collector/run.py']);
       expect(new Set(rules(r))).toEqual(
-        new Set(['collector/run.py executable', 'collector/fixtures/synthetic/extract.json encoding', 'collector/tests/test_gate.py local-path']),
+        new Set(['collector/run.py executable', 'collector/fixtures/synthetic/lock.json encoding', 'collector/tests/test_gate.py local-path']),
       );
     });
 

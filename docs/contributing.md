@@ -46,9 +46,10 @@ can be merged.
 
 The repository holds only what belongs to the program. `npm run check:tree`
 fails for any tracked file that is not on the list in `scripts/check-tree.mjs`
-(root files by name, the docs by name, and patterns for `src/`, `scripts/`,
-`e2e/` and `collector/`). When you add a file outside those patterns, add its path to the list
-in the same pull request, so the reviewer sees it. In a pull request the check
+(root files, the docs and the collector's fixture files by name, and patterns
+for `src/`, `scripts/`, `e2e/` and the collector's modules and tests). When
+you add a file outside those patterns, add its path to the list in the same
+pull request, so the reviewer sees it. In a pull request the check
 also reads every commit: a file that is not on the list must not appear in any
 of them, even if a later commit deletes it, so rewrite the branch rather than
 deleting such a file afterwards. The same check refuses symlinks, submodules,

@@ -4,8 +4,8 @@
 // Every tracked file (`git ls-files`) must match an entry of the allow-list
 // below: the page's source and tests, the check scripts, the end-to-end tests,
 // the listed docs and the demo animation with its recording script, the two
-// files under .github/, the collector's Python modules, tests and synthetic
-// fixture (text only), and a few root files by exact name. Anything else
+// files under .github/, the collector's Python modules and tests, the five
+// synthetic fixture files, and a few root files by exact name. Anything else
 // fails: personal tool settings, editor folders, notes, dumps and scratch
 // files stay out without being named one by one. Adding a file to the
 // repository means adding its path to this list in the same pull request,
@@ -85,6 +85,11 @@ export const EXACT_PATHS = [
   '.github/dependabot.yml',
   '.github/workflows/ci.yml',
   'collector/.python-version',
+  'collector/fixtures/synthetic/expected.json',
+  'collector/fixtures/synthetic/extract.tsv',
+  'collector/fixtures/synthetic/lock.json',
+  'collector/fixtures/synthetic/professions.tsv',
+  'collector/fixtures/synthetic/subjects.tsv',
   'docs/ci.md',
   'docs/collector.md',
   'docs/contributing.md',
@@ -147,7 +152,6 @@ export const PATTERNS = [
   // Flat modules only; collector/tests/test_layout.py checks that none shares a name with the standard library.
   { what: 'collector modules (Python, standard library only)', re: /^collector\/[a-z]+\.py$/ },
   { what: 'collector unit tests', re: /^collector\/tests\/(?:__init__|test_[a-z]+)\.py$/ },
-  { what: 'the synthetic collector fixture (text only)', re: /^collector\/fixtures\/synthetic\/[a-z]+\.(?:tsv|json)$/ },
 ];
 
 const ALLOWED_EXACT = new Set([...ROOT_FILES, ...EXACT_PATHS]);
