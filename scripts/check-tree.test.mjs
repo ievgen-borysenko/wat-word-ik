@@ -276,6 +276,27 @@ describe('check-tree', () => {
       );
     });
 
+    // The collector writes one file for the site: listed by name, like the fixture's files.
+    it('lists the data file the collector writes for the site, and no other data file in src/', () => {
+      for (const path of ['src/data/sourced.json', 'src/data/sourced.ts', 'src/data/sourced.test.ts', 'scripts/check-data.mjs', 'scripts/check-data.test.mjs']) {
+        expect(onList(path), path).toBe(true);
+      }
+      for (const path of [
+        'src/data/other.json',
+        'src/data/Sourced.json',
+        'src/data/sourced.json.bak',
+        'src/data/sourced.tsv',
+        'src/data/raw/sourced.json',
+        'src/sourced.json',
+        'src/engine/sourced.json',
+        'collector/sourced.json',
+      ]) {
+        expect(onList(path), path).toBe(false);
+        expect(rules(repo({ [path]: '{}\n' }))).toEqual([`${path} not-listed`]);
+      }
+      expect(rules(repo({ 'src/data/sourced.json': '{}\n' }))).toEqual([]);
+    });
+
     it('refuses a stray collector file that a commit adds and a later one removes', () => {
       const r = repo();
       const base = r.commit('base');
