@@ -238,26 +238,23 @@ describe('check-commits', () => {
     expect(rules(r, base, 'HEAD')).toEqual([]);
   });
 
+  const EXACT = `Co-authored-by: dependabot[bot] <${DEPENDABOT}>`;
   it.each([
-    ['another account id', `Co-authored-by: dependabot[bot] <${noreply('49699334', 'dependabot[bot]')}>`, DEPENDABOT, ['trailer', 'message']],
-    ['another name with the right address', `Co-authored-by: Dependabot <${DEPENDABOT}>`, DEPENDABOT, ['trailer']],
-    ['the name without "[bot]"', `Co-authored-by: dependabot <${DEPENDABOT}>`, DEPENDABOT, ['trailer']],
-    ['the right name with a personal address', `Co-authored-by: dependabot[bot] <${HELPER}>`, DEPENDABOT, ['trailer']],
-    ['the right name with another bot address', `Co-authored-by: dependabot[bot] <${OTHER_BOT}>`, DEPENDABOT, ['trailer', 'message']],
-    ["the right name with GitHub's support address", `Co-authored-by: dependabot[bot] <${SUPPORT}>`, DEPENDABOT, ['trailer', 'message']],
-    ['the address in another case', `Co-authored-by: dependabot[bot] <${DEPENDABOT.toUpperCase()}>`, DEPENDABOT, ['trailer']],
-    ['the value as a sign-off', `Signed-off-by: dependabot[bot] <${DEPENDABOT}>`, DEPENDABOT, ['trailer']],
-    ["the exact trailer on a developer's commit", `Co-authored-by: dependabot[bot] <${DEPENDABOT}>`, DEV, ['trailer']],
-    [
-      "the exact trailer on a commit by Dependabot's address in another case",
-      `Co-authored-by: dependabot[bot] <${DEPENDABOT}>`,
-      DEPENDABOT.toUpperCase(),
-      ['trailer'],
-    ],
-  ])('refuses a look-alike of the Dependabot co-author trailer: %s', (_what, line, author, expected) => {
+    ['another account id', `Co-authored-by: dependabot[bot] <${noreply('49699334', 'dependabot[bot]')}>`, DEPENDABOT, GITHUB, ['trailer', 'message']],
+    ['another name with the right address', `Co-authored-by: Dependabot <${DEPENDABOT}>`, DEPENDABOT, GITHUB, ['trailer']],
+    ['the name without "[bot]"', `Co-authored-by: dependabot <${DEPENDABOT}>`, DEPENDABOT, GITHUB, ['trailer']],
+    ['the right name with a personal address', `Co-authored-by: dependabot[bot] <${HELPER}>`, DEPENDABOT, GITHUB, ['trailer']],
+    ['the right name with another bot address', `Co-authored-by: dependabot[bot] <${OTHER_BOT}>`, DEPENDABOT, GITHUB, ['trailer', 'message']],
+    ["the right name with GitHub's support address", `Co-authored-by: dependabot[bot] <${SUPPORT}>`, DEPENDABOT, GITHUB, ['trailer', 'message']],
+    ['the address in another case', `Co-authored-by: dependabot[bot] <${DEPENDABOT.toUpperCase()}>`, DEPENDABOT, GITHUB, ['trailer']],
+    ['the value as a sign-off', `Signed-off-by: dependabot[bot] <${DEPENDABOT}>`, DEPENDABOT, GITHUB, ['trailer']],
+    ["the exact trailer on a developer's commit", EXACT, DEV, GITHUB, ['trailer']],
+    ["the exact trailer on a developer's commit that Dependabot committed", EXACT, DEV, DEPENDABOT, ['trailer']],
+    ["the exact trailer on a commit by Dependabot's address in another case", EXACT, DEPENDABOT.toUpperCase(), GITHUB, ['trailer']],
+  ])('refuses a look-alike of the Dependabot co-author trailer: %s', (_what, line, author, committer, expected) => {
     const r = tempRepo();
     const base = r.commit('base');
-    const bad = r.commit(squashedDependabot(line), author, GITHUB);
+    const bad = r.commit(squashedDependabot(line), author, committer);
     expect(rules(r, base, 'HEAD')).toEqual(expected.map((rule) => `${bad.slice(0, 7)} ${rule}`));
   });
 
