@@ -115,7 +115,8 @@ npm run e2e                       # end-to-end tests of dist/
 
 ```
 src/engine   pure TypeScript: scoring, hints, doors, school routes, URL hash codec (+ tests)
-src/data     subjects and professions (demo data, 3 languages) + validation test
+src/data     subjects and professions (demo data, 3 languages) + validation test;
+             sourced.json, the collector's weights (empty yet), and its typed loader
 src/i18n     UI strings: nl.json, en.json, ua.json
 src/ui       Preact components
 docs         methodology, sources, how to contribute, what CI checks, demo.gif

@@ -42,6 +42,7 @@ collector/fixtures/synthetic/
 collector/.python-version   the Python version (3.14)
 src/data/sourced.json   the emitted file the site reads (the set `site`);
                         empty in this version
+src/data/sourced.ts     its typed loader, which no page imports yet (+ test)
 scripts/check-data.mjs  the second check of the emitted files, in Node
                         (+ test)
 ```
@@ -188,8 +189,10 @@ Where they can still differ:
   `json-shape` and `canonical`. Both refuse; only the rule differs.
 
 What it does not do: it does not check the tables (the extract and the
-mappings) or the lock, which the gate checks, and it has no self-test at run
-time, as the gate has: its planted samples run with the unit tests.
+mappings) or the lock, which the gate checks; it does not compare the file
+with the site's own data (that each profession exists), which the data test
+`src/data/sourced.test.ts` does; and it has no self-test at run time, as the
+gate has: its planted samples run with the unit tests.
 
 ## Determinism
 
