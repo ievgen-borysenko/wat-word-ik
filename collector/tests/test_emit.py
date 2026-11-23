@@ -14,14 +14,16 @@ import os
 import random
 import subprocess
 import sys
+from unittest import mock
 
 import canon
 import emit
 import gate
 import run
-from tests import FIXTURE, RUN, GuardedCase
+from tests import FIXTURE, REPO, RUN, GuardedCase
 
 EXPECTED = FIXTURE / 'expected.json'
+SITE = REPO / 'src' / 'data' / 'sourced.json'
 TABLES = ('extract.tsv', 'professions.tsv', 'subjects.tsv')
 
 
@@ -149,6 +151,54 @@ class Emit(GuardedCase):
         with self.assertRaises(emit.Refused) as refused:
             emit.emit(fixture('extract.tsv'), fixture('professions.tsv'), fixture('subjects.tsv'), fixture('lock.json'), 'other')
         self.assertEqual([f.rule for f in refused.exception.findings], ['reference'])
+
+    def test_every_named_set_has_all_inputs_and_a_source_or_none(self):
+        for name, named in run.SETS.items():
+            with self.subTest(name):
+                self.assertIn('out', named)
+                have = [role for role in (*run.INPUTS, 'source') if role in named]
+                self.assertIn(have, ([], [*run.INPUTS, 'source']))
+
+    def test_the_sites_set_has_no_inputs_yet_and_gives_the_tracked_empty_file(self):
+        self.assertEqual(run.SETS['site'], {'out': 'src/data/sourced.json'})
+        self.assertEqual(emit.empty(), SITE.read_bytes())
+        self.assertEqual(json.loads(SITE.read_bytes()), {'format': 1, 'inputs': [], 'professions': {}})
+        out = io.StringIO()
+        with contextlib.redirect_stdout(out):
+            self.assertEqual(run.main(['emit', '--check', '--set', 'site']), 0)
+        self.assertEqual(out.getvalue(), f'emit --check: src/data/sourced.json is what its inputs give ({len(SITE.read_bytes())} bytes)\n')
+
+    def site_in(self, data: bytes | None):
+        """The site's set, with the repository moved to a temporary folder that holds `data` as its file."""
+        folder = self.make_temp()
+        if data is not None:
+            (folder / 'src' / 'data').mkdir(parents=True)
+            (folder / 'src' / 'data' / 'sourced.json').write_bytes(data)
+        return folder, mock.patch.object(run, 'REPO', str(folder))
+
+    def test_the_check_fails_when_any_one_byte_of_the_sites_file_changes(self):
+        tracked = SITE.read_bytes()
+        changes = [tracked[:i] + (b'x' if tracked[i:i + 1] != b'x' else b'y') + tracked[i + 1:] for i in range(len(tracked))]
+        changes += [tracked + b'\n', tracked[:-1], b' ' + tracked]
+        for number, changed in enumerate(changes):
+            with self.subTest(change=number):
+                _folder, moved = self.site_in(changed)
+                err = io.StringIO()
+                with moved, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+                    self.assertEqual(run.main(['emit', '--check', '--set', 'site']), 1)
+                self.assertIn('emit --check: src/data/sourced.json differs from what its inputs give', err.getvalue())
+        _folder, moved = self.site_in(None)
+        err = io.StringIO()
+        with moved, contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(err):
+            self.assertEqual(run.main(['emit', '--check', '--set', 'site']), 1)
+        self.assertIn('does not exist', err.getvalue())
+
+    def test_emit_writes_the_sites_empty_file(self):
+        folder, moved = self.site_in(b'{}\n')
+        with moved, contextlib.redirect_stdout(io.StringIO()):
+            self.assertEqual(run.main(['emit', '--set', 'site']), 0)
+        self.assertEqual((folder / 'src' / 'data' / 'sourced.json').read_bytes(), SITE.read_bytes())
+        self.assertEqual(os.listdir(folder / 'src' / 'data'), ['sourced.json'])
 
     def test_explicit_paths_and_a_set_do_not_mix(self):
         err = io.StringIO()

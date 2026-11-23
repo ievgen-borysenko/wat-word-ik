@@ -10,10 +10,11 @@ They are built independently of selftest.py, which has its own.
 import contextlib
 import io
 
+import canon
 import gate
 import run
 import shapes
-from tests import FIXTURE, GuardedCase
+from tests import FIXTURE, REPO, GuardedCase
 
 
 def chars(*code_points: int) -> str:
@@ -147,6 +148,7 @@ PLANTED = [
     ('emitted file with a fraction', 'json-syntax', 'emitted', 0, 0, fixture('expected.json').replace(b'412', b'4.12e2', 1), None),
     ('emitted file with an extra key', 'json-shape', 'emitted', 0, 0, fixture('expected.json').replace(b'"format": 1,', b'"extra": 0,\n  "format": 1,', 1), None),
     ('emitted weight out of range', 'range', 'emitted', 0, 0, fixture('expected.json').replace(b'"importance": 412', b'"importance": 512', 1), None),
+    ('emitted weights without a source', 'json-shape', 'emitted', 0, 0, canon.json_bytes(dict(canon.load_json(fixture('expected.json')), inputs=[])), None),
     ('lock with a hash of another shape', 'field-shape', 'lock', 0, 0, fixture('lock.json').replace(b'"e3b0', b'"E3B0', 1), None),
 ]
 
@@ -161,6 +163,23 @@ class CleanFixture(GuardedCase):
             self.assertEqual(run.main(['gate', '--set', 'fixture']), 0)
         self.assertIn('gate: 5 files pass every rule', out.getvalue())
         self.assertEqual(err.getvalue(), '')
+
+    def test_the_empty_emitted_file_passes_and_is_the_sites_file(self):
+        """No source and no weights: what the site's set gives until a source is collected."""
+        empty = b'{\n  "format": 1,\n  "inputs": [],\n  "professions": {}\n}\n'
+        self.assertEqual(gate.check_emitted(empty), [])
+        self.assertEqual((REPO / 'src' / 'data' / 'sourced.json').read_bytes(), empty)
+        out, err = io.StringIO(), io.StringIO()
+        with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+            self.assertEqual(run.main(['gate', '--set', 'site']), 0)
+        self.assertEqual(out.getvalue(), 'gate: 1 file passes every rule\n')
+        self.assertEqual(err.getvalue(), '')
+
+    def test_an_empty_list_of_inputs_is_allowed_in_the_emitted_file_only(self):
+        lock = canon.json_bytes({'format': shapes.FORMAT, 'sources': []})
+        self.assertEqual([(f.rule, f.where) for f in gate.check_lock(lock)], [('json-shape', 'sources: a list of 1 to 16 sources')])
+        many = canon.json_bytes({'format': shapes.FORMAT, 'inputs': [{'id': f's{i}', 'sha256': '0' * 64, 'version': '1'} for i in range(17)], 'professions': {}})
+        self.assertEqual([(f.rule, f.where) for f in gate.check_emitted(many)], [('json-shape', 'inputs: a list of 0 to 16 sources')])
 
     def test_titles_with_words_near_the_phrases_pass(self):
         for text in ('Prompt Book Editors', 'Dental Care Assistants', 'Instructional Designers', 'New Media Artists', 'System Analysts'):

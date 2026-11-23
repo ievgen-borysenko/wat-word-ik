@@ -659,7 +659,7 @@ describe('collector job', () => {
     expect(collector.some((l) => /^\s+needs\s*:/.test(l))).toBe(false);
   });
 
-  it('checks out, sets up the pinned Python and runs the tests, the self-test and emit --check, and nothing else', () => {
+  it('checks out, sets up the pinned Python and runs the tests, the self-test and emit --check on both sets, and nothing else', () => {
     expect(collector.filter((l) => l.startsWith('      - ')).length).toBe(names.length);
     expect(names).toEqual([
       'Check out',
@@ -667,12 +667,14 @@ describe('collector job', () => {
       'Unit tests (standard library only)',
       'Self-test of the gate (every planted sample refused)',
       'Emitted fixture matches its inputs (emit --check)',
+      'Site data file matches its inputs (emit --check --set site)',
     ]);
     const runs = names.slice(2).map((name) => value(step(collector, name), 'run'));
     expect(runs).toEqual([
       'python -I -S -B -m unittest discover -s collector/tests -t collector -v',
       'python -I -S -B collector/run.py selftest',
       'python -I -S -B collector/run.py emit --check --set fixture',
+      'python -I -S -B collector/run.py emit --check --set site',
     ]);
   });
 

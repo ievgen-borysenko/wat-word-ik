@@ -16,7 +16,11 @@ emit      writes the emitted file from the extract, the mappings and the lock
 
 A named set (--set) gives every path, relative to the repository; instead,
 each path can be given with its own option (--extract and so on). gate and
-emit run the self-test first, and refuse everything when it fails.
+emit run the self-test first, and refuse everything when it fails. Two sets:
+`fixture`, the synthetic fixture, and `site`, the file the site reads
+(src/data/sourced.json). The site's set has no inputs until the first source
+is collected: emit gives it the empty file (emit.empty), and gate checks the
+emitted file alone.
 
 Exit codes: 0 passed; 1 the gate refused a file, or the emitted file differs
 from its inputs; 2 usage error or a file could not be read or written; 3 the
@@ -53,7 +57,14 @@ SETS = {
         'source': 'synthetic',
         'out': 'collector/fixtures/synthetic/expected.json',
     },
+    # No source has been collected yet: no inputs, so emit gives the empty file.
+    'site': {
+        'out': 'src/data/sourced.json',
+    },
 }
+
+# The files emit reads. A named set has all of them and a source, or none.
+INPUTS = ('extract', 'professions', 'subjects', 'lock')
 
 # The most bytes read of each file: one more than its cap, so the gate sees an
 # oversize file as such without reading all of it.
@@ -74,15 +85,15 @@ class Failed(Exception):
 
 
 def _paths(args) -> dict:
-    """role -> (path on disk, label in the report)."""
-    roles = ('extract', 'professions', 'subjects', 'lock', 'out')
+    """role -> (path on disk, label in the report); the input roles only when the set has inputs."""
+    roles = (*INPUTS, 'out')
     if args.set is not None:
         given = [role for role in roles if getattr(args, role) is not None] + (['source'] if args.source else [])
         if given:
             raise Failed(f'--set gives every path; do not also pass --{given[0]}')
         named = SETS[args.set]
-        paths = {role: (os.path.join(REPO, *named[role].split('/')), named[role]) for role in roles}
-        return dict(paths, source=named['source'])
+        paths = {role: (os.path.join(REPO, *named[role].split('/')), named[role]) for role in roles if role in named}
+        return dict(paths, source=named.get('source'))
     missing = [role for role in roles if getattr(args, role) is None]
     if missing:
         raise Failed(f'pass --set, or every one of --extract, --professions, --subjects, --lock, --out (missing: --{missing[0]})')
@@ -137,23 +148,29 @@ def _selftest_passes(command: str) -> bool:
 
 
 def _gate(paths: dict) -> int:
-    read = {role: _read(*paths[role], CAPS[role]) for role in CAPS}
-    labels = {role: paths[role][1] for role in CAPS}
-    findings = gate.check_set(read['extract'], read['professions'], read['subjects'], (labels['extract'], labels['professions'], labels['subjects']))
-    findings += gate.check_lock(read['lock'], labels['lock'])
+    roles = [role for role in CAPS if role in paths]
+    read = {role: _read(*paths[role], CAPS[role]) for role in roles}
+    labels = {role: paths[role][1] for role in roles}
+    findings = []
+    if 'extract' in read:
+        findings += gate.check_set(read['extract'], read['professions'], read['subjects'], (labels['extract'], labels['professions'], labels['subjects']))
+        findings += gate.check_lock(read['lock'], labels['lock'])
     findings += gate.check_emitted(read['out'], labels['out'])
     if findings:
         _report('gate', findings)
         return REFUSED
-    print(f'gate: {len(read)} files pass every rule')
+    print(f'gate: {len(read)} files pass every rule' if len(read) != 1 else 'gate: 1 file passes every rule')
     return PASSED
 
 
 def _emit(paths: dict, check: bool) -> int:
-    inputs = {role: _read(*paths[role], CAPS[role]) for role in ('extract', 'professions', 'subjects', 'lock')}
-    labels = {role: paths[role][1] for role in CAPS}
+    labels = {role: paths[role][1] for role in CAPS if role in paths}
     try:
-        data = emit.emit(inputs['extract'], inputs['professions'], inputs['subjects'], inputs['lock'], paths['source'], labels)
+        if 'extract' in paths:
+            inputs = {role: _read(*paths[role], CAPS[role]) for role in INPUTS}
+            data = emit.emit(inputs['extract'], inputs['professions'], inputs['subjects'], inputs['lock'], paths['source'], labels)
+        else:
+            data = emit.empty(labels['out'])
     except emit.Refused as refused:
         _report('emit', refused.findings)
         return REFUSED
@@ -207,7 +224,7 @@ def main(argv: list) -> int:
         paths = _paths(args)
         if args.command == 'gate':
             return _gate(paths)
-        if paths['source'] is None:
+        if 'extract' in paths and paths['source'] is None:
             raise Failed('pass --source with the explicit paths')
         return _emit(paths, args.check)
     except Failed as err:

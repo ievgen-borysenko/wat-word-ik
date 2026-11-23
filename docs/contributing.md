@@ -84,12 +84,13 @@ npm run check:commits -- origin/main HEAD
 `collector/` holds the collector, which will turn open data sources into
 numbers for the site: Python 3.14, the standard library only, nothing to
 install. [collector.md](collector.md) describes it. After a change there, run
-its tests, the gate's self-test and the check of the emitted file:
+its tests, the gate's self-test and the check of the emitted files:
 
 ```sh
 python3.14 -I -S -B -m unittest discover -s collector/tests -t collector
 python3.14 -I -S -B collector/run.py selftest
 python3.14 -I -S -B collector/run.py emit --check --set fixture
+python3.14 -I -S -B collector/run.py emit --check --set site
 ```
 
 Keep its files ASCII text with no executable bit, give no module the name of

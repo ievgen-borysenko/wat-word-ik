@@ -302,6 +302,9 @@ jobs:
       - name: Emitted fixture matches its inputs (emit --check)
         run: python -I -S -B collector/run.py emit --check --set fixture
 
+      - name: Site data file matches its inputs (emit --check --set site)
+        run: python -I -S -B collector/run.py emit --check --set site
+
   deploy:
     name: Deploy to GitHub Pages
     needs: [audit, e2e, collector]

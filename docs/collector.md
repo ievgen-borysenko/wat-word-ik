@@ -10,8 +10,9 @@ repository; and every file that enters passes the gate, a closed grammar.
 
 This version is the skeleton: the gate, the canonical writer, `emit`, the
 self-test, and a synthetic fixture that the tests run on. It has no network
-code and no data from any source, and the site does not read anything it
-writes.
+code and no data from any source. `emit` also writes the file the site will
+read, `src/data/sourced.json`; with no source collected yet that file is
+empty (no source, no weights), and no page reads it.
 
 ## Stages
 
@@ -22,7 +23,7 @@ writes.
 | scan | Reads the raw files without network access and reports, by rule, row and count, anything that looks out of place; never their text | Planned |
 | extract | Reduces a raw file to the extract, a table of codes and whole numbers, written by the canonical writer | Planned |
 | gate | Checks the extract, the mappings, the lock and the emitted file against their shapes (below) | Yes: `collector/gate.py` |
-| emit | Computes the emitted JSON file from the tracked extract, mappings and lock | Yes: `collector/emit.py`, on the fixture |
+| emit | Computes the emitted JSON file from the tracked extract, mappings and lock | Yes: `collector/emit.py`, on the fixture, and the site's file, empty while the site's set has no inputs |
 
 ## Files
 
@@ -39,6 +40,8 @@ collector/fixtures/synthetic/
                         subjects.tsv, lock.json and expected.json, the file
                         that emit must give for them
 collector/.python-version   the Python version (3.14)
+src/data/sourced.json   the emitted file the site reads (the set `site`);
+                        empty in this version
 ```
 
 ## Shapes
@@ -61,7 +64,22 @@ The emitted file is JSON: `format`, `inputs` (the source's id, version and
 sha256, from the lock) and `professions`, which gives each profession an
 `importance` and a `level` per school subject: the highest value among the
 knowledge elements that count for that subject. This rule is the skeleton's;
-the site does not read the file yet.
+the site does not read the file yet. `inputs` may be empty only together
+with `professions`: that is the empty file, which a set without inputs
+gives, and no weight stands in the file without a source.
+
+Two named sets give the paths (`--set`): `fixture`, the synthetic fixture,
+and `site`, whose emitted file is `src/data/sourced.json`. The site's set has
+no inputs until the first source is collected, so `emit` gives it the empty
+file:
+
+```json
+{
+  "format": 1,
+  "inputs": [],
+  "professions": {}
+}
+```
 
 ## The gate
 
@@ -87,7 +105,7 @@ rules:
 | `reference` | An extract row naming a profession or element that the mappings lack, or another occupation code than the professions mapping gives; two professions with one occupation code and different titles |
 | `rows` | An extract without exactly one row per profession, element and scale |
 | `json-syntax` | JSON that is not strict: a syntax error, a duplicate key, a fraction or exponent, NaN or infinity |
-| `json-shape` | JSON without the declared keys and types |
+| `json-shape` | JSON without the declared keys and types; an emitted file with weights but no source in `inputs` |
 | `canonical` | An emitted file that is not in canonical form |
 
 What the gate guarantees: a file that passes holds only what its shape
@@ -147,12 +165,14 @@ site-packages; `-B`: no bytecode files.
 python3.14 -I -S -B -m unittest discover -s collector/tests -t collector
 python3.14 -I -S -B collector/run.py selftest
 python3.14 -I -S -B collector/run.py emit --check --set fixture
+python3.14 -I -S -B collector/run.py emit --check --set site
 python3.14 -I -S -B collector/run.py gate --set fixture
 ```
 
 `emit --check` writes nothing: it compares the file on disk with what its
-inputs give and exits 1 when they differ. `emit` without `--check` writes the
-file and says where. Exit codes: 0 passed, 1 refused or different, 2 usage or
+inputs give and exits 1 when they differ, by as little as one byte. `emit`
+without `--check` writes the file and says where. `gate --set site` checks
+the emitted file alone, since the set has no inputs. Exit codes: 0 passed, 1 refused or different, 2 usage or
 a file that cannot be read or written, 3 the self-test failed.
 
 The tests write only into temporary folders they make themselves and remove
@@ -177,7 +197,7 @@ afterwards. Two checks in `collector/tests/__init__.py` hold them to that:
 ## In CI
 
 The job **Collector (offline)** runs the unit tests, the self-test and
-`emit --check` on Python 3.14 set up by the pinned `actions/setup-python`,
+`emit --check` on both sets on Python 3.14 set up by the pinned `actions/setup-python`,
 with read access to the repository only and no package installed. No step
 fetches a source; setup-python itself may download the Python build from
 GitHub when the runner image does not have it. The deploy job needs this job

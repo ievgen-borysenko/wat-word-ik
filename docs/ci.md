@@ -381,7 +381,7 @@ read; `-S`: no site-packages; `-B`: no bytecode files):
 |------|--------------------------|
 | Unit tests (`unittest`) | A gate that lets a planted sample through or reports the planted text, an `emit` whose output depends on row order or the hash seed, a collector module that imports anything beyond the standard library it needs or a network module, and tests that write outside their own temporary folders (in the ways that [collector.md](collector.md) lists under "Run it"). |
 | Self-test | A gate rule that no longer refuses its planted samples: if one gets through, or the clean sample is refused, the gate refuses everything and the step fails. |
-| `emit --check` | An emitted file that is not what its tracked inputs give, byte for byte (in this version the synthetic fixture). |
+| `emit --check`, on the synthetic fixture and on the site's set | An emitted file that is not what its tracked inputs give, byte for byte: the fixture's `expected.json`, and `src/data/sourced.json`, the file the site reads, which has no inputs in this version and must therefore be the empty file (no source, no weights). |
 
 It installs no package and no step fetches a source; setup-python itself may
 download the Python build from GitHub when the runner image lacks it. The job
@@ -474,4 +474,5 @@ npm run e2e                       # tests the built site in dist/
 python3.14 -I -S -B -m unittest discover -s collector/tests -t collector
 python3.14 -I -S -B collector/run.py selftest
 python3.14 -I -S -B collector/run.py emit --check --set fixture
+python3.14 -I -S -B collector/run.py emit --check --set site
 ```

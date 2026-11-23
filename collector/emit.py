@@ -25,6 +25,9 @@ under a profession when at least one knowledge element maps to it; its
 importance and level are the highest of those elements' values (hundredths).
 Elements mapped to no subject count for nothing. This rule is the skeleton's;
 the site does not read the file yet.
+
+A set without inputs (the site's, until a source is collected) gives the
+empty file, empty(): no source in `inputs`, no weights in `professions`.
 """
 
 import canon
@@ -77,8 +80,18 @@ def emit(extract: bytes, professions: bytes, subjects: bytes, lock: bytes, sourc
         'inputs': [{'id': entry['id'], 'sha256': entry['sha256'], 'version': entry['version']}],
         'professions': weights,
     }
+    return _checked(document, names['out'])
+
+
+def empty(out: str = DEFAULT_FILES['out']) -> bytes:
+    """The emitted file of a set without inputs: no source and no weights."""
+    return _checked({'format': shapes.FORMAT, 'inputs': [], 'professions': {}}, out)
+
+
+def _checked(document: dict, out: str) -> bytes:
+    """The document in canonical form, after the gate has passed it."""
     data = canon.json_bytes(document)
-    findings = gate.check_emitted(data, names['out'])
+    findings = gate.check_emitted(data, out)
     if findings:
         raise Refused(findings)
     return data
