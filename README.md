@@ -118,6 +118,7 @@ docs         methodology, sources, how to contribute, what CI checks, demo.gif
 scripts      CI checks: files, lockfile, commits, links, built site (+ tests);
              record-demo.mjs, which records docs/demo.gif (not run in CI)
 e2e          end-to-end tests of the built site (Playwright)
+collector    data collector (Python, standard library only): gate, emit, tests; no data yet
 .github      CI workflow and Dependabot settings
 ```
 
