@@ -113,7 +113,11 @@ class Layout(GuardedCase):
 class Guard(GuardedCase):
     # Every way to write that the guard names (tests/__init__.py). The targets
     # sit in folders that do not exist, so a guard that let one through would
-    # fail on the missing folder instead of writing anything.
+    # fail on the missing folder instead of writing anything, with one
+    # exception: os.makedirs would create the missing folders (and dist/ and
+    # node_modules/ themselves where they do not exist). The test then fails,
+    # on that way and on the check after the loop, but the empty folders stay
+    # behind and must be removed by hand.
     WAYS = [
         ('open, write', lambda t: open(t, 'w')),
         ('open, append', lambda t: open(t, 'ab')),
