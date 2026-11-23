@@ -42,6 +42,8 @@ collector/fixtures/synthetic/
 collector/.python-version   the Python version (3.14)
 src/data/sourced.json   the emitted file the site reads (the set `site`);
                         empty in this version
+scripts/check-data.mjs  the second check of the emitted files, in Node
+                        (+ test)
 ```
 
 ## Shapes
@@ -143,6 +145,52 @@ the tests of the check scripts do: no tracked file holds an injection phrase,
 an address, markup or one of the invisible characters as text, and a unit
 test checks that.
 
+## The second check
+
+`scripts/check-data.mjs` (`npm run check:data`) checks the emitted files
+again: the `out` of each named set, `src/data/sourced.json` and the fixture's
+`expected.json`. It is written apart from the gate, in Node and without a
+JSON library, so that a mistake in the gate is not made a second time there.
+It runs in CI's audit job, which installs no dependencies and is a required
+check: a file that the gate let through by mistake still does not reach
+`main` or the site.
+
+It holds a file to the same grammar, with the same rule ids: `file-size`,
+`bytes`, `forbidden`, `lines`, `row-cap`, `field-length`, `field-shape`,
+`range`, `phrase`, `duplicate-key`, `json-syntax`, `json-shape` and
+`canonical` (the rules for tables have no part in a JSON file). Its own
+strict JSON reader keeps where each value starts, so every finding names the
+line and the column of the value, where the gate names line 0 for a place
+inside the JSON. Like the gate's, its findings never quote the file. Exit
+codes: 0 passed, 1 refused, 2 a file could not be read or the arguments are
+wrong.
+
+How the two are held together:
+
+- The grammar's values are written in both: the subjects, the ranges, the
+  caps, the patterns, the phrase list, the forbidden sequences, the keys and
+  the rule ids. `scripts/check-data.test.mjs` reads `collector/shapes.py`,
+  `gate.py` and `canon.py` and fails when one of them differs, and when the
+  list of files it checks is not the `out` of every named set in `run.py`. A
+  change to the grammar is therefore a change to both, in one pull request.
+- The code that applies them is separate: the byte scan, the JSON reader,
+  the walk over the shape, the canonical writer and the phrase matcher.
+- Both accept the fixture and the site's file, and each side's tests plant
+  their own samples to refuse: the Node test one or more of every rule, each
+  at its line and column, and one per entry of the phrase list.
+
+Where they can still differ:
+
+- On a sample that neither side's tests plant: no test runs the gate's
+  samples through this check, or the other way round.
+- On nesting deeper than 512 levels: this check stops reading with
+  `json-syntax`, while the gate's reader reads on and refuses with
+  `json-shape` and `canonical`. Both refuse; only the rule differs.
+
+What it does not do: it does not check the tables (the extract and the
+mappings) or the lock, which the gate checks, and it has no self-test at run
+time, as the gate has: its planted samples run with the unit tests.
+
 ## Determinism
 
 The canonical writer sorts table rows, joins fields with a tab, ends every
@@ -172,8 +220,10 @@ python3.14 -I -S -B collector/run.py gate --set fixture
 `emit --check` writes nothing: it compares the file on disk with what its
 inputs give and exits 1 when they differ, by as little as one byte. `emit`
 without `--check` writes the file and says where. `gate --set site` checks
-the emitted file alone, since the set has no inputs. Exit codes: 0 passed, 1 refused or different, 2 usage or
-a file that cannot be read or written, 3 the self-test failed.
+the emitted file alone, since the set has no inputs. Exit codes: 0 passed, 1
+refused or different, 2 usage or a file that cannot be read or written, 3 the
+self-test failed. The second check runs with Node from the repository's root
+folder: `npm run check:data`.
 
 The tests write only into temporary folders they make themselves and remove
 afterwards. Two checks in `collector/tests/__init__.py` hold them to that:
@@ -197,8 +247,10 @@ afterwards. Two checks in `collector/tests/__init__.py` hold them to that:
 ## In CI
 
 The job **Collector (offline)** runs the unit tests, the self-test and
-`emit --check` on both sets on Python 3.14 set up by the pinned `actions/setup-python`,
-with read access to the repository only and no package installed. No step
-fetches a source; setup-python itself may download the Python build from
-GitHub when the runner image does not have it. The deploy job needs this job
-to pass. What the other jobs check is in [ci.md](ci.md).
+`emit --check` on both sets, on Python 3.14 set up by the pinned
+`actions/setup-python`, with read access to the repository only and no
+package installed. No step fetches a source; setup-python itself may
+download the Python build from GitHub when the runner image does not have
+it. The deploy job needs this job to pass. The audit job, which installs no
+dependencies, runs the second check, `npm run check:data`, on the emitted
+files. What the other jobs check is in [ci.md](ci.md).
