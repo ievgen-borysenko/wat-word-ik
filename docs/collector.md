@@ -273,7 +273,9 @@ For a `manual` source the stage only checks the file that a person put at
 not a symbolic link. It needs no network, so it runs in the offline profile.
 
 Messages never quote what a server sent: they name the rule, and at most
-numbers and the lock's own values.
+numbers and the lock's own values. An error that no rule expects ends the
+stage with exit 1 and a fixed message, without the error's text or a
+traceback, which could quote it.
 
 ### Run it
 
@@ -516,7 +518,9 @@ python3.14 -I -S -B collector/run.py gate --set fixture
 
 The unit tests of the fetch stage start an HTTPS server on the loopback
 interface and make its throw-away certificates with the `openssl` command in
-a temporary folder; without that command they are skipped. The tests of the
+a temporary folder. Without that command they are skipped, except where the
+variable `CI` is set (as in CI): there they fail, since a skip would leave the
+job green while it proves nothing. The tests of the
 real sandbox need macOS and are skipped elsewhere (see "Where it is proved").
 `probe` and `fetch` are described under "Fetch".
 

@@ -31,11 +31,13 @@ size and sha256. A file that is already there is checked the same way and
 left as it is.
 
 Exit codes: 0 the file is in the quarantine and matches the lock; 1 refused
-(the lock entry, a rule above, a size or hash that differs, no connection);
-2 usage, or a file that cannot be read or written.
+(the lock entry, a rule above, a size or hash that differs, no connection,
+an unexpected error); 2 usage, or a file that cannot be read or written.
 
 Messages never quote what a server sent: they name the rule, and at most
-numbers and the lock's own values.
+numbers and the lock's own values. An error that no rule above expects ends
+the stage with exit 1 and a fixed message, without the error's text, which
+could quote it.
 """
 
 import argparse
@@ -43,6 +45,7 @@ import errno
 import hashlib
 import http.client
 import os
+import re
 import socket
 import ssl
 import sys
@@ -68,6 +71,11 @@ LOCATION_MAX = 2000
 # How a web page starts, after white space, in lower case.
 HTML_STARTS = (b'<!doctype html', b'<html', b'<head', b'<body', b'<script', b'<meta', b'<title')
 PARTIAL = '.partial'
+# A Content-Length: ASCII digits only. str.isdigit() would also take digits
+# such as superscripts, which a header decoded as Latin-1 can hold and int()
+# refuses.
+LENGTH = re.compile('[0-9]{1,15}')
+UNEXPECTED = 'an unexpected error stopped the stage and nothing was kept; its text is not shown, since it could quote what a server sent'
 
 
 class Refused(Exception):
@@ -154,8 +162,8 @@ def _check_headers(source: lock.Source, response) -> None:
         raise Refused(f"the server sent another content type than the lock's ({source.type})")
     length = response.getheader('Content-Length')
     if length is not None:
-        length = length.strip()
-        if not length.isdigit() or len(length) > 15:
+        length = length.strip(' \t')
+        if LENGTH.fullmatch(length) is None:
             raise Refused('the server sent a malformed Content-Length')
         if int(length) != source.size:
             raise Refused(f'the server announces {int(length)} bytes, the lock pins {source.size}')
@@ -186,8 +194,17 @@ def _receive(source: lock.Source, response, partial: str) -> None:
         raise Refused("the sha256 of the body is not the lock's")
 
 
+def tls_context() -> ssl.SSLContext:
+    """The stage's TLS: the system's certificates, the host name checked,
+    TLS 1.2 at least."""
+    context = ssl.create_default_context()
+    context.minimum_version = ssl.TLSVersion.TLSv1_2
+    return context
+
+
 def download(source: lock.Source, folder: str, listed: frozenset, context: ssl.SSLContext | None = None, port: int = PORT) -> str:
-    """Fetch an https source into folder/<file>; raises Refused."""
+    """Fetch an https source into folder/<file>; raises Refused. The tests
+    pass their own context and port; the stage passes neither."""
     if source.kind != 'https':
         raise Refused(f'{source.id} is not an https source')
     if source.host not in listed:
@@ -196,8 +213,7 @@ def download(source: lock.Source, folder: str, listed: frozenset, context: ssl.S
     if os.path.exists(final):
         return verify(source, folder) + ' (it was already there; nothing was fetched)'
     if context is None:
-        context = ssl.create_default_context()
-        context.minimum_version = ssl.TLSVersion.TLSv1_2
+        context = tls_context()
     partial = os.path.join(folder, source.file + PARTIAL)
     if os.path.lexists(partial):
         os.remove(partial)  # left by a run that was stopped: never kept, never read
@@ -244,6 +260,14 @@ def download(source: lock.Source, folder: str, listed: frozenset, context: ssl.S
 
 
 def main(argv: list) -> int:
+    try:
+        return _main(argv)
+    except Exception:  # noqa: BLE001 - the last resort: no traceback, which could quote a server
+        print(f'fetch: refused: {UNEXPECTED}', file=sys.stderr)
+        return REFUSED
+
+
+def _main(argv: list) -> int:
     parser = argparse.ArgumentParser(prog='fetch.py', description="The fetch stage: one source of the lock into its quarantine folder.")
     parser.add_argument('--lock', required=True)
     parser.add_argument('--source', required=True)

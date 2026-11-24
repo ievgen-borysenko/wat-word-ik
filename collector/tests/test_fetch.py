@@ -10,8 +10,10 @@ loopback host name and the loopback address, so a redirect from one to the
 other is a redirect to another host that the stage could reach.
 
 This is the only test module that may import network modules
-(test_layout.py); it needs them for the server. The tests are skipped where
-no openssl command makes the certificates.
+(test_layout.py); it needs them for the server. Where no openssl command
+makes the certificates, the tests with the server are skipped, except in CI
+(the variable CI set): there they fail, since a skipped class would leave the
+job green while it proves nothing.
 """
 
 import contextlib
@@ -40,6 +42,12 @@ PLAIN = 'http' + chr(0x3A) + chr(0x2F) * 2
 OPENSSL = shutil.which('openssl')
 TYPE = 'text/tab-separated-values'
 BODY = b'element\tvalue\n2.C.1\t412\n'
+NO_OPENSSL = 'no openssl command to make the test certificates'
+
+
+def skip_without_openssl(openssl, environ) -> bool:
+    """Skip the tests with the server where openssl is missing, but not in CI."""
+    return openssl is None and not environ.get('CI')
 
 
 def make_authority(folder: str) -> None:
@@ -99,10 +107,12 @@ def quiet():
         yield err
 
 
-@unittest.skipIf(OPENSSL is None, 'no openssl command to make the test certificates')
+@unittest.skipIf(skip_without_openssl(OPENSSL, os.environ), NO_OPENSSL)
 class Fetch(GuardedCase):
     @classmethod
     def setUpClass(cls):
+        if OPENSSL is None:
+            raise RuntimeError(f'{NO_OPENSSL}; in CI these tests must run')
         super().setUpClass()
         cls.keys = tempfile.mkdtemp(prefix='collector-test-tls-')
         make_authority(cls.keys)
@@ -262,6 +272,15 @@ class Fetch(GuardedCase):
         self.serve('/data.tsv', body=[BODY, b'extra\n' * 4])
         self.refused(*self.source(), 'larger than the .* bytes the lock pins')
 
+    def test_a_length_that_is_not_ascii_digits_is_refused(self):
+        # The header goes out as Latin-1: a superscript digit is one byte that
+        # the client reads back as a character which isdigit() takes and int() refuses.
+        for length in (chr(0xB2), '2' + chr(0xB3), chr(0xB9) * 2, '+' + str(len(BODY)), '-1', '0x19', '1' * 16, ''):
+            with self.subTest(length=ascii(length)):
+                self.serve('/data.tsv', **{'Content-Length': length})
+                folder = self.refused(*self.source(), 'the server sent a malformed Content-Length')
+                self.assertEqual(os.listdir(folder), [])
+
     def test_a_body_shorter_than_the_lock_is_refused(self):
         self.serve('/data.tsv', body=[BODY[:-1]])
         self.refused(*self.source(), r'the body has \d+ bytes, the lock pins')
@@ -294,8 +313,20 @@ class Fetch(GuardedCase):
 
     def test_a_server_whose_certificate_the_system_does_not_trust_is_refused(self):
         self.serve('/data.tsv')
-        # The default context: the system's certificates, which do not hold the test's authority.
-        self.refused(*self.source(), 'the certificate check failed', context=ssl.create_default_context())
+        source, listed = self.source()
+        folder = self.make_temp()
+        built, own = [], fetch.tls_context
+
+        def spy():
+            built.append(own())
+            return built[-1]
+
+        # No context given: the stage's own, with the system's certificates, which do not hold the test's authority.
+        with mock.patch.object(fetch, 'tls_context', spy), self.assertRaisesRegex(fetch.Refused, 'the certificate check failed'):
+            fetch.download(source, str(folder), listed, port=self.port)
+        self.assertEqual(len(built), 1, 'download built its own context')
+        self.assertEqual((built[0].verify_mode, built[0].check_hostname), (ssl.CERT_REQUIRED, True))
+        self.assertEqual(os.listdir(folder), [])
         self.assertEqual(self.server.requests, [])
 
     def test_a_server_that_does_not_listen_is_refused(self):
@@ -382,6 +413,33 @@ class Stage(GuardedCase):
         self.assertEqual(self.run_stage('--lock', path, '--source', 'by-hand', '--folder', quarantine)[0], 1)
         self.assertEqual(self.run_stage('--lock', folder / 'missing.json', '--source', 'by-hand', '--folder', quarantine)[0], 2)
         self.assertEqual(self.run_stage('--source', 'by-hand')[0], 2)
+
+    def test_an_unexpected_error_ends_the_stage_with_a_fixed_message(self):
+        folder = self.make_temp()
+        path, quarantine = self.lock_with(folder, BODY, kind='https', url=SCHEME + LOCAL + '/data.tsv', type=TYPE)
+        marker = 'zqxmarker'
+
+        def broken(*_args):
+            raise ValueError(f'invalid literal: {marker}')
+
+        with mock.patch.object(fetch, 'download', broken):
+            code, err = self.run_stage('--lock', path, '--source', 'by-hand', '--folder', quarantine)
+        self.assertEqual(code, 1)
+        self.assertEqual(err, f'fetch: refused: {fetch.UNEXPECTED}\n')
+        self.assertNotIn(marker, err)
+        self.assertNotIn('Traceback', err)
+
+    def test_the_stages_own_tls_context_checks_certificates_and_host_names(self):
+        context = fetch.tls_context()
+        self.assertEqual(context.verify_mode, ssl.CERT_REQUIRED)
+        self.assertTrue(context.check_hostname)
+        self.assertEqual(context.minimum_version, ssl.TLSVersion.TLSv1_2)
+
+    def test_without_openssl_the_tests_with_the_server_are_skipped_except_in_ci(self):
+        self.assertTrue(skip_without_openssl(None, {}))
+        self.assertTrue(skip_without_openssl(None, {'CI': ''}))
+        self.assertFalse(skip_without_openssl(None, {'CI': 'true'}), 'in CI the class runs, and fails in setUpClass')
+        self.assertFalse(skip_without_openssl('/usr/bin/openssl', {}))
 
     def test_an_https_source_goes_to_download_with_the_hosts_of_the_lock(self):
         folder = self.make_temp()
