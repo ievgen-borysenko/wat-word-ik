@@ -72,11 +72,13 @@ does not run on pushes to branches other than `main`), one pushed while the
 pull request had a merge conflict (GitHub runs no `pull_request` workflow
 then), or one whose run your next push cancelled before the checks. Its
 commits can stay on GitHub all the same, reachable by their hash. So run the
-history checks yourself before every push:
+history checks, and the check of the data the site will read, yourself
+before every push:
 
 ```sh
 npm run check:tree -- --range origin/main HEAD
 npm run check:commits -- origin/main HEAD
+npm run check:data
 ```
 
 ## The collector
@@ -84,18 +86,25 @@ npm run check:commits -- origin/main HEAD
 `collector/` holds the collector, which will turn open data sources into
 numbers for the site: Python 3.14, the standard library only, nothing to
 install. [collector.md](collector.md) describes it. After a change there, run
-its tests, the gate's self-test and the check of the emitted file:
+its tests, the gate's self-test and the check of the emitted files:
 
 ```sh
 python3.14 -I -S -B -m unittest discover -s collector/tests -t collector
 python3.14 -I -S -B collector/run.py selftest
 python3.14 -I -S -B collector/run.py emit --check --set fixture
+python3.14 -I -S -B collector/run.py emit --check --set site
+npm run check:data       # the second check of the emitted files, in Node
 ```
 
 Keep its files ASCII text with no executable bit, give no module the name of
 a standard library module, and write planted test samples (addresses, markup,
 invisible characters, phrasing of an instruction) as fragments put together
 at run time, never as text in the file.
+
+A change to the grammar of the emitted file (a subject, a range, a cap, a
+pattern, the phrase list) goes into both `collector/` and
+`scripts/check-data.mjs` in the same pull request; the test of the second
+check fails until the two agree.
 
 ## Re-record the animation
 

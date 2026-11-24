@@ -67,7 +67,7 @@ deploy job runs.
 |------|--------------------------|
 | Show what decides the deploy | A deploy decision nobody can see: before anything is installed, the step prints the event, the ref and the repository's visibility, the three values the deploy job's condition reads (Job 4). |
 | `npm ci --ignore-scripts` | Dependencies that differ from the reviewed lockfile, and install scripts running code on the build machine. |
-| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script, and `scripts/check-workflow.test.mjs` reads this workflow and pins: when the deploy job runs; that only the deploy job may write, every other job gets only `contents: read` (from the top-level `permissions`, or its own for the collector job), and no job may start a run; that every action is used by a full commit hash with its version in a comment; the collector job's steps, its pinned setup-python without a package cache, and that it installs and fetches nothing; that nothing cancels a run on `main`; which history range each event checks; that the secret scan reads merge commits; that no step continues on error except the report-only audit of all dependencies (`continue-on-error: true`), that no condition runs a step after a failure except the one on the step that keeps the Playwright report of a failed run (`if: failure()`), and that no condition skips a check; that no line swallows a failure with `\|\| true`, `\|\| :`, `\|\| exit 0` or `set +e`, and the audit of the built site fails when `check-dist.mjs` fails; and that the id of the audited artifact goes from the audit job's upload to the end-to-end job, which downloads the artifact by that id, and to the deploy job's check, while deploy-pages gets no inputs, so it deploys the `github-pages` artifact that the check compared. A step that hides a failure in any other way is left to review. |
+| `npm run typecheck`, `npm test` | Broken code and broken scoring, translations, data or Content-Security-Policy. The unit tests also cover every check script, and `scripts/check-workflow.test.mjs` reads this workflow and pins: when the deploy job runs; that only the deploy job may write, every other job gets only `contents: read` (from the top-level `permissions`, or its own for the collector job), and no job may start a run; that every action is used by a full commit hash with its version in a comment; the collector job's steps, its pinned setup-python without a package cache, and that it installs and fetches nothing; that the audit job runs `check:data` once, before it downloads the built site; that nothing cancels a run on `main`; which history range each event checks; that the secret scan reads merge commits; that no step continues on error except the report-only audit of all dependencies (`continue-on-error: true`), that no condition runs a step after a failure except the one on the step that keeps the Playwright report of a failed run (`if: failure()`), and that no condition skips a check; that no line swallows a failure with `\|\| true`, `\|\| :`, `\|\| exit 0` or `set +e`, and the audit of the built site fails when `check-dist.mjs` fails; and that the id of the audited artifact goes from the audit job's upload to the end-to-end job, which downloads the artifact by that id, and to the deploy job's check, while deploy-pages gets no inputs, so it deploys the `github-pages` artifact that the check compared. A step that hides a failure in any other way is left to review. |
 | `npm run build` | |
 | Upload as `site-candidate` | Hands the built site, hidden files included, to the audit job. |
 
@@ -82,6 +82,7 @@ deploy job runs.
 | `npm audit --omit=dev --audit-level=high` | A known high or critical vulnerability in a runtime dependency. A second, full audit of all dependencies only reports. Both read the lockfile; nothing is installed. |
 | `npm run check:commits` | A personal e-mail address or a stray line in a commit. Author and committer must be personal GitHub noreply addresses, GitHub's own noreply address (web merges) or Dependabot; any other bot is refused. The message may contain no other address. Trailers: `Co-Authored-By` only with the maintainer's own co-author account, or with Dependabot (`dependabot[bot]` and its own noreply address, as GitHub writes it when it squashes a Dependabot pull request) on a commit whose author address is Dependabot's, `Signed-off-by` only as Dependabot's sign-off; any other key or value, and a trailer without an address, is refused, and so is any line that looks like a generated-by footer. A pull request checks its own commits; a push to `main` and a run started by hand check the whole history, so a cancelled run never leaves a commit unchecked. |
 | `npm run check:links` | Links in the Markdown files at the top of the repository and in `docs/` that point to files that do not exist. |
+| `npm run check:data` | Data the site will read that leaves its grammar. The collector's gate (Job 5) checks every file before the collector writes it; this is the second check, written apart from the gate in Node with Node's own modules only, of the files that the collector's `emit` writes: `src/data/sourced.json`, the file the site will read, and the synthetic fixture's `expected.json`. It refuses what the gate refuses in such a file, with the gate's rule ids: bytes outside printable ASCII, tab and line feed; addresses, markup, backticks and backslashes; JSON that is not strict; keys, types, ranges, caps and patterns outside the shape; phrasing of an embedded instruction in an id or a version; weights without a source; any form but the canonical one. Each finding names the file, line, column and rule, never the file's text. Its unit test compares its grammar with the gate's ([collector.md](collector.md), "The second check"). |
 | `check:dist` on the downloaded `site-candidate` | See below. |
 | Secret scan of the built site | A secret that reached the build output. |
 | Upload as the Pages artifact | Only the files just audited. The job reports the artifact's id for the next jobs. |
@@ -381,7 +382,7 @@ read; `-S`: no site-packages; `-B`: no bytecode files):
 |------|--------------------------|
 | Unit tests (`unittest`) | A gate that lets a planted sample through or reports the planted text, an `emit` whose output depends on row order or the hash seed, a collector module that imports anything beyond the standard library it needs or a network module, and tests that write outside their own temporary folders (in the ways that [collector.md](collector.md) lists under "Run it"). |
 | Self-test | A gate rule that no longer refuses its planted samples: if one gets through, or the clean sample is refused, the gate refuses everything and the step fails. |
-| `emit --check` | An emitted file that is not what its tracked inputs give, byte for byte (in this version the synthetic fixture). |
+| `emit --check`, on the synthetic fixture and on the site's set | An emitted file that is not what its tracked inputs give, byte for byte: the fixture's `expected.json`, and `src/data/sourced.json`, the file the site will read, which has no inputs in this version and must therefore be the empty file (no source, no weights). |
 
 It installs no package and no step fetches a source; setup-python itself may
 download the Python build from GitHub when the runner image lacks it. The job
@@ -466,7 +467,7 @@ On the day of the switch, in this order:
 npm ci --ignore-scripts
 npm run check:tree -- --range origin/main HEAD
 npm run typecheck && npm test
-npm run check:lock && npm run check:links
+npm run check:lock && npm run check:links && npm run check:data
 npm run check:commits -- origin/main HEAD
 npm run build && npm run check:dist
 npx playwright install chromium   # once
@@ -474,4 +475,5 @@ npm run e2e                       # tests the built site in dist/
 python3.14 -I -S -B -m unittest discover -s collector/tests -t collector
 python3.14 -I -S -B collector/run.py selftest
 python3.14 -I -S -B collector/run.py emit --check --set fixture
+python3.14 -I -S -B collector/run.py emit --check --set site
 ```

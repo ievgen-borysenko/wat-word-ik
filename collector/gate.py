@@ -34,7 +34,8 @@ Rules (the ids that findings and the self-test use):
                 element and scale
   json-syntax   not strict JSON: a syntax error, a duplicate key, a number
                 with a fraction or exponent, NaN or infinity
-  json-shape    JSON without the declared keys and types
+  json-shape    JSON without the declared keys and types; an emitted file
+                with weights but no source in its inputs
   canonical     the emitted file is not in canonical form (canon.py)
 
 The tables must pass every rule; the emitted file every rule that applies to
@@ -401,9 +402,9 @@ def _keys(value, keys: tuple, file: str, out: list, where: str) -> bool:
     return True
 
 
-def _sources(value, keys: tuple, file: str, out: list, where: str) -> None:
-    if not isinstance(value, list) or not 1 <= len(value) <= shapes.MAX_SOURCES:
-        _record(out, Finding('json-shape', file, 0, 0, f'{where}: a list of 1 to {shapes.MAX_SOURCES} sources'))
+def _sources(value, keys: tuple, file: str, out: list, where: str, minimum: int = 1) -> None:
+    if not isinstance(value, list) or not minimum <= len(value) <= shapes.MAX_SOURCES:
+        _record(out, Finding('json-shape', file, 0, 0, f'{where}: a list of {minimum} to {shapes.MAX_SOURCES} sources'))
         return
     seen = set()
     for entry in value:
@@ -439,7 +440,8 @@ def _emitted_shape(value, file: str, out: list) -> None:
     if not _keys(value, EMITTED_KEYS, file, out, 'top level'):
         return
     _format(value, file, out)
-    _sources(value['inputs'], INPUT_KEYS, file, out, 'inputs')
+    # No inputs is the empty file: no source has been collected, and no weights stand in it.
+    _sources(value['inputs'], INPUT_KEYS, file, out, 'inputs', minimum=0)
     professions = value['professions']
     if not isinstance(professions, dict):
         _record(out, Finding('json-shape', file, 0, 0, 'professions: an object'))
@@ -447,6 +449,8 @@ def _emitted_shape(value, file: str, out: list) -> None:
     if len(professions) > shapes.EMITTED_MAX_PROFESSIONS:
         _record(out, Finding('row-cap', file, 0, 0, f'professions: at most {shapes.EMITTED_MAX_PROFESSIONS}'))
         return
+    if professions and value['inputs'] == []:
+        _record(out, Finding('json-shape', file, 0, 0, 'professions: weights without a source in inputs'))
     for profession, weights in professions.items():
         if not _text(profession, shapes.PROFESSION_ID, 40, file, out, 'professions: key'):
             continue

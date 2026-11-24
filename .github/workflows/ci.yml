@@ -194,6 +194,11 @@ jobs:
       - name: Links in README and docs
         run: npm run check:links
 
+      # The second check of the files the collector's emit writes (the gate is
+      # the first), written apart from it in Node: docs/collector.md.
+      - name: Data the site will read holds only its grammar (check:data)
+        run: npm run check:data
+
       # From here on the job handles the one thing it takes from the build job: the
       # built site, as untrusted input. The checks run with node directly (not
       # npm run), from the checkout made above.
@@ -301,6 +306,9 @@ jobs:
 
       - name: Emitted fixture matches its inputs (emit --check)
         run: python -I -S -B collector/run.py emit --check --set fixture
+
+      - name: Site data file matches its inputs (emit --check --set site)
+        run: python -I -S -B collector/run.py emit --check --set site
 
   deploy:
     name: Deploy to GitHub Pages

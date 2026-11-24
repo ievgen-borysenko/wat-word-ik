@@ -34,7 +34,7 @@ afterAll(() => {
 describe('check scripts run on Node alone', () => {
   it('finds the check scripts', () => {
     expect(SCRIPTS).toEqual(
-      expect.arrayContaining(['check-commits.mjs', 'check-dist.mjs', 'check-links.mjs', 'check-lockfile.mjs', 'check-tree.mjs']),
+      expect.arrayContaining(['check-commits.mjs', 'check-data.mjs', 'check-dist.mjs', 'check-links.mjs', 'check-lockfile.mjs', 'check-tree.mjs']),
     );
   });
 

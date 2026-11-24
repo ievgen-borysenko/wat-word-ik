@@ -82,6 +82,10 @@ ship the pages and nothing else:
 - commits carry only GitHub noreply addresses, no trailers but the
   maintainer's co-author line, Dependabot's sign-off and Dependabot's
   co-author line on its own commits, and no generated-by footers;
+- the data file the site will read (`src/data/sourced.json`, written by the
+  collector, still empty) holds only its closed grammar: the collector's gate
+  checks it in Python, and a second check written apart from it checks it
+  again in the job that installs no dependencies;
 - the built site is audited in a separate job that installs no dependencies,
   so no package code can touch the audit: it holds the four pages
   (`index.html`, the building, `deuren.html`, the doors, `onderbouw.html`,
@@ -101,7 +105,7 @@ Only then, and only from `main`, is that exact build deployed to GitHub Pages.
 Details: [docs/ci.md](docs/ci.md). To report a problem: [SECURITY.md](SECURITY.md).
 
 ```sh
-npm run check:tree && npm run check:lock && npm run check:links
+npm run check:tree && npm run check:lock && npm run check:links && npm run check:data
 npm run build && npm run check:dist
 npx playwright install chromium   # once
 npm run e2e                       # end-to-end tests of dist/
@@ -111,11 +115,12 @@ npm run e2e                       # end-to-end tests of dist/
 
 ```
 src/engine   pure TypeScript: scoring, hints, doors, school routes, URL hash codec (+ tests)
-src/data     subjects and professions (demo data, 3 languages) + validation test
+src/data     subjects and professions (demo data, 3 languages) + validation test;
+             sourced.json, the collector's weights (empty yet), and its typed loader
 src/i18n     UI strings: nl.json, en.json, ua.json
 src/ui       Preact components
 docs         methodology, sources, how to contribute, what CI checks, demo.gif
-scripts      CI checks: files, lockfile, commits, links, built site (+ tests);
+scripts      CI checks: files, lockfile, commits, links, data, built site (+ tests);
              record-demo.mjs, which records docs/demo.gif (not run in CI)
 e2e          end-to-end tests of the built site (Playwright)
 collector    data collector (Python, standard library only): gate, emit, tests; no data yet

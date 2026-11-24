@@ -223,6 +223,7 @@ def samples() -> list:
         ('cut-off JSON', 'json-syntax', 'emitted', clean['emitted'][: len(clean['emitted']) // 2] + b'\n'),
         ('unknown top-level key', 'json-shape', 'emitted', _emitted_with(('note',), 'x')),
         ('weight that is not a number', 'json-shape', 'emitted', _emitted_with(('professions', 'beta', 'wiskunde', 'level'), '400')),
+        ('weights without a source', 'json-shape', 'emitted', _emitted_with(('inputs',), [])),
         ('unknown subject in the emitted file', 'field-shape', 'emitted', _emitted_with(('professions', 'beta', 'latijn'), {'importance': 300, 'level': 400})),
         ('unknown key in the lock', 'json-shape', 'lock', canon.json_bytes({'format': shapes.FORMAT, 'sources': [dict(SOURCE, mirror='x')]})),
         ('malformed hash in the lock', 'field-shape', 'lock', canon.json_bytes({'format': shapes.FORMAT, 'sources': [dict(SOURCE, sha256='A' * 64)]})),

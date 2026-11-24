@@ -650,6 +650,30 @@ describe('every action is pinned', () => {
   });
 });
 
+// check:data is the second check of the collector's emitted files. The audit job
+// is a required check and installs nothing, so the check runs there, on the
+// job's own checkout, before the job takes anything from the build job.
+describe('the data check in the audit job', () => {
+  const audit = job('audit');
+  const names = audit.filter((l) => l.startsWith('      - name: ')).map((l) => l.slice('      - name: '.length));
+  const NAME = 'Data the site will read holds only its grammar (check:data)';
+
+  it('runs check:data, and nothing else, in a step of its own', () => {
+    expect(value(step(audit, NAME), 'run')).toBe('npm run check:data');
+    expect(LINES.filter((l) => /\brun:.*check[:-]data/.test(l)).map((l) => l.trim())).toEqual(['run: npm run check:data']);
+  });
+
+  it('runs before the job downloads the built site', () => {
+    expect(names.indexOf(NAME)).toBeGreaterThan(names.indexOf('No dependencies in this job'));
+    expect(names.indexOf(NAME)).toBeLessThan(names.indexOf('Download the built site (untrusted input)'));
+  });
+
+  it('is a check that package.json runs with node and the script alone', () => {
+    const pkg = JSON.parse(readFileSync(join(import.meta.dirname, '..', 'package.json'), 'utf8'));
+    expect(pkg.scripts['check:data']).toBe('node scripts/check-data.mjs');
+  });
+});
+
 describe('collector job', () => {
   const collector = job('collector');
   const names = collector.filter((l) => l.startsWith('      - name: ')).map((l) => l.slice('      - name: '.length));
@@ -659,7 +683,7 @@ describe('collector job', () => {
     expect(collector.some((l) => /^\s+needs\s*:/.test(l))).toBe(false);
   });
 
-  it('checks out, sets up the pinned Python and runs the tests, the self-test and emit --check, and nothing else', () => {
+  it('checks out, sets up the pinned Python and runs the tests, the self-test and emit --check on both sets, and nothing else', () => {
     expect(collector.filter((l) => l.startsWith('      - ')).length).toBe(names.length);
     expect(names).toEqual([
       'Check out',
@@ -667,12 +691,14 @@ describe('collector job', () => {
       'Unit tests (standard library only)',
       'Self-test of the gate (every planted sample refused)',
       'Emitted fixture matches its inputs (emit --check)',
+      'Site data file matches its inputs (emit --check --set site)',
     ]);
     const runs = names.slice(2).map((name) => value(step(collector, name), 'run'));
     expect(runs).toEqual([
       'python -I -S -B -m unittest discover -s collector/tests -t collector -v',
       'python -I -S -B collector/run.py selftest',
       'python -I -S -B collector/run.py emit --check --set fixture',
+      'python -I -S -B collector/run.py emit --check --set site',
     ]);
   });
 

@@ -14,6 +14,7 @@
     "check:dist": "node scripts/check-dist.mjs dist package-lock.json",
     "check:lock": "node scripts/check-lockfile.mjs package-lock.json",
     "check:commits": "node scripts/check-commits.mjs",
+    "check:data": "node scripts/check-data.mjs",
     "check:links": "node scripts/check-links.mjs",
     "check:tree": "node scripts/check-tree.mjs",
     "e2e": "playwright test"

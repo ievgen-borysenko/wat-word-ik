@@ -10,8 +10,9 @@ repository; and every file that enters passes the gate, a closed grammar.
 
 This version is the skeleton: the gate, the canonical writer, `emit`, the
 self-test, and a synthetic fixture that the tests run on. It has no network
-code and no data from any source, and the site does not read anything it
-writes.
+code and no data from any source. `emit` also writes the file the site will
+read, `src/data/sourced.json`; with no source collected yet that file is
+empty (no source, no weights), and no page reads it.
 
 ## Stages
 
@@ -22,7 +23,7 @@ writes.
 | scan | Reads the raw files without network access and reports, by rule, row and count, anything that looks out of place; never their text | Planned |
 | extract | Reduces a raw file to the extract, a table of codes and whole numbers, written by the canonical writer | Planned |
 | gate | Checks the extract, the mappings, the lock and the emitted file against their shapes (below) | Yes: `collector/gate.py` |
-| emit | Computes the emitted JSON file from the tracked extract, mappings and lock | Yes: `collector/emit.py`, on the fixture |
+| emit | Computes the emitted JSON file from the tracked extract, mappings and lock | Yes: `collector/emit.py`, on the fixture, and the site's file, empty while the site's set has no inputs |
 
 ## Files
 
@@ -39,6 +40,11 @@ collector/fixtures/synthetic/
                         subjects.tsv, lock.json and expected.json, the file
                         that emit must give for them
 collector/.python-version   the Python version (3.14)
+src/data/sourced.json   the emitted file the site will read (the set
+                        `site`); empty in this version
+src/data/sourced.ts     its typed loader, which no page imports yet (+ test)
+scripts/check-data.mjs  the second check of the emitted files, in Node
+                        (+ test)
 ```
 
 ## Shapes
@@ -61,7 +67,22 @@ The emitted file is JSON: `format`, `inputs` (the source's id, version and
 sha256, from the lock) and `professions`, which gives each profession an
 `importance` and a `level` per school subject: the highest value among the
 knowledge elements that count for that subject. This rule is the skeleton's;
-the site does not read the file yet.
+the site does not read the file yet. `inputs` may be empty only together
+with `professions`: that is the empty file, which a set without inputs
+gives, and no weight stands in the file without a source.
+
+Two named sets give the paths (`--set`): `fixture`, the synthetic fixture,
+and `site`, whose emitted file is `src/data/sourced.json`. The site's set has
+no inputs until the first source is collected, so `emit` gives it the empty
+file:
+
+```json
+{
+  "format": 1,
+  "inputs": [],
+  "professions": {}
+}
+```
 
 ## The gate
 
@@ -87,7 +108,7 @@ rules:
 | `reference` | An extract row naming a profession or element that the mappings lack, or another occupation code than the professions mapping gives; two professions with one occupation code and different titles |
 | `rows` | An extract without exactly one row per profession, element and scale |
 | `json-syntax` | JSON that is not strict: a syntax error, a duplicate key, a fraction or exponent, NaN or infinity |
-| `json-shape` | JSON without the declared keys and types |
+| `json-shape` | JSON without the declared keys and types; an emitted file with weights but no source in `inputs` |
 | `canonical` | An emitted file that is not in canonical form |
 
 What the gate guarantees: a file that passes holds only what its shape
@@ -125,6 +146,68 @@ the tests of the check scripts do: no tracked file holds an injection phrase,
 an address, markup or one of the invisible characters as text, and a unit
 test checks that.
 
+## The second check
+
+`scripts/check-data.mjs` (`npm run check:data`) checks the emitted files
+again: the `out` of each named set, `src/data/sourced.json` and the fixture's
+`expected.json`. It is written apart from the gate, in Node and without a
+JSON library, so that a mistake in the gate is not made a second time there.
+It runs in CI's audit job, which installs no dependencies and is a required
+check: a file that the gate let through by mistake still does not reach
+`main` or the site.
+
+It holds a file to the same grammar, with the same rule ids: `file-size`,
+`bytes`, `forbidden`, `lines`, `row-cap`, `field-length`, `field-shape`,
+`range`, `phrase`, `duplicate-key`, `json-syntax`, `json-shape` and
+`canonical` (the rules for tables have no part in a JSON file). Its own
+strict JSON reader keeps where each value starts, so every finding names the
+line and the column of the value, where the gate names line 0 for a place
+inside the JSON. Like the gate's, its findings never quote the file. Exit
+codes: 0 passed, 1 refused, 2 a file could not be read or the arguments are
+wrong.
+
+How the two are held together:
+
+- The grammar's values are written in both: the subjects, the ranges, the
+  caps, the patterns, the phrase list, the forbidden sequences, the keys and
+  the rule ids. `scripts/check-data.test.mjs` reads `collector/shapes.py`,
+  `gate.py` and `canon.py` and fails when one of them differs, and when the
+  list of files it checks is not the `out` of every named set in `run.py`. A
+  change to the grammar is therefore a change to both, in one pull request.
+- The code that applies them is separate: the byte scan, the JSON reader,
+  the walk over the shape, the canonical writer and the phrase matcher.
+- Both accept the fixture and the site's file, and each side's tests plant
+  their own samples to refuse: the Node test one or more of every rule, each
+  at its line and column, and one per entry of the phrase list.
+
+Where they can still differ:
+
+- On a sample that neither side's tests plant: no test runs the gate's
+  samples through this check, or the other way round.
+- On the rule for deep nesting. This check reads a value at most 512 levels
+  below the top level and stops deeper with `json-syntax`. The gate's reader
+  reads on, and the gate refuses such a file with `json-shape` and
+  `canonical`, up to Python's recursion limit (it depends on the machine:
+  about 116,000 levels where this was measured); past that limit the gate
+  refuses with `json-syntax` too. So the rule names differ only between those
+  two depths, and both refuse at every depth past 512.
+- On where a `json-syntax` finding points. The gate names line 0 for a key
+  that appears twice, a fraction or an exponent, NaN or infinity, an integer
+  with too many digits and nesting past Python's recursion limit, where this
+  check names the place. Where both name a place, they can point at
+  different characters of the same error: a file that starts with a lone
+  minus sign is refused at 1:1 by the gate, where the value starts, and at
+  1:2 here, where a digit was expected.
+
+Neither of the last two changes whether a file is refused: only the rule or
+the place that a finding names differs.
+
+What it does not do: it does not check the tables (the extract and the
+mappings) or the lock, which the gate checks; it does not compare the file
+with the site's own data (that each profession exists), which the data test
+`src/data/sourced.test.ts` does; and it has no self-test at run time, as the
+gate has: its planted samples run with the unit tests.
+
 ## Determinism
 
 The canonical writer sorts table rows, joins fields with a tab, ends every
@@ -147,13 +230,17 @@ site-packages; `-B`: no bytecode files.
 python3.14 -I -S -B -m unittest discover -s collector/tests -t collector
 python3.14 -I -S -B collector/run.py selftest
 python3.14 -I -S -B collector/run.py emit --check --set fixture
+python3.14 -I -S -B collector/run.py emit --check --set site
 python3.14 -I -S -B collector/run.py gate --set fixture
 ```
 
 `emit --check` writes nothing: it compares the file on disk with what its
-inputs give and exits 1 when they differ. `emit` without `--check` writes the
-file and says where. Exit codes: 0 passed, 1 refused or different, 2 usage or
-a file that cannot be read or written, 3 the self-test failed.
+inputs give and exits 1 when they differ, by as little as one byte. `emit`
+without `--check` writes the file and says where. `gate --set site` checks
+the emitted file alone, since the set has no inputs. Exit codes: 0 passed, 1
+refused or different, 2 usage or a file that cannot be read or written, 3 the
+self-test failed. The second check runs with Node from the repository's root
+folder: `npm run check:data`.
 
 The tests write only into temporary folders they make themselves and remove
 afterwards. Two checks in `collector/tests/__init__.py` hold them to that:
@@ -177,8 +264,10 @@ afterwards. Two checks in `collector/tests/__init__.py` hold them to that:
 ## In CI
 
 The job **Collector (offline)** runs the unit tests, the self-test and
-`emit --check` on Python 3.14 set up by the pinned `actions/setup-python`,
-with read access to the repository only and no package installed. No step
-fetches a source; setup-python itself may download the Python build from
-GitHub when the runner image does not have it. The deploy job needs this job
-to pass. What the other jobs check is in [ci.md](ci.md).
+`emit --check` on both sets, on Python 3.14 set up by the pinned
+`actions/setup-python`, with read access to the repository only and no
+package installed. No step fetches a source; setup-python itself may
+download the Python build from GitHub when the runner image does not have
+it. The deploy job needs this job to pass. The audit job, which installs no
+dependencies, runs the second check, `npm run check:data`, on the emitted
+files. What the other jobs check is in [ci.md](ci.md).
