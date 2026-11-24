@@ -4,9 +4,10 @@
 // Every tracked file (`git ls-files`) must match an entry of the allow-list
 // below: the page's source and tests, the check scripts, the end-to-end tests,
 // the listed docs and the demo animation with its recording script, the two
-// files under .github/, the collector's Python modules and tests, the five
-// synthetic fixture files, the data file the collector writes for the site
-// (src/data/sourced.json), and a few root files by exact name. Anything else
+// files under .github/, the collector's Python modules and tests, its two
+// sandbox profiles, the five synthetic fixture files, the data file the
+// collector writes for the site (src/data/sourced.json), and a few root files
+// by exact name. Anything else
 // fails: personal tool settings, editor folders, notes, dumps and scratch
 // files stay out without being named one by one. Adding a file to the
 // repository means adding its path to this list in the same pull request,
@@ -91,6 +92,9 @@ export const EXACT_PATHS = [
   'collector/fixtures/synthetic/lock.json',
   'collector/fixtures/synthetic/professions.tsv',
   'collector/fixtures/synthetic/subjects.tsv',
+  // The sandbox profiles of the collector's stages (sandbox-exec); paths come in as parameters.
+  'collector/sandbox/fetch.sb',
+  'collector/sandbox/offline.sb',
   'docs/ci.md',
   'docs/collector.md',
   'docs/contributing.md',

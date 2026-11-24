@@ -19,20 +19,75 @@ from tests import COLLECTOR, REPO, GuardedCase, WriteRefused
 
 MODULES = sorted(p for p in COLLECTOR.glob('*.py'))
 # The kinds of file the tree check lets into collector/ (scripts/check-tree.mjs).
-TRACKED = sorted(p for p in COLLECTOR.rglob('*') if p.is_file() and '__pycache__' not in p.parts and (p.suffix in ('.py', '.tsv', '.json') or p.name == '.python-version'))
+TRACKED = sorted(
+    p for p in COLLECTOR.rglob('*') if p.is_file() and '__pycache__' not in p.parts and (p.suffix in ('.py', '.tsv', '.json', '.sb') or p.name == '.python-version')
+)
 TEST_MODULES = sorted(p for p in (COLLECTOR / 'tests').glob('*.py'))
 OWN = {p.stem for p in MODULES}
 
-# What the collector's modules may import: the standard library modules they
-# need, none of which opens a connection or starts a process.
+# What every module of the collector may import: the standard library modules
+# it needs, none of which opens a connection or starts a process.
 ALLOWED_IMPORTS = {'argparse', 'dataclasses', 'json', 'os', 're', 'sys'}
-# What no file of the collector, tests included, may import in this stage.
+# And what a module needs on top, by name: the fetch stage its network and
+# hashes, the probe what it tries and reports, the launcher what it takes to
+# start a child and read the interpreter's files. No other module may import
+# more.
+EXTRA_IMPORTS = {
+    'fetch.py': {'errno', 'hashlib', 'http', 'socket', 'ssl'},
+    'probe.py': {'errno', 'pwd', 'resource', 'socket', 'ssl'},
+    'sandboxed.py': {'contextlib', 'resource', 'selectors', 'struct', 'subprocess', 'sysconfig', 'tempfile', 'time'},
+}
+# Modules that open connections or reach the system around the sandbox's rules.
 NETWORK = {'socket', 'ssl', 'http', 'urllib', 'ftplib', 'smtplib', 'poplib', 'imaplib', 'xmlrpc', 'asyncio', 'webbrowser', 'socketserver', 'ctypes'}
+# The only files of the collector that may import them: the fetch stage, the
+# probe that must try a connection, and the test that starts the loopback
+# server the fetch stage is tested against. ctypes stays forbidden in all.
+NETWORK_ALLOWED = {'fetch.py': {'http', 'socket', 'ssl'}, 'probe.py': {'socket', 'ssl'}, 'tests/test_fetch.py': {'http', 'ssl'}}
+# The functions of os that start a program or a process. Only the launcher
+# starts processes, through subprocess; the one exception is the probe, which
+# calls os.posix_spawn to see the sandbox refuse a shell.
+PROCESS_CALLS = re.compile(r'system|fork|forkpty|popen|exec\w*|spawn\w*|posix_spawn\w*')
+PROCESS_ALLOWED = {'probe.py': {'posix_spawn'}}
+
+
+def network_violations(name: str, source: str) -> set:
+    """The network modules a file imports that the rule does not allow it."""
+    return imports_in(source) & NETWORK - NETWORK_ALLOWED.get(name, set())
+
+
+def process_calls(source: str) -> set:
+    """The functions of os that start a program or a process which the
+    source names: as os.<name> (also through `import os as ...`), with `from
+    os import`, or as getattr(os, '<name>'); `*` for `from os import *`."""
+    tree = ast.parse(source)
+    names = {'os'} | {a.asname for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names if a.name == 'os' and a.asname}
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in names:
+            candidates = [node.attr]
+        elif isinstance(node, ast.ImportFrom) and node.module == 'os' and not node.level:
+            candidates = [alias.name for alias in node.names]
+        elif isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'getattr' and len(node.args) >= 2 and isinstance(node.args[0], ast.Name) \
+                and node.args[0].id in names and isinstance(node.args[1], ast.Constant):  # fmt: skip
+            candidates = [str(node.args[1].value)]
+        else:
+            continue
+        found.update(name for name in candidates if name == '*' or PROCESS_CALLS.fullmatch(name))
+    return found
+
+
+def process_violations(name: str, source: str) -> set:
+    """The process-starting functions of os a module names that the rule does not allow it."""
+    return process_calls(source) - PROCESS_ALLOWED.get(name, set())
 
 
 def imports(path) -> set:
+    return imports_in(path.read_text(encoding='ascii'))
+
+
+def imports_in(source: str) -> set:
     found = set()
-    for node in ast.walk(ast.parse(path.read_text(encoding='ascii'))):
+    for node in ast.walk(ast.parse(source)):
         if isinstance(node, ast.Import):
             found.update(alias.name.split('.')[0] for alias in node.names)
         elif isinstance(node, ast.ImportFrom):
@@ -44,15 +99,57 @@ def imports(path) -> set:
 
 class Layout(GuardedCase):
     def test_the_modules_import_only_the_standard_library_they_need(self):
-        self.assertEqual([p.name for p in MODULES], ['canon.py', 'emit.py', 'gate.py', 'run.py', 'selftest.py', 'shapes.py'])
+        names = ['canon.py', 'emit.py', 'fetch.py', 'gate.py', 'lock.py', 'probe.py', 'run.py', 'sandboxed.py', 'selftest.py', 'shapes.py']
+        self.assertEqual([p.name for p in MODULES], names)
         for path in MODULES:
             with self.subTest(path.name):
-                self.assertLessEqual(imports(path), ALLOWED_IMPORTS | OWN)
+                self.assertLessEqual(imports(path), ALLOWED_IMPORTS | EXTRA_IMPORTS.get(path.name, set()) | OWN)
 
-    def test_no_file_of_the_collector_imports_a_network_module(self):
+    def test_only_the_fetch_stage_the_probe_and_the_fetch_test_import_network_modules(self):
         for path in MODULES + TEST_MODULES:
+            name = str(path.relative_to(COLLECTOR))
+            with self.subTest(name):
+                self.assertEqual(network_violations(name, path.read_text(encoding='ascii')), set())
+                # Each exception is used, and only as far as it goes.
+                self.assertEqual(imports(path) & NETWORK, NETWORK_ALLOWED.get(name, set()))
+
+    def test_the_network_rule_refuses_a_network_import_in_every_other_file(self):
+        planted = ['import socket', 'from http import client', 'import urllib.request', 'import ssl as tls', 'from asyncio import open_connection',
+                   'import ctypes', 'def f():\n    import socketserver\n']  # fmt: skip
+        others = [str(p.relative_to(COLLECTOR)) for p in MODULES + TEST_MODULES if str(p.relative_to(COLLECTOR)) not in NETWORK_ALLOWED]
+        self.assertIn('gate.py', others)
+        self.assertIn('tests/test_gate.py', others)
+        for name in others:
+            for source in planted:
+                with self.subTest(file=name, source=source):
+                    self.assertNotEqual(network_violations(name, source), set())
+        # In the files the rule allows, only their own modules pass; ctypes never does.
+        self.assertEqual(network_violations('fetch.py', 'import ssl\nimport http.client\nimport socket\n'), set())
+        self.assertEqual(network_violations('probe.py', 'import socket\nimport ssl\n'), set())
+        self.assertEqual(network_violations('probe.py', 'import urllib.request\n'), {'urllib'})
+        for name in NETWORK_ALLOWED:
+            self.assertEqual(network_violations(name, 'import ctypes\n'), {'ctypes'})
+
+    def test_only_the_launcher_starts_processes(self):
+        for path in MODULES:
             with self.subTest(path.name):
-                self.assertEqual(imports(path) & NETWORK, set())
+                self.assertEqual('subprocess' in imports(path), path.name == 'sandboxed.py')
+                source = path.read_text(encoding='ascii')
+                self.assertEqual(process_violations(path.name, source), set())
+                # The exception is used, and only as far as it goes.
+                self.assertEqual(process_calls(source), PROCESS_ALLOWED.get(path.name, set()))
+
+    def test_the_process_rule_refuses_an_os_call_that_starts_a_process(self):
+        planted = ['os.system("x")', 'import os as o\no.execv("/bin/sh", [])', 'from os import fork', 'from os import *', 'os.forkpty()',
+                   'getattr(os, "posix_spawnp")(x)', 'os.spawnl(0, "x")', 'os.popen("x")', 'def f():\n    return os.execve\n', 'os.posix_spawn(x, [], {})']  # fmt: skip
+        self.assertIn('gate.py', [p.name for p in MODULES])
+        for path in MODULES:
+            for source in planted:
+                allowed = path.name == 'probe.py' and source.startswith('os.posix_spawn(')
+                with self.subTest(file=path.name, source=source):
+                    self.assertEqual(process_violations(path.name, source) == set(), allowed)
+        # Calls that start nothing pass everywhere.
+        self.assertEqual(process_calls('os.getpid()\nos.path.join("a", "b")\nos.listdir(".")\nos.environ.get("X")\nsys.executable\n'), set())
 
     def test_no_module_here_shares_a_name_with_the_standard_library(self):
         for name in OWN | {'tests'}:

@@ -1,0 +1,54 @@
+;; The sandbox profile of the collector's fetch stage (collector/fetch.py),
+;; for sandbox-exec on macOS. The launcher (collector/sandboxed.py) passes
+;; every path as a -D parameter, as a real path worked out at run time; this
+;; file names none. docs/collector.md says what each rule allows and why, and
+;; what the sandbox does not stop. A parameter used without `when` must be
+;; given: without it the profile does not load, and nothing runs.
+;;
+;; Deny by default. system.sb comes with macOS: it lets a process start (the
+;; dynamic loader, the system's own libraries and folders, a few system
+;; services). The rules below add only what the stage needs.
+
+(version 1)
+(deny default)
+(import "system.sb")
+
+;; The interpreter: its one binary may be started (sandbox-exec starts it, and
+;; nothing else may be), its home folder read and its libraries loaded.
+(allow process-exec (literal (param "PYTHON")))
+(allow file-read* file-map-executable (subpath (param "PYTHON_HOME")))
+(allow file-read-metadata (path-ancestors (param "PYTHON_HOME")))
+
+;; Libraries outside that home that its extension modules load (TLS and
+;; hashes), and the path through a symbolic link by which they are named.
+(when (param "LIBRARIES")
+  (allow file-read* file-map-executable (subpath (param "LIBRARIES"))))
+(when (param "LIBRARIES_LINK")
+  (allow file-read-metadata (literal (param "LIBRARIES_LINK")) (path-ancestors (param "LIBRARIES_LINK"))))
+
+;; The collector's code, read only, and the lock.
+(allow file-read* (subpath (param "COLLECTOR")))
+(allow file-read-metadata (path-ancestors (param "COLLECTOR")))
+(allow file-read* (literal (param "LOCK")))
+(allow file-read-metadata (path-ancestors (param "LOCK")))
+
+;; The source's quarantine folder: the one place the stage writes.
+(allow file-read* file-write* (subpath (param "QUARANTINE")))
+(allow file-read-metadata (path-ancestors (param "QUARANTINE")))
+
+;; The certificates that TLS checks a server against: a file and a folder,
+;; each as the interpreter names it and as its real path.
+(when (param "CA_FILE")
+  (allow file-read-metadata (literal (param "CA_FILE")) (path-ancestors (param "CA_FILE"))))
+(when (param "CA_FILE_REAL")
+  (allow file-read* (literal (param "CA_FILE_REAL"))))
+(when (param "CA_DIR")
+  (allow file-read-metadata (literal (param "CA_DIR")) (path-ancestors (param "CA_DIR"))))
+(when (param "CA_DIR_REAL")
+  (allow file-read* (subpath (param "CA_DIR_REAL"))))
+
+;; The network: TCP to port 443 of any host, and the local socket of the
+;; system's name resolver, which looks up host names. Nothing else: no other
+;; port, no UDP, no listening socket.
+(allow network-outbound (remote tcp "*:443"))
+(allow network-outbound (literal (param "RESOLVER")))

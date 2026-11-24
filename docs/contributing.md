@@ -49,8 +49,9 @@ can be merged.
 
 The repository holds only what belongs to the program. `npm run check:tree`
 fails for any tracked file that is not on the list in `scripts/check-tree.mjs`
-(root files, the docs and the collector's fixture files by name, and patterns
-for `src/`, `scripts/`, `e2e/` and the collector's modules and tests). When
+(root files, the docs, the collector's fixture files and its two sandbox
+profiles by name, and patterns for `src/`, `scripts/`, `e2e/` and the
+collector's modules and tests). When
 you add a file outside those patterns, add its path to the list in the same
 pull request, so the reviewer sees it. In a pull request the check
 also reads every commit: a file that is not on the list must not appear in any
@@ -98,8 +99,20 @@ npm run check:data       # the second check of the emitted files, in Node
 
 Keep its files ASCII text with no executable bit, give no module the name of
 a standard library module, and write planted test samples (addresses, markup,
-invisible characters, phrasing of an instruction) as fragments put together
-at run time, never as text in the file.
+invisible characters, phrasing of an instruction, the loopback interface) as
+fragments put together at run time, never as text in the file.
+
+The fetch stage runs only through `run.py fetch`, which starts it in a
+sandbox after a probe; on any system but macOS it stops with exit 4. Only
+`fetch.py`, `probe.py` and the fetch stage's test may import network modules,
+only `sandboxed.py` may start processes (through `subprocess`: no other
+module imports it or names `os.system`, `os.fork`, `os.exec*`, `os.spawn*`,
+`os.posix_spawn*` or `os.popen`, except `probe.py`, which starts a shell with
+`os.posix_spawn` to see the sandbox refuse it), and the sandbox profiles
+name no path: the launcher passes every path as a parameter. The unit tests
+in `collector/tests/test_layout.py` hold these rules. A change to a profile or
+to the launcher needs the unit tests on a Mac as well, since CI skips the
+tests of the real sandbox.
 
 A change to the grammar of the emitted file (a subject, a range, a cap, a
 pattern, the phrase list) goes into both `collector/` and

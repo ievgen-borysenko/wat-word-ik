@@ -219,10 +219,15 @@ describe('check-tree', () => {
       'collector/fixtures/synthetic/subjects.tsv',
       'collector/fixtures/synthetic/lock.json',
       'collector/fixtures/synthetic/expected.json',
+      'collector/fetch.py',
+      'collector/sandboxed.py',
+      'collector/tests/test_fetch.py',
+      'collector/sandbox/fetch.sb',
+      'collector/sandbox/offline.sb',
       'docs/collector.md',
     ];
 
-    it('lists its modules, tests, synthetic fixture and docs', () => {
+    it('lists its modules, tests, sandbox profiles, synthetic fixture and docs', () => {
       for (const path of LISTED) expect(onList(path), path).toBe(true);
       const r = repo(Object.fromEntries(LISTED.map((path) => [path, 'x\n'])));
       expect(rules(r)).toEqual([]);
@@ -250,7 +255,16 @@ describe('check-tree', () => {
       'collector/fixtures/synthetic/extract.json',
       'collector/fixtures/synthetic/sub/extract.tsv',
       'collector/extract/knowledge.tsv',
-      'collector/sandbox/fetch.sb',
+      // The two profiles are listed by name: another file beside them, or one of their names elsewhere, is not.
+      'collector/sandbox/other.sb',
+      'collector/sandbox/Fetch.sb',
+      'collector/sandbox/fetch.sb.bak',
+      'collector/sandbox/notes.txt',
+      'collector/sandbox/fetch.py',
+      'collector/sandbox/sub/fetch.sb',
+      'collector/fetch.sb',
+      'collector/tests/fetch.sb',
+      'sandbox/offline.sb',
       'docs/collector-notes.md',
     ])('refuses %s, which is not on the list (yet)', (path) => {
       expect(onList(path)).toBe(false);
@@ -274,6 +288,16 @@ describe('check-tree', () => {
       expect(new Set(rules(r))).toEqual(
         new Set(['collector/run.py executable', 'collector/fixtures/synthetic/lock.json encoding', 'collector/tests/test_gate.py local-path']),
       );
+    });
+
+    // The profiles name no path of their own; one that did, or had the executable bit, is refused.
+    it('holds the sandbox profiles to the text rules: no executable bit, no local path', () => {
+      const r = repo({
+        'collector/sandbox/fetch.sb': '(version 1)\n(deny default)\n',
+        'collector/sandbox/offline.sb': `(allow file-read* (subpath "/${'private'}/var/db/x"))\n`,
+      });
+      r.git(['update-index', '--chmod=+x', 'collector/sandbox/fetch.sb']);
+      expect(new Set(rules(r))).toEqual(new Set(['collector/sandbox/fetch.sb executable', 'collector/sandbox/offline.sb local-path']));
     });
 
     // The collector writes one file for the site: listed by name, like the fixture's files.

@@ -1,0 +1,45 @@
+;; The sandbox profile of the collector's offline stages, for sandbox-exec on
+;; macOS: the check of a source put into the quarantine by hand now, the scan
+;; and the extract later. The launcher (collector/sandboxed.py) passes every
+;; path as a -D parameter, as a real path worked out at run time; this file
+;; names none. docs/collector.md says what each rule allows and why, and what
+;; the sandbox does not stop. A parameter used without `when` must be given:
+;; without it the profile does not load, and nothing runs.
+;;
+;; Deny by default. system.sb comes with macOS: it lets a process start (the
+;; dynamic loader, the system's own libraries and folders, a few system
+;; services). The rules below add only what the stages need, and no network.
+
+(version 1)
+(deny default)
+(import "system.sb")
+
+;; The interpreter: its one binary may be started (sandbox-exec starts it, and
+;; nothing else may be), its home folder read and its libraries loaded.
+(allow process-exec (literal (param "PYTHON")))
+(allow file-read* file-map-executable (subpath (param "PYTHON_HOME")))
+(allow file-read-metadata (path-ancestors (param "PYTHON_HOME")))
+
+;; Libraries outside that home that its extension modules load (hashes), and
+;; the path through a symbolic link by which they are named.
+(when (param "LIBRARIES")
+  (allow file-read* file-map-executable (subpath (param "LIBRARIES"))))
+(when (param "LIBRARIES_LINK")
+  (allow file-read-metadata (literal (param "LIBRARIES_LINK")) (path-ancestors (param "LIBRARIES_LINK"))))
+
+;; The collector's code, read only, and the lock when the stage reads it.
+(allow file-read* (subpath (param "COLLECTOR")))
+(allow file-read-metadata (path-ancestors (param "COLLECTOR")))
+(when (param "LOCK")
+  (allow file-read* (literal (param "LOCK")))
+  (allow file-read-metadata (path-ancestors (param "LOCK"))))
+
+;; The source's quarantine folder: read only.
+(allow file-read* (subpath (param "QUARANTINE")))
+(allow file-read-metadata (path-ancestors (param "QUARANTINE")))
+
+;; The stage's own folder (its staging or report): the one place it writes.
+(allow file-read* file-write* (subpath (param "OUT")))
+(allow file-read-metadata (path-ancestors (param "OUT")))
+
+;; No network rule: every connection is refused, the name resolver's too.
