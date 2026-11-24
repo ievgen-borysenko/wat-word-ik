@@ -21,13 +21,13 @@ same parameters and limits, and must observe the refusals the profile
 promises (EPERM): any network connection from the offline profile, and from
 the fetch profile a TCP port other than 443 and UDP; a read outside the
 allowed folders, the home folder's listing among them; a write outside them;
-starting a program. It must also
-observe what the stage needs to work (reading its code, writing its folder,
-for the fetch profile reaching port 443, the name resolver and TLS with its
-certificates), an environment with nothing from the caller, the interpreter
-flags and the limits. If sandbox-exec is missing, the profile does not load,
-or one observation differs, the launcher stops with NO_SANDBOX (exit 4) and
-the stage does not run.
+starting a program. It must also observe what the stage needs to work
+(reading its code, writing its folder, for the fetch profile reaching port
+443, the name resolver and TLS with its certificates), an environment with
+nothing from the caller, the interpreter flags and the limits. If
+sandbox-exec is missing, the profile does not load, or one observation
+differs, the launcher stops with NO_SANDBOX (exit 4) and the stage does not
+run.
 
 What the profile reads of the interpreter is worked out here: its binary and
 home folder, and the libraries outside that folder that the extension modules

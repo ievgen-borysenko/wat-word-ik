@@ -365,15 +365,22 @@ and make the link).
 ### The profiles
 
 Both start with `(deny default)` and `(import "system.sb")`, the base profile
-that comes with macOS. On macOS 27.2 that file allows: reading `/System`,
+that comes with macOS, about 300 lines; the file itself is the reference, and
+what follows is a summary, not a complete list. On macOS 27.2 that file
+allows, among others: reading `/System`,
 `/usr/lib`, `/usr/share`, `/Library/Apple`, a few files under `/private/etc`
 (`passwd`, `services`, `protocols`, `localtime`) and two under the system's
 database folder (time zones, the directory record store); `/dev/null`,
 `/dev/zero`, `/dev/random`, `/dev/urandom`, `/dev/fd`; the dynamic loader;
 creating core files under `/cores`; the system log's local socket; looking up
 about twenty named system services (logging, preferences, the trust and
-directory services among them) and XPC services by any name; reading
-system settings (`sysctl`). The profiles add:
+directory services among them) and XPC services by any name; registering
+Mach services under names of the process's own; reading system settings
+(`sysctl`) and writing a few of them; reading two kinds of shared memory
+(notifications, preferences); a few named system calls and kernel routines.
+Parts of the file are definitions (graphics, networking among them) that
+apply only where a profile calls them; these profiles call none. The
+profiles add:
 
 | Rule | `fetch.sb` | `offline.sb` | Why |
 |------|------------|--------------|-----|
@@ -465,8 +472,9 @@ Each item says whether it was checked for this version.
   enforce an address-space limit; measured: the limit does not take, and a
   6 GiB allocation succeeded) and the number of files written into the
   allowed folder.
-- **The Mach and XPC services that `system.sb` allows.** Listed above from
-  the file; what each does was not examined.
+- **The Mach and XPC services and the other rules that `system.sb` allows.**
+  Summarised above from the file, not completely; what each does was not
+  examined.
 - **The content.** Plausible but wrong numbers pass any sandbox; only pinned
   hashes, range checks and review of the mappings address that.
 - **TLS under the fetch profile.** Checked as far as this machine allows, on
