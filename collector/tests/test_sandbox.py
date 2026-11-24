@@ -552,6 +552,7 @@ class Sandboxed(GuardedCase):
             self.assertEqual(lines['tcp-9'], 'refused (EPERM), as promised')
             self.assertEqual(lines['udp-53'], 'refused (EPERM), as promised')
             self.assertEqual(lines['read-outside'], 'refused (EPERM), as promised')
+            self.assertEqual(lines['read-home'], 'refused (EPERM), as promised')
             self.assertEqual(lines['write-outside'], 'refused (EPERM), as promised')
             self.assertEqual(lines['exec'], 'refused (EPERM), as promised')
             if profile == 'offline':
@@ -578,7 +579,7 @@ class Sandboxed(GuardedCase):
             code = sandboxed.run_stage('offline', params, sandboxed.PROBE, ['paths'], scratch=str(folder), file_size=sandboxed.SMALL_FILE, timeout=60)
         self.assertEqual(code, sandboxed.NO_SANDBOX)
         self.assertEqual(len(spawned), 1, 'only the probe ran')
-        for name in ('read-outside', 'read-repository', 'write-outside', 'write-quarantine', 'exec', 'tcp-443', 'tcp-9', 'udp-53', 'resolver'):
+        for name in ('read-outside', 'read-repository', 'read-home', 'write-outside', 'write-quarantine', 'exec', 'tcp-443', 'tcp-9', 'udp-53', 'resolver'):
             self.assertIn(f'{name}: the sandbox let it through', err.getvalue())
 
     def test_a_file_put_into_the_quarantine_by_hand_is_checked_in_the_offline_sandbox(self):

@@ -20,7 +20,8 @@ Before every run, the probe (probe.py) runs under the same profile, with the
 same parameters and limits, and must observe the refusals the profile
 promises (EPERM): any network connection from the offline profile, and from
 the fetch profile a TCP port other than 443 and UDP; a read outside the
-allowed folders; a write outside them; starting a program. It must also
+allowed folders, the home folder's listing among them; a write outside them;
+starting a program. It must also
 observe what the stage needs to work (reading its code, writing its folder,
 for the fetch profile reaching port 443, the name resolver and TLS with its
 certificates), an environment with nothing from the caller, the interpreter
@@ -102,6 +103,7 @@ EXPECTED = {
         'tls': 'allowed',
         'read-outside': 'refused',
         'read-repository': 'refused',
+        'read-home': 'refused',
         'write-outside': 'refused',
         'exec': 'refused',
         'tcp-9': 'refused',
@@ -113,6 +115,7 @@ EXPECTED = {
         'write-out': 'allowed',
         'read-outside': 'refused',
         'read-repository': 'refused',
+        'read-home': 'refused',
         'write-outside': 'refused',
         'write-quarantine': 'refused',
         'exec': 'refused',

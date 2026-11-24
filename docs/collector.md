@@ -416,6 +416,7 @@ compares the outcomes with what the profile promises:
 | Write into `OUT` | - | allowed |
 | Read a file outside every allowed folder (made for the probe) | refused | refused |
 | Read the repository's README | refused | refused |
+| List the home folder, as the user database names it (the environment is empty) | refused | refused |
 | Write outside every allowed folder | refused | refused |
 | Start a shell | refused | refused |
 | TCP to port 443 on the loopback interface | allowed (the network stack answers) | refused |
@@ -498,9 +499,10 @@ environment, no input, the folder `/` and the limits; that the launcher keeps
 only the start of a long output, passes it on cut and printable, and stops a
 child that runs too long; that a quarantine folder replaced by a symbolic
 link stops the run before anything starts; the profiles' text and
-parameters; the reading of Mach-O load commands; and that only `fetch.py`,
-`probe.py` and the test with the loopback server import network modules.
-`run.py fetch` and `run.py probe` exit 4 there.
+parameters; the reading of Mach-O load commands; that only `fetch.py`,
+`probe.py` and the test with the loopback server import network modules; and
+that only the launcher starts processes, with the probe's one `os.posix_spawn`
+as the exception. `run.py fetch` and `run.py probe` exit 4 there.
 
 Only a run on macOS proves the rest, in the tests of the class `Sandboxed`
 in `collector/tests/test_sandbox.py`, which CI skips with that reason: the

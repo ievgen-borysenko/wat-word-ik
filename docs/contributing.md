@@ -105,8 +105,12 @@ fragments put together at run time, never as text in the file.
 The fetch stage runs only through `run.py fetch`, which starts it in a
 sandbox after a probe; on any system but macOS it stops with exit 4. Only
 `fetch.py`, `probe.py` and the fetch stage's test may import network modules,
-only `sandboxed.py` may start processes, and the sandbox profiles name no
-path: the launcher passes every path as a parameter. A change to a profile or
+only `sandboxed.py` may start processes (through `subprocess`: no other
+module imports it or names `os.system`, `os.fork`, `os.exec*`, `os.spawn*`,
+`os.posix_spawn*` or `os.popen`, except `probe.py`, which starts a shell with
+`os.posix_spawn` to see the sandbox refuse it), and the sandbox profiles
+name no path: the launcher passes every path as a parameter. The unit tests
+in `collector/tests/test_layout.py` hold these rules. A change to a profile or
 to the launcher needs the unit tests on a Mac as well, since CI skips the
 tests of the real sandbox.
 

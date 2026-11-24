@@ -15,8 +15,10 @@ its resource limits. The launcher decides; this module only reports.
 
 The actions: read a file of the collector, the lock, the quarantine folder;
 read a file outside every allowed folder and one of the repository outside
-the collector; write into the folder the stage may write, into the
-quarantine (from the offline profile) and outside every allowed folder;
+the collector; list the home folder, as the user database names it (not the
+environment, which is empty); write into the folder the stage may write,
+into the quarantine (from the offline profile) and outside every allowed
+folder;
 start a program (a shell); connect over TCP to port 443 and port 9 on the
 loopback interface, send UDP to port 53 there, connect to the system's name
 resolver; and load TLS with its certificates. Nothing leaves the machine: the
@@ -31,6 +33,7 @@ import argparse
 import errno
 import json
 import os
+import pwd
 import resource
 import socket
 import sys
@@ -72,6 +75,10 @@ def _list(path: str):
         os.listdir(path)
 
     return action
+
+
+def _list_home():
+    os.listdir(pwd.getpwuid(os.getuid()).pw_dir)
 
 
 def _write(folder: str):
@@ -138,6 +145,7 @@ def probe(args) -> dict:
         'read-collector': _read(os.path.abspath(__file__)),
         'read-outside': _read(args.outside_file),
         'read-repository': _read(args.repository_file),
+        'read-home': _list_home,
         'write-outside': _write(args.outside),
         'exec': _exec,
         'tcp-443': _tcp(443),

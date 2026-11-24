@@ -34,7 +34,7 @@ ALLOWED_IMPORTS = {'argparse', 'dataclasses', 'json', 'os', 're', 'sys'}
 # more.
 EXTRA_IMPORTS = {
     'fetch.py': {'errno', 'hashlib', 'http', 'socket', 'ssl'},
-    'probe.py': {'errno', 'resource', 'socket', 'ssl'},
+    'probe.py': {'errno', 'pwd', 'resource', 'socket', 'ssl'},
     'sandboxed.py': {'contextlib', 'resource', 'selectors', 'struct', 'subprocess', 'sysconfig', 'tempfile', 'time'},
 }
 # Modules that open connections or reach the system around the sandbox's rules.
@@ -43,11 +43,42 @@ NETWORK = {'socket', 'ssl', 'http', 'urllib', 'ftplib', 'smtplib', 'poplib', 'im
 # probe that must try a connection, and the test that starts the loopback
 # server the fetch stage is tested against. ctypes stays forbidden in all.
 NETWORK_ALLOWED = {'fetch.py': {'http', 'socket', 'ssl'}, 'probe.py': {'socket', 'ssl'}, 'tests/test_fetch.py': {'http', 'ssl'}}
+# The functions of os that start a program or a process. Only the launcher
+# starts processes, through subprocess; the one exception is the probe, which
+# calls os.posix_spawn to see the sandbox refuse a shell.
+PROCESS_CALLS = re.compile(r'system|fork|forkpty|popen|exec\w*|spawn\w*|posix_spawn\w*')
+PROCESS_ALLOWED = {'probe.py': {'posix_spawn'}}
 
 
 def network_violations(name: str, source: str) -> set:
     """The network modules a file imports that the rule does not allow it."""
     return imports_in(source) & NETWORK - NETWORK_ALLOWED.get(name, set())
+
+
+def process_calls(source: str) -> set:
+    """The functions of os that start a program or a process which the
+    source names: as os.<name> (also through `import os as ...`), with `from
+    os import`, or as getattr(os, '<name>'); `*` for `from os import *`."""
+    tree = ast.parse(source)
+    names = {'os'} | {a.asname for n in ast.walk(tree) if isinstance(n, ast.Import) for a in n.names if a.name == 'os' and a.asname}
+    found = set()
+    for node in ast.walk(tree):
+        if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) and node.value.id in names:
+            candidates = [node.attr]
+        elif isinstance(node, ast.ImportFrom) and node.module == 'os' and not node.level:
+            candidates = [alias.name for alias in node.names]
+        elif isinstance(node, ast.Call) and getattr(node.func, 'id', None) == 'getattr' and len(node.args) >= 2 and isinstance(node.args[0], ast.Name) \
+                and node.args[0].id in names and isinstance(node.args[1], ast.Constant):  # fmt: skip
+            candidates = [str(node.args[1].value)]
+        else:
+            continue
+        found.update(name for name in candidates if name == '*' or PROCESS_CALLS.fullmatch(name))
+    return found
+
+
+def process_violations(name: str, source: str) -> set:
+    """The process-starting functions of os a module names that the rule does not allow it."""
+    return process_calls(source) - PROCESS_ALLOWED.get(name, set())
 
 
 def imports(path) -> set:
@@ -103,6 +134,22 @@ class Layout(GuardedCase):
         for path in MODULES:
             with self.subTest(path.name):
                 self.assertEqual('subprocess' in imports(path), path.name == 'sandboxed.py')
+                source = path.read_text(encoding='ascii')
+                self.assertEqual(process_violations(path.name, source), set())
+                # The exception is used, and only as far as it goes.
+                self.assertEqual(process_calls(source), PROCESS_ALLOWED.get(path.name, set()))
+
+    def test_the_process_rule_refuses_an_os_call_that_starts_a_process(self):
+        planted = ['os.system("x")', 'import os as o\no.execv("/bin/sh", [])', 'from os import fork', 'from os import *', 'os.forkpty()',
+                   'getattr(os, "posix_spawnp")(x)', 'os.spawnl(0, "x")', 'os.popen("x")', 'def f():\n    return os.execve\n', 'os.posix_spawn(x, [], {})']  # fmt: skip
+        self.assertIn('gate.py', [p.name for p in MODULES])
+        for path in MODULES:
+            for source in planted:
+                allowed = path.name == 'probe.py' and source.startswith('os.posix_spawn(')
+                with self.subTest(file=path.name, source=source):
+                    self.assertEqual(process_violations(path.name, source) == set(), allowed)
+        # Calls that start nothing pass everywhere.
+        self.assertEqual(process_calls('os.getpid()\nos.path.join("a", "b")\nos.listdir(".")\nos.environ.get("X")\nsys.executable\n'), set())
 
     def test_no_module_here_shares_a_name_with_the_standard_library(self):
         for name in OWN | {'tests'}:
