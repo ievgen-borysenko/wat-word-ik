@@ -508,26 +508,72 @@ def run_stage(profile: str, params: dict, script: str, args: list, *, scratch: s
     return result.returncode
 
 
+def _within(path: str, folder: str) -> bool:
+    """Whether path is folder or lies inside it. By real path, and, where
+    folder exists, by identity (device and inode): path and each of its
+    ancestors that exists is compared with folder, so that another spelling
+    of the same folder (a case alias on a volume that does not tell upper
+    from lower case, a link) is caught too. A path not made yet is decided
+    by its ancestors."""
+    real_path, real_folder = os.path.realpath(path), os.path.realpath(folder)
+    if _inside(real_path, real_folder):
+        return True
+    try:
+        target = os.stat(real_folder)
+    except OSError:
+        return False
+    current = real_path
+    while True:
+        with contextlib.suppress(OSError):
+            if os.path.samestat(os.stat(current), target):
+                return True
+        parent = os.path.dirname(current)
+        if parent == current:
+            return False
+        current = parent
+
+
+def protected_folders() -> list:
+    """(what, folder): the folders the quarantine keeps apart from."""
+    home = os.path.realpath(os.path.expanduser('~'))
+    return [('the repository', REPO)] + [('a folder that macOS syncs', os.path.join(home, *parts)) for parts in SYNCED]
+
+
+def keep_apart(folder: str) -> None:
+    """Raises Failed when folder is the repository or a folder that macOS
+    syncs, lies inside one, or contains one (_within, both ways)."""
+    for what, protected in protected_folders():
+        if _within(folder, protected) or _within(protected, folder):
+            raise Failed(f'the quarantine folder {folder} would be {what}, lie inside it or contain it; nothing ran. Choose another --quarantine')
+
+
 def quarantine_root(given: str | None) -> str:
     """The quarantine's root as a real path; refused inside the repository
-    or a folder that macOS syncs (iCloud Drive, cloud storage providers)."""
+    or a folder that macOS syncs (iCloud Drive, cloud storage providers),
+    also when spelt another way (_within). A root may hold the repository:
+    source_folder keeps each source's folder apart from it."""
     root = os.path.realpath(os.path.expanduser(given or DEFAULT_QUARANTINE))
-    if _inside(root, os.path.realpath(REPO)):
+    if _within(root, REPO):
         raise Failed('the quarantine must be outside the repository')
-    home = os.path.realpath(os.path.expanduser('~'))
-    if any(_inside(root, os.path.join(home, *parts)) for parts in SYNCED):
+    if any(_within(root, synced) for _what, synced in protected_folders()[1:]):
         raise Failed('the quarantine must be outside the folders that macOS syncs')
     return root
 
 
 def source_folder(root: str, source: lock.Source) -> str:
     """Make QUARANTINE/<id>/<sha256> where it is missing, under the root (a
-    real path), and return it; raises Failed when a part of it is a symbolic
-    link, or its real path is not that path. The fetch profile lets the stage
-    write in that folder, and so remove it and put a link to another place
-    in its stead: the next run would hand that place to the probe and the
-    stage. A part is checked before it is made, so that nothing is made
-    through a link."""
+    real path), and return it; raises Failed when that folder would be the
+    repository or a synced folder, lie inside one or contain one (checked
+    before anything is made, and again once it exists), when a part of it is
+    a symbolic link, or when its real path is not that path. A root that
+    holds the repository (its parent folder, say) with a source whose id is
+    the repository's name would otherwise put the source's folder into the
+    repository. The fetch profile lets the stage write in its folder, and so
+    remove it and put a link to another place in its stead: the next run
+    would hand that place to the probe and the stage. A part is checked
+    before it is made, so that nothing is made through a link."""
+    target = os.path.join(root, source.id, source.sha256)
+    keep_apart(target)
     os.makedirs(root, mode=0o700, exist_ok=True)
     folder = root
     for part in (source.id, source.sha256):
@@ -536,8 +582,9 @@ def source_folder(root: str, source: lock.Source) -> str:
             raise Failed(f'{folder} in the quarantine is a symbolic link; nothing ran. Look at where it points, then remove it by hand')
         if not os.path.isdir(folder):
             os.mkdir(folder, 0o700)
-    if os.path.realpath(folder) != os.path.join(root, source.id, source.sha256):
+    if os.path.realpath(folder) != target:
         raise Failed(f'{folder} in the quarantine is not where its path says; nothing ran')
+    keep_apart(folder)
     return folder
 
 

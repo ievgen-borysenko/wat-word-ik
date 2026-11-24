@@ -27,6 +27,7 @@ from unittest import mock
 
 import run
 import sandboxed
+import shapes
 from tests import COLLECTOR, REPO, GuardedCase
 
 HAS_SANDBOX = sandboxed.sandbox_available()
@@ -272,6 +273,102 @@ class Launcher(GuardedCase):
             self.assertEqual(sandboxed.fetch('by-hand', str(lock_path), str(folder / 'q3'), scratch=str(folder)), 0)
         self.assertEqual(seen, [os.path.join(folder / 'q3', 'by-hand', entry['sha256'])])
         self.assertTrue(os.path.isdir(seen[0]) and not os.path.islink(seen[0]))
+
+    def fetch_apart(self, lock_path, root, scratch) -> tuple:
+        """sandboxed.fetch with the sandbox taken as there and nothing that
+        starts: (exit code, error output, the quarantine folders handed on)."""
+        def must_not_run(*_args, **_kwargs):
+            raise AssertionError('nothing may run')
+
+        seen = []
+        with mock.patch.object(sandboxed, 'sandbox_available', lambda: True), \
+                mock.patch.object(sandboxed, 'parameters', lambda profile, **kwargs: seen.append(kwargs['quarantine']) or {}), \
+                mock.patch.object(sandboxed, 'run_stage', lambda *_args, **_kwargs: 0), mock.patch.object(sandboxed, 'spawn', must_not_run), \
+                captured() as (_out, err):  # fmt: skip
+            source_id = json.loads(lock_path.read_text(encoding='ascii'))['sources'][0]['id']
+            code = sandboxed.fetch(source_id, str(lock_path), str(root), scratch=str(scratch))
+        return code, err.getvalue(), seen
+
+    @staticmethod
+    def repository_name_as_id():
+        """The name of the repository's folder when it is a valid source id, else None."""
+        name = os.path.basename(sandboxed.REPO)
+        return name if re.fullmatch(shapes.SOURCE_ID, name) and len(name) <= shapes.SOURCE_ID_MAX else None
+
+    def test_a_root_around_the_real_repository_does_not_make_the_repository_a_source_folder(self):
+        name = self.repository_name_as_id()
+        if name is None:
+            self.skipTest('the name of the folder that holds the repository is not a valid source id')
+        folder = self.make_temp()
+        lock_path, entry = write_lock(folder, b'x\n', id=name)
+        before = sorted(os.listdir(sandboxed.REPO))
+        code, err, seen = self.fetch_apart(lock_path, os.path.dirname(sandboxed.REPO), folder)
+        self.assertEqual((code, seen), (2, []), err)
+        self.assertIn('would be the repository, lie inside it or contain it; nothing ran', err)
+        self.assertEqual(sorted(os.listdir(sandboxed.REPO)), before, 'nothing was made in the repository')
+        self.assertFalse(os.path.lexists(os.path.join(sandboxed.REPO, entry['sha256'])))
+
+    def test_a_case_alias_of_the_real_repository_is_the_repository(self):
+        parent, name = os.path.split(sandboxed.REPO)
+        alias = os.path.join(parent, name.swapcase())
+        if not (os.path.exists(alias) and os.path.samefile(alias, sandboxed.REPO)):
+            self.skipTest('the volume of the repository tells upper from lower case: no case alias of its path exists')
+        folder = self.make_temp()
+        before = sorted(os.listdir(sandboxed.REPO))
+        lock_path, _entry = write_lock(folder, b'x\n')
+        for root in (alias, os.path.join(alias, 'quarantine'), os.path.join(alias, 'collector', 'q')):
+            with self.subTest(root='alias' + root[len(alias):]):
+                code, err, seen = self.fetch_apart(lock_path, root, folder)
+                self.assertEqual((code, seen), (2, []), err)
+                self.assertIn('the quarantine must be outside the repository', err)
+        # The parent spelt another way, with the repository's name as the id: only the
+        # identity of the folders shows that the source's folder would be the repository's.
+        grand, parent_name = os.path.split(parent)
+        name = self.repository_name_as_id()
+        if name is not None and parent_name.swapcase() != parent_name:
+            lock_path, _entry = write_lock(folder, b'x\n', id=name)
+            code, err, seen = self.fetch_apart(lock_path, os.path.join(grand, parent_name.swapcase()), folder)
+            self.assertEqual((code, seen), (2, []), err)
+            self.assertIn('would be the repository, lie inside it or contain it', err)
+        self.assertEqual(sorted(os.listdir(sandboxed.REPO)), before, 'nothing was made in the repository')
+
+    def test_a_source_folder_is_kept_apart_from_a_stand_in_repository_and_synced_folders(self):
+        folder = self.make_temp()
+        repo = folder / 'repo'
+        repo.mkdir()
+        (repo / 'README.md').write_text('x\n')
+        home = folder / 'home'
+        (home / 'Library' / 'Mobile Documents').mkdir(parents=True)
+        with mock.patch.object(sandboxed, 'REPO', str(repo)), mock.patch.dict(os.environ, {'HOME': str(home)}):
+            # The root holds the repository and the id is its name: refused, nothing made in it.
+            lock_path, _entry = write_lock(folder, b'x\n', id='repo')
+            os.symlink(folder, folder / 'link')
+            for root in (folder, folder / 'link'):  # the second: the same root through a link
+                with self.subTest(root=root.name):
+                    code, err, seen = self.fetch_apart(lock_path, root, folder)
+                    self.assertEqual((code, seen), (2, []), err)
+                    self.assertIn('would be the repository, lie inside it or contain it', err)
+                    self.assertEqual(os.listdir(repo), ['README.md'], 'nothing was made in the repository')
+            # Another id under the same root is an ordinary source folder beside the repository.
+            lock_path, entry = write_lock(folder, b'x\n', id='other')
+            code, err, seen = self.fetch_apart(lock_path, folder, folder)
+            self.assertEqual((code, seen), (0, [os.path.join(folder, 'other', entry['sha256'])]), err)
+            # A source folder that would contain the repository.
+            lock_path, entry = write_lock(folder, b'x\n', id='outer')
+            inner = folder / 'outer' / entry['sha256'] / 'repo'
+            inner.mkdir(parents=True)
+            with mock.patch.object(sandboxed, 'REPO', str(inner)):
+                code, err, seen = self.fetch_apart(lock_path, folder, folder)
+            self.assertEqual((code, seen), (2, []))
+            self.assertIn('would be the repository, lie inside it or contain it', err)
+            # A source folder that would contain a folder that macOS syncs.
+            lock_path, entry = write_lock(folder, b'x\n', id='around')
+            synced = folder / 'around' / entry['sha256'] / 'home'
+            (synced / 'Library' / 'Mobile Documents').mkdir(parents=True)
+            with mock.patch.dict(os.environ, {'HOME': str(synced)}):
+                code, err, seen = self.fetch_apart(lock_path, folder, folder)
+            self.assertEqual((code, seen), (2, []))
+            self.assertIn('would be a folder that macOS syncs, lie inside it or contain it', err)
 
     def without_sandbox_exec(self):
         return mock.patch.object(sandboxed, 'SANDBOX_EXEC', str(self.make_temp() / 'sandbox-exec'))

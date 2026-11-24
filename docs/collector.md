@@ -292,7 +292,15 @@ version does not have), `--quarantine` another root for the quarantine
 (default `~/dev/_quarantine/wat-word-ik`). The root must be outside the
 repository and outside the folders macOS syncs (iCloud Drive under
 `~/Library/Mobile Documents`, cloud storage under `~/Library/CloudStorage`);
-other synced folders are not recognised, so do not choose one. For a manual
+other synced folders are not recognised, so do not choose one. A root may
+hold the repository (its parent folder, say), but the source's own folder,
+`QUARANTINE/<id>/<sha256>`, must not be the repository or a synced folder,
+lie inside one or contain one: with the parent as the root and a source whose
+id is the repository folder's name, that folder would otherwise be made inside
+the repository. Both checks compare folders by identity (device and inode) as
+well as by path, so another spelling of the same folder, such as a case alias
+on a volume that does not tell upper from lower case, or a link, is refused
+too; the source's folder is checked before anything is made. For a manual
 source, put the file into the folder the first run names, then run the same
 command again.
 
@@ -354,9 +362,11 @@ prints them). It never reads what a stage downloads. A Mach-O file it cannot
 read or parse, or an interpreter that does not say where its certificates
 are, stops it with exit 4.
 
-Before a run it makes `QUARANTINE/<id>/<sha256>` where it is missing, one
-part at a time, and stops with exit 2 when a part is a symbolic link or the
-folder's real path is not that path. The fetch profile lets the stage write
+Before a run it checks that `QUARANTINE/<id>/<sha256>` is apart from the
+repository and the synced folders (see "Run it"; exit 2 if not, with nothing
+made), then makes it where it is missing, one part at a time, and stops with
+exit 2 when a part is a symbolic link or the folder's real path is not that
+path. The fetch profile lets the stage write
 in that folder, and so remove it and put a link to another place in its
 stead; without the check, the next run would hand that place to the probe
 and the stage (measured: in `fetch.sb` a child can remove its empty folder
@@ -506,7 +516,11 @@ not run, or when `sandbox-exec` is missing; that a child gets an empty
 environment, no input, the folder `/` and the limits; that the launcher keeps
 only the start of a long output, passes it on cut and printable, and stops a
 child that runs too long; that a quarantine folder replaced by a symbolic
-link stops the run before anything starts; the profiles' text and
+link stops the run before anything starts, and so does a source's folder that
+would be the repository or a synced folder, lie inside one or contain one
+(with the repository's parent as the root, also through a link; a case alias
+is tested only where the volume does not tell upper from lower case, as on
+macOS by default, and skipped on CI's Linux); the profiles' text and
 parameters; the reading of Mach-O load commands; that only `fetch.py`,
 `probe.py` and the test with the loopback server import network modules; and
 that only the launcher starts processes, with the probe's one `os.posix_spawn`
