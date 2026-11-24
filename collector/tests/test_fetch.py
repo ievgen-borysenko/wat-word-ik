@@ -189,6 +189,15 @@ class Fetch(GuardedCase):
         folder, _message = self.get(*self.source())
         self.assertEqual((folder / 'data.tsv').read_bytes(), BODY)
 
+    def test_a_partial_file_left_by_a_stopped_run_is_removed_first(self):
+        self.serve('/data.tsv')
+        source, listed = self.source()
+        folder = self.make_temp()
+        (folder / ('data.tsv' + fetch.PARTIAL)).write_bytes(b'cut off')
+        fetch.download(source, str(folder), listed, context=self.trusting, port=self.port)
+        self.assertEqual(os.listdir(folder), ['data.tsv'])
+        self.assertEqual((folder / 'data.tsv').read_bytes(), BODY)
+
     def test_a_file_already_in_the_quarantine_is_checked_and_not_fetched_again(self):
         source, listed = self.source()
         folder = self.make_temp()

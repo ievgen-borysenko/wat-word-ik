@@ -199,6 +199,8 @@ def download(source: lock.Source, folder: str, listed: frozenset, context: ssl.S
         context = ssl.create_default_context()
         context.minimum_version = ssl.TLSVersion.TLSv1_2
     partial = os.path.join(folder, source.file + PARTIAL)
+    if os.path.lexists(partial):
+        os.remove(partial)  # left by a run that was stopped: never kept, never read
     host, target = source.host, source.target
     headers = {'User-Agent': USER_AGENT, 'Accept': source.type, 'Accept-Encoding': 'identity'}
     try:

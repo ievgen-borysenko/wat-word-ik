@@ -7,12 +7,21 @@ variables (-I), site-packages (-S) or bytecode files (-B):
   python3.14 -I -S -B collector/run.py gate --set fixture
   python3.14 -I -S -B collector/run.py emit --set fixture --check
   python3.14 -I -S -B collector/run.py emit --set fixture
+  python3.14 -I -S -B collector/run.py probe --profile fetch
+  python3.14 -I -S -B collector/run.py fetch --source ID [--lock PATH] [--quarantine DIR]
 
 selftest  runs the gate on its planted samples (selftest.py).
 gate      checks the extract, the two mappings, the lock and the emitted file.
 emit      writes the emitted file from the extract, the mappings and the lock
           (emit.py); with --check it writes nothing and compares the file on
           disk with what its inputs give, byte for byte.
+probe     runs the sandbox probe alone under a profile (sandboxed.py,
+          probe.py), in temporary folders, and shows what it observed.
+fetch     puts one source of the lock (default collector/sources.lock.json,
+          which this version does not have) into its quarantine folder,
+          QUARANTINE/<id>/<sha256>, outside the repository: an https source is
+          downloaded by fetch.py in the fetch sandbox, a manual one only
+          checked in the offline sandbox; a probe runs first (sandboxed.py).
 
 A named set (--set) gives every path, relative to the repository; instead,
 each path can be given with its own option (--extract and so on). gate and
@@ -23,10 +32,14 @@ is collected: emit gives it the empty file (emit.empty), and gate checks the
 emitted file alone.
 
 Exit codes: 0 passed; 1 the gate refused a file, or the emitted file differs
-from its inputs; 2 usage error or a file could not be read or written; 3 the
-self-test failed.
+from its inputs, or fetch refused (the lock, the download, a size or hash);
+2 usage error or a file could not be read or written; 3 the self-test failed;
+4 no sandbox: sandbox-exec is missing, or the probe saw the profile not hold,
+and nothing ran.
 
-This stage reads only tracked files and opens no network connection.
+selftest, gate and emit read only tracked files and open no network
+connection; so does this process for fetch and probe, whose network and
+untrusted bytes stay in the sandboxed child.
 """
 
 import argparse
@@ -42,10 +55,16 @@ if HERE not in sys.path:
 
 import emit  # noqa: E402
 import gate  # noqa: E402
+import sandboxed  # noqa: E402
 import selftest  # noqa: E402
 import shapes  # noqa: E402
 
 PASSED, REFUSED, USAGE, SELFTEST_FAILED = 0, 1, 2, 3
+NO_SANDBOX = sandboxed.NO_SANDBOX
+
+# The lock that fetch reads unless --lock names another, relative to the
+# repository. This version has none: no source is pinned yet.
+LOCK = 'collector/sources.lock.json'
 
 # Named sets of paths, relative to the repository.
 SETS = {
@@ -194,7 +213,7 @@ def _emit(paths: dict, check: bool) -> int:
 
 
 def _parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog='run.py', description='The collector: gate, emit and the self-test.')
+    parser = argparse.ArgumentParser(prog='run.py', description='The collector: the self-test, gate, emit, and fetch in a sandbox.')
     commands = parser.add_subparsers(dest='command', required=True)
     commands.add_parser('selftest', help='run the gate on its planted samples')
     for name in ('gate', 'emit'):
@@ -208,6 +227,12 @@ def _parser() -> argparse.ArgumentParser:
         command.add_argument('--source', help="the lock's id of the extract's source")
         if name == 'emit':
             command.add_argument('--check', action='store_true', help='compare instead of writing')
+    probe = commands.add_parser('probe', help='run the sandbox probe alone under a profile')
+    probe.add_argument('--profile', choices=sorted(sandboxed.PROFILES), required=True)
+    fetch = commands.add_parser('fetch', help='put one source of the lock into its quarantine folder, in the sandbox')
+    fetch.add_argument('--source', required=True, help="the lock's id of the source")
+    fetch.add_argument('--lock', help=f'the lock (default {LOCK})')
+    fetch.add_argument('--quarantine', help=f'the root of the quarantine (default {sandboxed.DEFAULT_QUARANTINE})')
     return parser
 
 
@@ -220,6 +245,11 @@ def main(argv: list) -> int:
         return SELFTEST_FAILED
     if args.command == 'selftest':
         return PASSED
+    if args.command == 'probe':
+        return sandboxed.probe(args.profile)
+    if args.command == 'fetch':
+        lock_path = args.lock if args.lock is not None else os.path.join(REPO, *LOCK.split('/'))
+        return sandboxed.fetch(args.source, lock_path, args.quarantine)
     try:
         paths = _paths(args)
         if args.command == 'gate':

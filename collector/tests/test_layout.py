@@ -68,7 +68,7 @@ def imports_in(source: str) -> set:
 
 class Layout(GuardedCase):
     def test_the_modules_import_only_the_standard_library_they_need(self):
-        names = ['canon.py', 'emit.py', 'fetch.py', 'gate.py', 'lock.py', 'run.py', 'selftest.py', 'shapes.py']
+        names = ['canon.py', 'emit.py', 'fetch.py', 'gate.py', 'lock.py', 'probe.py', 'run.py', 'sandboxed.py', 'selftest.py', 'shapes.py']
         self.assertEqual([p.name for p in MODULES], names)
         for path in MODULES:
             with self.subTest(path.name):
