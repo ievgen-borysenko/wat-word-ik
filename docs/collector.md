@@ -330,8 +330,15 @@ interpreter's home folder), not `python3.14` on the path.
 - as `python3.14 -I -S -B`, the same interpreter that runs the launcher (for
   a framework build, its binary inside the framework, so the profile allows
   exactly one program);
-- in the folder `/`, with no standard input, its output captured and passed
-  on;
+- in the folder `/`, with no standard input;
+- with its output read through pipes, of which the launcher keeps at most
+  8 KiB per stream (64 KiB of the probe's result) and reads and drops the
+  rest, so a child never waits on a full pipe and the launcher holds no more
+  than that. Pipes and not files, which would grow on disk up to the child's
+  file-size limit. What it passes on is printable ASCII and line feeds only,
+  any other byte (an escape sequence, a carriage return, anything outside
+  ASCII) as `?`, with a line that says where a stream was cut; so is the one
+  line of the probe's error output that it quotes when the probe fails;
 - under resource limits: no core files (`system.sb` would let a process write
   them under `/cores`), 600 CPU seconds, files of at most 1 MiB (for a
   download: the source's size and 1 MiB), 64 open files, and 1,800 s of
@@ -343,7 +350,17 @@ interpreter's Mach-O extension modules for TLS and hashes (`_ssl`,
 `_hashlib`), to find the libraries they load from outside the interpreter's
 home, and asks the interpreter, in a child with an empty environment and no
 sandbox, where its TLS looks for certificates (`probe.py paths`, which only
-prints them). It never reads what a stage downloads.
+prints them). It never reads what a stage downloads. A Mach-O file it cannot
+read or parse, or an interpreter that does not say where its certificates
+are, stops it with exit 4.
+
+Before a run it makes `QUARANTINE/<id>/<sha256>` where it is missing, one
+part at a time, and stops with exit 2 when a part is a symbolic link or the
+folder's real path is not that path. The fetch profile lets the stage write
+in that folder, and so remove it and put a link to another place in its
+stead; without the check, the next run would hand that place to the probe
+and the stage (measured: in `fetch.sb` a child can remove its empty folder
+and make the link).
 
 ### The profiles
 
@@ -477,7 +494,10 @@ other than 200, a certificate the system does not trust, too many redirects,
 and a matching file accepted); the lock's grammar; that the launcher starts
 nothing when a probe action succeeds that must be refused, when the probe does
 not run, or when `sandbox-exec` is missing; that a child gets an empty
-environment, no input, the folder `/` and the limits; the profiles' text and
+environment, no input, the folder `/` and the limits; that the launcher keeps
+only the start of a long output, passes it on cut and printable, and stops a
+child that runs too long; that a quarantine folder replaced by a symbolic
+link stops the run before anything starts; the profiles' text and
 parameters; the reading of Mach-O load commands; and that only `fetch.py`,
 `probe.py` and the test with the loopback server import network modules.
 `run.py fetch` and `run.py probe` exit 4 there.

@@ -21,6 +21,7 @@ import re
 import struct
 import subprocess
 import sys
+import time
 import unittest
 from unittest import mock
 
@@ -199,6 +200,79 @@ class Launcher(GuardedCase):
         self.assertEqual(code, 1)
         self.assertIn('stopped by signal 9', err)
 
+    def stand_in(self, code: str):
+        """run_stage with a probe that holds and, as the stage, a real child
+        that runs code without a sandbox: (exit code, stdout, stderr)."""
+        params = params_for('offline')
+        argv = [sandboxed.interpreter()[0], '-I', '-S', '-B', '-c', code]
+        with mock.patch.object(sandboxed, 'sandbox_available', lambda: True), \
+                mock.patch.object(sandboxed, 'run_probe', lambda *_args: holding('offline', params)), \
+                mock.patch.object(sandboxed, 'command', lambda *_args: argv), captured() as (out, err):  # fmt: skip
+            status = sandboxed.run_stage('offline', params, sandboxed.FETCH, [], scratch=str(self.make_temp()), file_size=sandboxed.SMALL_FILE, timeout=60)
+        return status, out.getvalue(), err.getvalue()
+
+    def assert_printable(self, text: str):
+        self.assertTrue(set(text) <= set(map(chr, range(0x20, 0x7F))) | {'\n'}, ascii(text[:200]))
+
+    def test_escape_sequences_and_other_bytes_reach_the_caller_only_as_question_marks(self):
+        noisy_out = b'\x1b[31mred\x1b[0m caf\xc3\xa9\tok\r\n\x1b]0;title\x07\n'
+        noisy_err = b'\x07bell \xe2\x80\xae\x00 \x9b2J\n'
+        code = f'import os\nos.write(1, bytes.fromhex({noisy_out.hex()!r}))\nos.write(2, bytes.fromhex({noisy_err.hex()!r}))\n'
+        status, out, err = self.stand_in(code)
+        self.assertEqual(status, 0)
+        self.assertEqual(out.split('\n', 1)[1], '?[31mred?[0m caf???ok?\n?]0;title?\n')
+        self.assertEqual(err, '?bell ???? ?2J\n')
+        self.assert_printable(out + err)
+
+    def test_an_output_longer_than_the_cap_is_cut_and_says_so(self):
+        status, out, err = self.stand_in('import os\nos.write(1, b"o" * 100000)\nos.write(2, b"e" * 100000 + b"\\n")\n')
+        self.assertEqual(status, 0)
+        cap = sandboxed.OUTPUT_MAX
+        self.assertEqual(out.split('\n', 1)[1], 'o' * cap + f"\n[the stage's output was cut after {cap} bytes]\n")
+        self.assertEqual(err, 'e' * cap + f"\n[the stage's error output was cut after {cap} bytes]\n")
+
+    def test_the_one_line_of_the_probes_error_output_that_is_quoted_is_printable(self):
+        params = params_for('fetch')
+        noisy = subprocess.CompletedProcess([], 65, b'', b'first\n\x1b]0;title\x07 last \xe2\x80\xae\r\n')
+        with mock.patch.object(sandboxed, 'spawn', lambda *_args, **_kwargs: noisy), \
+                self.assertRaises(sandboxed.Unavailable) as stopped:  # fmt: skip
+            sandboxed.run_probe('fetch', params, str(self.make_temp()), sandboxed.SMALL_FILE)
+        self.assertEqual(str(stopped.exception), 'the probe did not run under the fetch profile (exit 65): ?]0;title? last ????')
+        too_long = subprocess.CompletedProcess([], 0, b' ' * (sandboxed.PROBE_OUTPUT_MAX + 1), b'')
+        with mock.patch.object(sandboxed, 'spawn', lambda *_args, **_kwargs: too_long), \
+                self.assertRaisesRegex(sandboxed.Unavailable, 'more than the 65536 bytes the launcher reads'):  # fmt: skip
+            sandboxed.run_probe('fetch', params, str(self.make_temp()), sandboxed.SMALL_FILE)
+
+    def test_a_quarantine_folder_that_a_stage_replaced_by_a_link_stops_the_run(self):
+        def must_not_run(*_args, **_kwargs):
+            raise AssertionError('nothing may run')
+
+        folder = self.make_temp()
+        lock_path, entry = write_lock(folder, b'x\n')
+        elsewhere = folder / 'elsewhere'
+        elsewhere.mkdir()
+        cases = {
+            'the source folder': ('q1', lambda root: (root / 'by-hand').mkdir(parents=True) or os.symlink(elsewhere, root / 'by-hand' / entry['sha256'])),
+            'the id folder': ('q2', lambda root: root.mkdir() or os.symlink(elsewhere, root / 'by-hand')),
+        }
+        for name, (root_name, plant) in cases.items():
+            root = folder / root_name
+            plant(root)
+            with self.subTest(name), mock.patch.object(sandboxed, 'sandbox_available', lambda: True), \
+                    mock.patch.object(sandboxed, 'parameters', must_not_run), mock.patch.object(sandboxed, 'run_stage', must_not_run), \
+                    mock.patch.object(sandboxed, 'spawn', must_not_run), captured() as (_out, err):  # fmt: skip
+                self.assertEqual(sandboxed.fetch('by-hand', str(lock_path), str(root), scratch=str(folder)), 2)
+            self.assertIn('in the quarantine is a symbolic link; nothing ran', err.getvalue())
+            self.assertEqual(os.listdir(elsewhere), [], 'nothing was made through the link')
+        # A folder as the launcher made it goes on to the profile and the stage.
+        seen = []
+        with mock.patch.object(sandboxed, 'sandbox_available', lambda: True), \
+                mock.patch.object(sandboxed, 'parameters', lambda profile, **kwargs: seen.append(kwargs['quarantine']) or {}), \
+                mock.patch.object(sandboxed, 'run_stage', lambda *_args, **_kwargs: 0), captured():  # fmt: skip
+            self.assertEqual(sandboxed.fetch('by-hand', str(lock_path), str(folder / 'q3'), scratch=str(folder)), 0)
+        self.assertEqual(seen, [os.path.join(folder / 'q3', 'by-hand', entry['sha256'])])
+        self.assertTrue(os.path.isdir(seen[0]) and not os.path.islink(seen[0]))
+
     def without_sandbox_exec(self):
         return mock.patch.object(sandboxed, 'SANDBOX_EXEC', str(self.make_temp() / 'sandbox-exec'))
 
@@ -265,10 +339,34 @@ class Child(GuardedCase):
 
     def test_spawn_passes_no_variable_at_all(self):
         calls = []
-        with mock.patch.object(sandboxed.subprocess, 'run', lambda argv, **kwargs: calls.append(kwargs)):
+
+        class Stop(Exception):
+            pass
+
+        def popen(argv, **kwargs):
+            calls.append(kwargs)
+            raise Stop
+
+        with mock.patch.object(sandboxed.subprocess, 'Popen', popen), self.assertRaises(Stop):
             sandboxed.spawn(['x'], file_size=1, timeout=1)
         self.assertEqual(calls[0]['env'], {})
         self.assertEqual((calls[0]['cwd'], calls[0]['stdin']), ('/', subprocess.DEVNULL))
+        self.assertEqual((calls[0]['stdout'], calls[0]['stderr']), (subprocess.PIPE, subprocess.PIPE))
+
+    def test_the_launcher_keeps_only_the_start_of_a_long_output(self):
+        binary, _home = sandboxed.interpreter()
+        code = 'import os\nfor _ in range(64):\n    os.write(1, b"o" * 65536)\n    os.write(2, b"e" * 65536)\n'
+        result = sandboxed.spawn([binary, '-I', '-S', '-B', '-c', code], file_size=sandboxed.SMALL_FILE, timeout=60)
+        self.assertEqual(result.returncode, 0, 'the child wrote 4 MiB to each stream and was not blocked')
+        self.assertEqual((result.stdout, result.stderr), (b'o' * (sandboxed.OUTPUT_MAX + 1), b'e' * (sandboxed.OUTPUT_MAX + 1)))
+
+    def test_a_child_that_runs_too_long_is_stopped_while_its_output_is_dropped(self):
+        binary, _home = sandboxed.interpreter()
+        code = 'import os\nwhile True:\n    os.write(1, b"x" * 65536)\n'
+        started = time.monotonic()
+        with self.assertRaises(subprocess.TimeoutExpired):
+            sandboxed.spawn([binary, '-I', '-S', '-B', '-c', code], file_size=sandboxed.SMALL_FILE, timeout=1)
+        self.assertLess(time.monotonic() - started, 30)
 
     def test_the_child_runs_in_the_root_folder_without_input_under_the_limits(self):
         code = ('import json, os, resource, sys; '
@@ -293,8 +391,8 @@ class Child(GuardedCase):
                                 '/p/python', '-I', '-S', '-B', '/c/fetch.py', '--source', 'x'])  # fmt: skip
 
 
-def dylib_command(command: int, name: str) -> bytes:
-    raw = name.encode('ascii') + b'\0'
+def dylib_command(command: int, name) -> bytes:
+    raw = (name if isinstance(name, bytes) else name.encode('ascii')) + b'\0'
     raw += b'\0' * (-len(raw) % 8)
     if command == 0x8000001C:  # LC_RPATH: cmd, cmdsize, path offset
         return struct.pack('<III', command, 12 + len(raw), 12) + raw
@@ -336,9 +434,32 @@ class MachO(GuardedCase):
             'cut short': good[:-10],
             'a command shorter than its header': good[:32] + struct.pack('<II', 0xC, 4) + good[40:],
             'more commands than bytes': struct.pack('<IiiIIIII', 0xFEEDFACF, 0, 0, 6, 3, 8, 0, 0) + struct.pack('<II', 0x19, 8),
+            'a library name that is not UTF-8': thin(dylib_command(0xC, b'/a/lib\xff.dylib')),
+            'a universal header cut short': struct.pack('>I', 0xCAFEBABE) + b'\0\0',
+            'a universal file with fewer entries than it says': struct.pack('>II', 0xCAFEBABE, 2) + struct.pack('>iiIII', 0x0100000C, 0, 64, 32, 4),
+            'a 64-bit universal header cut short': struct.pack('>II', 0xCAFEBABF, 1) + b'\0' * 10,
         }.items():
             with self.subTest(name), self.assertRaises(sandboxed.Unavailable):
                 sandboxed.linked_libraries(self.write(data))
+        with self.assertRaisesRegex(sandboxed.Unavailable, 'cannot be read as a Mach-O file'):
+            sandboxed.linked_libraries(str(self.make_temp() / 'missing.dylib'))
+
+    def test_the_tls_paths_that_the_interpreter_does_not_give_stop_the_launcher(self):
+        def timeout(argv, **_kwargs):
+            raise subprocess.TimeoutExpired(argv, 1)
+
+        def missing(_argv, **_kwargs):
+            raise FileNotFoundError(2, 'No such file or directory')
+
+        answers = {
+            'a timeout': (timeout, 'within'),
+            'no interpreter': (missing, 'could not be started'),
+            'no JSON': (lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 1, b'not json', b''), 'exit 1'),
+            'too long': (lambda argv, **_kwargs: subprocess.CompletedProcess(argv, 0, b' ' * (sandboxed.PROBE_OUTPUT_MAX + 1), b''), 'exit 0'),
+        }
+        for name, (spawn, pattern) in answers.items():
+            with self.subTest(name), mock.patch.object(sandboxed, 'spawn', spawn), self.assertRaisesRegex(sandboxed.Unavailable, pattern):
+                sandboxed.tls_paths('/made/up/python')
 
     def test_loader_executable_and_run_path_names_are_resolved(self):
         folder = self.make_temp()

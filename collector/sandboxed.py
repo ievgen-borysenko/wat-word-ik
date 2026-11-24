@@ -10,7 +10,11 @@ and opens no connection. A stage runs as a child process:
     bytecode files), the same interpreter that runs the launcher;
   - in the folder /, with no standard input, under resource limits: no core
     files, a cap on CPU seconds, on the size of any file it writes and on
-    open files, and a cap on its running time.
+    open files, and a cap on its running time;
+  - with its output read through pipes, of which the launcher keeps at most
+    OUTPUT_MAX bytes per stream (it reads and drops the rest), and passes on
+    only printable ASCII and line feeds, any other byte as '?', saying where
+    a stream was cut.
 
 Before every run, the probe (probe.py) runs under the same profile, with the
 same parameters and limits, and must observe the refusals the profile
@@ -34,11 +38,13 @@ import contextlib
 import json
 import os
 import resource
+import selectors
 import struct
 import subprocess
 import sys
 import sysconfig
 import tempfile
+import time
 
 import lock
 import shapes
@@ -75,6 +81,14 @@ PROBE_TIMEOUT = 60
 FETCH_TIMEOUT = 1800
 VERIFY_TIMEOUT = 600
 SMALL_FILE = 1 << 20
+# What the launcher keeps of each output stream of a child, and passes on of
+# a stage's; the probe's result may be longer. The rest is read and dropped.
+OUTPUT_MAX = 8 << 10
+PROBE_OUTPUT_MAX = 64 << 10
+READ_CHUNK = 1 << 16
+# Printable ASCII and the line feed pass on as they are; any other byte
+# (escape sequences, carriage returns, tabs, anything outside ASCII) as '?'.
+PASSED_ON = bytes(byte if 0x20 <= byte < 0x7F or byte == 0x0A else 0x3F for byte in range(256))
 
 # What the probe must observe under each profile.
 EXPECTED = {
@@ -174,7 +188,15 @@ def _thin(handle, offset: int, path: str) -> tuple:
 
 def linked_libraries(path: str) -> tuple:
     """(libraries, run paths) that a Mach-O file names in its load commands,
-    over every architecture it holds, each sorted and without repeats."""
+    over every architecture it holds, each sorted and without repeats.
+    Raises Unavailable for a file it cannot read or parse."""
+    try:
+        return _linked_libraries(path)
+    except (OSError, struct.error, UnicodeDecodeError):
+        raise Unavailable(f'{path} cannot be read as a Mach-O file (missing, cut short, or a library name that is not UTF-8)') from None
+
+
+def _linked_libraries(path: str) -> tuple:
     with open(path, 'rb') as handle:
         magic = struct.unpack('>I', handle.read(4).rjust(4, b'\0'))[0]
         if magic in (_FAT, _FAT_64):
@@ -248,9 +270,17 @@ def library_folder(binary: str, home: str, modules: tuple) -> tuple:
     return folder, (links[0] if links else None)
 
 
-def spawn(argv: list, *, file_size: int, timeout: int) -> subprocess.CompletedProcess:
+def spawn(argv: list, *, file_size: int, timeout: int, keep: int = OUTPUT_MAX) -> subprocess.CompletedProcess:
     """Run a child with an empty environment, in /, without standard input,
-    under the resource limits; its output is captured."""
+    under the resource limits. Of each output stream the result holds the
+    first keep + 1 bytes (one more than a caller passes on, to tell that
+    there was more); the rest is read and dropped, so the child never waits
+    on a full pipe and the launcher holds no more than that. A child that
+    runs longer than timeout is stopped, and subprocess.TimeoutExpired raised.
+
+    Pipes read with a cap, rather than files that the child writes: such a
+    file would grow on disk up to the child's file-size limit (for a
+    download, the source's size and 1 MiB)."""
 
     def limits():
         resource.setrlimit(resource.RLIMIT_CORE, (0, 0))
@@ -258,23 +288,62 @@ def spawn(argv: list, *, file_size: int, timeout: int) -> subprocess.CompletedPr
         resource.setrlimit(resource.RLIMIT_FSIZE, (file_size, file_size))
         resource.setrlimit(resource.RLIMIT_NOFILE, (OPEN_FILES, OPEN_FILES))
 
-    return subprocess.run(
-        argv,
-        env={},
-        cwd='/',
-        stdin=subprocess.DEVNULL,
-        capture_output=True,
-        timeout=timeout,
-        preexec_fn=limits,
-        check=False,
-    )
+    child = subprocess.Popen(argv, env={}, cwd='/', stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE, preexec_fn=limits)
+    out, err = child.stdout.fileno(), child.stderr.fileno()
+    kept = {out: bytearray(), err: bytearray()}
+    deadline = time.monotonic() + timeout
+    try:
+        with selectors.DefaultSelector() as selector:
+            for fd in kept:
+                selector.register(fd, selectors.EVENT_READ)
+            while selector.get_map():
+                left = deadline - time.monotonic()
+                if left <= 0:
+                    raise subprocess.TimeoutExpired(argv, timeout)
+                for key, _events in selector.select(left):
+                    chunk = os.read(key.fd, READ_CHUNK)
+                    if not chunk:
+                        selector.unregister(key.fd)
+                    elif len(kept[key.fd]) <= keep:
+                        kept[key.fd] += chunk[: keep + 1 - len(kept[key.fd])]
+        code = child.wait(max(deadline - time.monotonic(), 0))
+    except BaseException:
+        child.kill()
+        child.wait()
+        raise
+    finally:
+        child.stdout.close()
+        child.stderr.close()
+    return subprocess.CompletedProcess(argv, code, bytes(kept[out]), bytes(kept[err]))
+
+
+def printable(data: bytes) -> str:
+    """The bytes as the launcher shows them: printable ASCII and line feeds,
+    any other byte as '?'."""
+    return data.translate(PASSED_ON).decode('ascii')
+
+
+def passed_on(data: bytes, stream: str) -> str:
+    """A stage's output stream as the launcher passes it on: its first
+    OUTPUT_MAX bytes, printable, and a line that says when it was cut."""
+    text = printable(data[:OUTPUT_MAX])
+    if len(data) > OUTPUT_MAX:
+        text += ('\n' if text and not text.endswith('\n') else '') + f'[the stage\'s {stream} was cut after {OUTPUT_MAX} bytes]\n'
+    return text
 
 
 def tls_paths(binary: str) -> dict:
     """Where the interpreter's TLS looks for certificates (probe.py paths),
     asked of the interpreter itself with an empty environment."""
-    result = spawn([binary, '-I', '-S', '-B', PROBE, 'paths'], file_size=SMALL_FILE, timeout=PROBE_TIMEOUT)
     try:
+        result = spawn([binary, '-I', '-S', '-B', PROBE, 'paths'], file_size=SMALL_FILE, timeout=PROBE_TIMEOUT, keep=PROBE_OUTPUT_MAX)
+    except subprocess.TimeoutExpired:
+        raise Unavailable(f'the interpreter did not say where its TLS certificates are within {PROBE_TIMEOUT} s') from None
+    except OSError as err:
+        raise Unavailable(f'the interpreter could not be started to ask where its TLS certificates are: {err.strerror}') from None
+    try:
+        if len(result.stdout) > PROBE_OUTPUT_MAX:
+            raise ValueError('cut')
         found = json.loads(result.stdout)
         return {'cafile': found['cafile'], 'capath': found['capath']}
     except (ValueError, KeyError, TypeError):
@@ -348,14 +417,17 @@ def run_probe(profile: str, params: dict, scratch: str, file_size: int) -> dict:
         if 'OUT' in params:
             args += ['--out', params['OUT']]
         try:
-            result = spawn(command(profile, params, PROBE, args), file_size=file_size, timeout=PROBE_TIMEOUT)
+            result = spawn(command(profile, params, PROBE, args), file_size=file_size, timeout=PROBE_TIMEOUT, keep=PROBE_OUTPUT_MAX)
         except subprocess.TimeoutExpired:
             raise Unavailable(f'the probe did not finish within {PROBE_TIMEOUT} s') from None
     finally:
         _remove(outside)
     if result.returncode != 0:
-        last = (result.stderr.decode('utf-8', 'replace').strip().splitlines() or ['no message'])[-1][:300]
+        # The one line of the probe's error output that the launcher quotes, made printable.
+        last = (printable(result.stderr[:OUTPUT_MAX]).strip().splitlines() or ['no message'])[-1][:300]
         raise Unavailable(f'the probe did not run under the {profile} profile (exit {result.returncode}): {last}')
+    if len(result.stdout) > PROBE_OUTPUT_MAX:
+        raise Unavailable(f'the probe gave more than the {PROBE_OUTPUT_MAX} bytes the launcher reads')
     try:
         return json.loads(result.stdout)
     except ValueError:
@@ -424,9 +496,9 @@ def run_stage(profile: str, params: dict, script: str, args: list, *, scratch: s
     except subprocess.TimeoutExpired:
         print(f'the stage did not finish within {timeout} s and was stopped', file=sys.stderr)
         return REFUSED
-    sys.stdout.write(result.stdout.decode('utf-8', 'replace'))
+    sys.stdout.write(passed_on(result.stdout, 'output'))
     sys.stdout.flush()
-    sys.stderr.write(result.stderr.decode('utf-8', 'replace'))
+    sys.stderr.write(passed_on(result.stderr, 'error output'))
     if result.returncode < 0:
         print(f'the stage was stopped by signal {-result.returncode}', file=sys.stderr)
         return REFUSED
@@ -443,6 +515,27 @@ def quarantine_root(given: str | None) -> str:
     if any(_inside(root, os.path.join(home, *parts)) for parts in SYNCED):
         raise Failed('the quarantine must be outside the folders that macOS syncs')
     return root
+
+
+def source_folder(root: str, source: lock.Source) -> str:
+    """Make QUARANTINE/<id>/<sha256> where it is missing, under the root (a
+    real path), and return it; raises Failed when a part of it is a symbolic
+    link, or its real path is not that path. The fetch profile lets the stage
+    write in that folder, and so remove it and put a link to another place
+    in its stead: the next run would hand that place to the probe and the
+    stage. A part is checked before it is made, so that nothing is made
+    through a link."""
+    os.makedirs(root, mode=0o700, exist_ok=True)
+    folder = root
+    for part in (source.id, source.sha256):
+        folder = os.path.join(folder, part)
+        if os.path.islink(folder):
+            raise Failed(f'{folder} in the quarantine is a symbolic link; nothing ran. Look at where it points, then remove it by hand')
+        if not os.path.isdir(folder):
+            os.mkdir(folder, 0o700)
+    if os.path.realpath(folder) != os.path.join(root, source.id, source.sha256):
+        raise Failed(f'{folder} in the quarantine is not where its path says; nothing ran')
+    return folder
 
 
 def fetch(source_id: str, lock_path: str, quarantine: str | None, scratch: str | None = None) -> int:
@@ -464,9 +557,7 @@ def fetch(source_id: str, lock_path: str, quarantine: str | None, scratch: str |
         print(f'no sandbox: {SANDBOX_EXEC} is missing (it comes with macOS only); nothing ran', file=sys.stderr)
         return NO_SANDBOX
     try:
-        root = quarantine_root(quarantine)
-        folder = os.path.join(root, source.id, source.sha256)
-        os.makedirs(folder, mode=0o700, exist_ok=True)
+        folder = source_folder(quarantine_root(quarantine), source)
     except Failed as err:
         print(f'fetch: {err}', file=sys.stderr)
         return USAGE
@@ -474,7 +565,7 @@ def fetch(source_id: str, lock_path: str, quarantine: str | None, scratch: str |
         print(f'fetch: cannot make the quarantine folder: {err.strerror}', file=sys.stderr)
         return USAGE
     scratch = scratch or tempfile.gettempdir()
-    args = ['--lock', os.path.realpath(lock_path), '--source', source.id, '--folder', os.path.realpath(folder)]
+    args = ['--lock', os.path.realpath(lock_path), '--source', source.id, '--folder', folder]
     try:
         if source.kind == 'https':
             params = parameters('fetch', quarantine=folder, lock_path=lock_path)

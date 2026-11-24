@@ -35,7 +35,7 @@ ALLOWED_IMPORTS = {'argparse', 'dataclasses', 'json', 'os', 're', 'sys'}
 EXTRA_IMPORTS = {
     'fetch.py': {'errno', 'hashlib', 'http', 'socket', 'ssl'},
     'probe.py': {'errno', 'resource', 'socket', 'ssl'},
-    'sandboxed.py': {'contextlib', 'resource', 'struct', 'subprocess', 'sysconfig', 'tempfile'},
+    'sandboxed.py': {'contextlib', 'resource', 'selectors', 'struct', 'subprocess', 'sysconfig', 'tempfile', 'time'},
 }
 # Modules that open connections or reach the system around the sandbox's rules.
 NETWORK = {'socket', 'ssl', 'http', 'urllib', 'ftplib', 'smtplib', 'poplib', 'imaplib', 'xmlrpc', 'asyncio', 'webbrowser', 'socketserver', 'ctypes'}
